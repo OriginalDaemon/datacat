@@ -8,6 +8,10 @@
 *.so
 *.dylib
 datacat
+datacat-server
+datacat-web
+cmd/datacat-server/datacat-server
+cmd/datacat-web/datacat-web
 
 # Test binary, built with `go test -c`
 *.test
@@ -30,6 +34,7 @@ go.work.sum
 
 # Database
 datacat_db/
+badger_data/
 *.db
 
 # Python
