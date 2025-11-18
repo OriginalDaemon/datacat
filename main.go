@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	badger "github.com/dgraph-io/badger/v3"
 	"github.com/google/uuid"
 )
 
@@ -39,17 +40,90 @@ type Metric struct {
 	Tags      []string  `json:"tags,omitempty"`
 }
 
-// Store manages all sessions
+// Store manages all sessions with BadgerDB for persistence
 type Store struct {
 	mu       sync.RWMutex
 	sessions map[string]*Session
+	db       *badger.DB
 }
 
-// NewStore creates a new Store
-func NewStore() *Store {
-	return &Store{
-		sessions: make(map[string]*Session),
+// NewStore creates a new Store with BadgerDB
+func NewStore(dbPath string) (*Store, error) {
+	opts := badger.DefaultOptions(dbPath)
+	opts.Logger = nil // Disable BadgerDB logs
+	
+	db, err := badger.Open(opts)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open database: %v", err)
 	}
+
+	store := &Store{
+		sessions: make(map[string]*Session),
+		db:       db,
+	}
+
+	// Load existing sessions from database
+	if err := store.loadFromDB(); err != nil {
+		return nil, fmt.Errorf("failed to load sessions: %v", err)
+	}
+
+	return store, nil
+}
+
+// Close closes the database
+func (s *Store) Close() error {
+	return s.db.Close()
+}
+
+// saveSessionToDB saves a single session to the database
+func (s *Store) saveSessionToDB(session *Session) error {
+	data, err := json.Marshal(session)
+	if err != nil {
+		return fmt.Errorf("failed to marshal session: %v", err)
+	}
+
+	err = s.db.Update(func(txn *badger.Txn) error {
+		return txn.Set([]byte("session:"+session.ID), data)
+	})
+
+	if err != nil {
+		return fmt.Errorf("failed to save session to db: %v", err)
+	}
+
+	return nil
+}
+
+// loadFromDB loads all sessions from the database
+func (s *Store) loadFromDB() error {
+	err := s.db.View(func(txn *badger.Txn) error {
+		opts := badger.DefaultIteratorOptions
+		opts.Prefix = []byte("session:")
+		it := txn.NewIterator(opts)
+		defer it.Close()
+
+		for it.Rewind(); it.Valid(); it.Next() {
+			item := it.Item()
+			err := item.Value(func(val []byte) error {
+				var session Session
+				if err := json.Unmarshal(val, &session); err != nil {
+					return err
+				}
+				s.sessions[session.ID] = &session
+				return nil
+			})
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+
+	if err != nil {
+		return err
+	}
+
+	log.Printf("Loaded %d sessions from database", len(s.sessions))
+	return nil
 }
 
 // CreateSession creates a new session
@@ -68,6 +142,10 @@ func (s *Store) CreateSession() *Session {
 	}
 
 	s.sessions[session.ID] = session
+	
+	// Save to database asynchronously
+	go s.saveSessionToDB(session)
+	
 	return session
 }
 
@@ -123,6 +201,10 @@ func (s *Store) UpdateState(id string, state map[string]interface{}) error {
 	// Deep merge the new state into the existing state
 	deepMerge(session.State, state)
 	session.UpdatedAt = time.Now()
+	
+	// Save to database asynchronously
+	go s.saveSessionToDB(session)
+	
 	return nil
 }
 
@@ -140,6 +222,10 @@ func (s *Store) EndSession(id string) error {
 	session.EndedAt = &now
 	session.Active = false
 	session.UpdatedAt = now
+	
+	// Save to database asynchronously
+	go s.saveSessionToDB(session)
+	
 	return nil
 }
 
@@ -160,6 +246,10 @@ func (s *Store) AddEvent(id string, name string, data map[string]interface{}) er
 	}
 	session.Events = append(session.Events, event)
 	session.UpdatedAt = time.Now()
+	
+	// Save to database asynchronously
+	go s.saveSessionToDB(session)
+	
 	return nil
 }
 
@@ -181,12 +271,24 @@ func (s *Store) AddMetric(id string, name string, value float64, tags []string) 
 	}
 	session.Metrics = append(session.Metrics, metric)
 	session.UpdatedAt = time.Now()
+	
+	// Save to database asynchronously
+	go s.saveSessionToDB(session)
+	
 	return nil
 }
 
-var store = NewStore()
+var store *Store
 
 func main() {
+	// Initialize store with BadgerDB
+	var err error
+	store, err = NewStore("./datacat_db")
+	if err != nil {
+		log.Fatalf("Failed to initialize store: %v", err)
+	}
+	defer store.Close()
+
 	http.HandleFunc("/api/sessions", handleSessions)
 	http.HandleFunc("/api/sessions/", handleSessionOperations)
 	http.HandleFunc("/api/grafana/sessions", handleGrafanaData)

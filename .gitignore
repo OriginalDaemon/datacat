@@ -28,6 +28,10 @@ go.work.sum
 # env file
 .env
 
+# Database
+datacat_db/
+*.db
+
 # Python
 __pycache__/
 *.pyc

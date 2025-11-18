@@ -9,8 +9,10 @@ Compatible with Python 2.7+ and Python 3.x
 
 from __future__ import print_function
 import json
+import sys
 import threading
 import time
+import traceback
 
 try:
     # Python 3
@@ -31,7 +33,7 @@ class DatacatClient(object):
         Args:
             base_url (str): Base URL of the datacat service
         """
-        self.base_url = base_url.rstrip('/')
+        self.base_url = base_url.rstrip("/")
 
     def _make_request(self, url, method="GET", data=None):
         """
@@ -48,10 +50,10 @@ class DatacatClient(object):
         Raises:
             Exception: If the request fails
         """
-        headers = {'Content-Type': 'application/json'}
+        headers = {"Content-Type": "application/json"}
 
         if data is not None:
-            data = json.dumps(data).encode('utf-8')
+            data = json.dumps(data).encode("utf-8")
 
         request = Request(url, data=data, headers=headers)
         if method != "GET":
@@ -59,7 +61,7 @@ class DatacatClient(object):
 
         try:
             response = urlopen(request)
-            response_data = response.read().decode('utf-8')
+            response_data = response.read().decode("utf-8")
             return json.loads(response_data)
         except HTTPError as e:
             error_msg = "HTTP Error {0}: {1}".format(e.code, e.reason)
@@ -83,7 +85,7 @@ class DatacatClient(object):
         """
         url = "{0}/api/sessions".format(self.base_url)
         response = self._make_request(url, method="POST")
-        return response.get('session_id')
+        return response.get("session_id")
 
     def get_session(self, session_id):
         """
@@ -136,10 +138,7 @@ class DatacatClient(object):
         if data is None:
             data = {}
 
-        event_data = {
-            'name': name,
-            'data': data
-        }
+        event_data = {"name": name, "data": data}
         url = "{0}/api/sessions/{1}/events".format(self.base_url, session_id)
         return self._make_request(url, method="POST", data=event_data)
 
@@ -159,11 +158,7 @@ class DatacatClient(object):
         Raises:
             Exception: If the request fails
         """
-        metric_data = {
-            'name': name,
-            'value': float(value),
-            'tags': tags or []
-        }
+        metric_data = {"name": name, "value": float(value), "tags": tags or []}
         url = "{0}/api/sessions/{1}/metrics".format(self.base_url, session_id)
         return self._make_request(url, method="POST", data=metric_data)
 
@@ -183,6 +178,37 @@ class DatacatClient(object):
         url = "{0}/api/sessions/{1}/end".format(self.base_url, session_id)
         return self._make_request(url, method="POST")
 
+    def log_exception(self, session_id, exc_info=None, extra_data=None):
+        """
+        Log an exception to a session
+
+        Args:
+            session_id (str): Session ID
+            exc_info (tuple): Exception info from sys.exc_info(), if None uses current exception
+            extra_data (dict): Optional additional data to include
+
+        Returns:
+            dict: Response from the server
+
+        Raises:
+            Exception: If the request fails
+        """
+        if exc_info is None:
+            exc_info = sys.exc_info()
+
+        exc_type, exc_value, exc_traceback = exc_info
+
+        exception_data = {
+            "type": exc_type.__name__ if exc_type else "Unknown",
+            "message": str(exc_value) if exc_value else "",
+            "traceback": traceback.format_exception(exc_type, exc_value, exc_traceback),
+        }
+
+        if extra_data:
+            exception_data.update(extra_data)
+
+        return self.log_event(session_id, "exception", exception_data)
+
     def get_all_sessions(self):
         """
         Get all sessions (Grafana endpoint)
@@ -200,7 +226,7 @@ class DatacatClient(object):
 class HeartbeatMonitor(object):
     """
     Hardware thread-based heartbeat monitor for detecting application hangs.
-    
+
     This class runs a separate thread that monitors heartbeats from the application.
     If no heartbeat is received within the timeout period, it logs an event indicating
     the application appears to be hung.
@@ -230,10 +256,10 @@ class HeartbeatMonitor(object):
         """Internal monitor loop that runs in the background thread"""
         while self._running:
             time.sleep(self.check_interval)
-            
+
             with self._lock:
                 time_since_heartbeat = time.time() - self._last_heartbeat
-                
+
                 # Check if we've exceeded the timeout
                 if time_since_heartbeat > self.timeout and not self._hung_logged:
                     # Log the hung event
@@ -243,8 +269,8 @@ class HeartbeatMonitor(object):
                             "application_appears_hung",
                             {
                                 "seconds_since_heartbeat": int(time_since_heartbeat),
-                                "timeout": self.timeout
-                            }
+                                "timeout": self.timeout,
+                            },
                         )
                         self._hung_logged = True
                     except Exception as e:
@@ -254,28 +280,28 @@ class HeartbeatMonitor(object):
     def start(self):
         """
         Start the heartbeat monitor thread
-        
+
         Returns:
             HeartbeatMonitor: self for chaining
         """
         if self._running:
             return self
-        
+
         self._running = True
         self._last_heartbeat = time.time()
         self._hung_logged = False
-        
+
         # Create and start the monitor thread as a daemon
         self._thread = threading.Thread(target=self._monitor_loop)
         self._thread.daemon = True
         self._thread.start()
-        
+
         return self
 
     def heartbeat(self):
         """
         Send a heartbeat to indicate the application is alive
-        
+
         This should be called regularly by the application (more frequently
         than the timeout period) to prevent the hung event from being logged.
         """
@@ -286,11 +312,7 @@ class HeartbeatMonitor(object):
                 self._hung_logged = False
                 # Optionally log recovery
                 try:
-                    self.client.log_event(
-                        self.session_id,
-                        "application_recovered",
-                        {}
-                    )
+                    self.client.log_event(self.session_id, "application_recovered", {})
                 except Exception:
                     pass
 
@@ -333,6 +355,16 @@ class Session(object):
         """Log a metric"""
         return self.client.log_metric(self.session_id, name, value, tags)
 
+    def log_exception(self, exc_info=None, extra_data=None):
+        """
+        Log an exception
+
+        Args:
+            exc_info (tuple): Exception info from sys.exc_info(), if None uses current exception
+            extra_data (dict): Optional additional data to include
+        """
+        return self.client.log_exception(self.session_id, exc_info, extra_data)
+
     def end(self):
         """End the session"""
         # Stop heartbeat monitor if running
@@ -347,14 +379,14 @@ class Session(object):
     def start_heartbeat_monitor(self, timeout=60, check_interval=5):
         """
         Start a heartbeat monitor for this session
-        
+
         The monitor runs in a background thread and will log an event if
         no heartbeat is received within the timeout period.
-        
+
         Args:
             timeout (int): Seconds without heartbeat before logging hung event (default: 60)
             check_interval (int): Seconds between heartbeat checks (default: 5)
-        
+
         Returns:
             HeartbeatMonitor: The monitor instance
         """
@@ -363,7 +395,7 @@ class Session(object):
                 self.client,
                 self.session_id,
                 timeout=timeout,
-                check_interval=check_interval
+                check_interval=check_interval,
             )
         self._heartbeat_monitor.start()
         return self._heartbeat_monitor
@@ -371,14 +403,16 @@ class Session(object):
     def heartbeat(self):
         """
         Send a heartbeat to indicate the application is alive
-        
+
         Must be called after start_heartbeat_monitor() has been called.
         Should be called regularly (more frequently than the timeout period).
         """
         if self._heartbeat_monitor:
             self._heartbeat_monitor.heartbeat()
         else:
-            raise Exception("Heartbeat monitor not started. Call start_heartbeat_monitor() first.")
+            raise Exception(
+                "Heartbeat monitor not started. Call start_heartbeat_monitor() first."
+            )
 
     def stop_heartbeat_monitor(self):
         """Stop the heartbeat monitor if running"""
