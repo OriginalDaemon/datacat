@@ -454,6 +454,44 @@ const reliability = ((total - hung) / total) * 100;
 }
 ```
 
+## Contributing
+
+We welcome contributions! Please ensure your PR meets the following requirements:
+
+### Code Quality Requirements
+- ✅ **Python code** must pass Black formatting (`black --check`)
+- ✅ **Python code** must pass mypy type checking
+- ✅ **Go code** must build successfully
+- ✅ **All tests** must pass
+- ✅ **Code coverage** must be at least 80%
+
+### Before Submitting a PR
+
+Run the following commands locally:
+
+```bash
+# Format Python code
+black python/ examples/ tests/
+
+# Type check Python code
+mypy python/ --ignore-missing-imports
+
+# Test Go code with coverage
+go test -v -coverprofile=coverage.out ./...
+
+# Test Python code with coverage
+pytest tests/ -v --cov=python --cov-report=term
+```
+
+### Branch Protection
+
+The `main` branch is protected with the following requirements:
+- All status checks must pass (linting, formatting, tests)
+- Code coverage must be at least 80%
+- At least one approval required
+
+See [Branch Protection Rules](.github/BRANCH_PROTECTION.md) for detailed information.
+
 ## License
 
 MIT License - see LICENSE file for details.
