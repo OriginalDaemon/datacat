@@ -1,0 +1,328 @@
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"log"
+	"net/http"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/google/uuid"
+)
+
+// Session represents a registered session
+type Session struct {
+	ID        string                 `json:"id"`
+	CreatedAt time.Time              `json:"created_at"`
+	UpdatedAt time.Time              `json:"updated_at"`
+	EndedAt   *time.Time             `json:"ended_at,omitempty"`
+	Active    bool                   `json:"active"`
+	State     map[string]interface{} `json:"state"`
+	Events    []Event                `json:"events"`
+	Metrics   []Metric               `json:"metrics"`
+}
+
+// Event represents an event logged in a session
+type Event struct {
+	Timestamp time.Time              `json:"timestamp"`
+	Name      string                 `json:"name"`
+	Data      map[string]interface{} `json:"data"`
+}
+
+// Metric represents a metric logged in a session
+type Metric struct {
+	Timestamp time.Time `json:"timestamp"`
+	Name      string    `json:"name"`
+	Value     float64   `json:"value"`
+	Tags      []string  `json:"tags,omitempty"`
+}
+
+// Store manages all sessions
+type Store struct {
+	mu       sync.RWMutex
+	sessions map[string]*Session
+}
+
+// NewStore creates a new Store
+func NewStore() *Store {
+	return &Store{
+		sessions: make(map[string]*Session),
+	}
+}
+
+// CreateSession creates a new session
+func (s *Store) CreateSession() *Session {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	session := &Session{
+		ID:        uuid.New().String(),
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		Active:    true,
+		State:     make(map[string]interface{}),
+		Events:    []Event{},
+		Metrics:   []Metric{},
+	}
+
+	s.sessions[session.ID] = session
+	return session
+}
+
+// GetSession retrieves a session by ID
+func (s *Store) GetSession(id string) (*Session, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	session, ok := s.sessions[id]
+	return session, ok
+}
+
+// GetAllSessions retrieves all sessions
+func (s *Store) GetAllSessions() []*Session {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	sessions := make([]*Session, 0, len(s.sessions))
+	for _, session := range s.sessions {
+		sessions = append(sessions, session)
+	}
+	return sessions
+}
+
+// deepMerge recursively merges src into dst
+func deepMerge(dst, src map[string]interface{}) {
+	for k, v := range src {
+		if srcMap, ok := v.(map[string]interface{}); ok {
+			if dstMap, ok := dst[k].(map[string]interface{}); ok {
+				// Both are maps, merge recursively
+				deepMerge(dstMap, srcMap)
+			} else {
+				// Destination is not a map, replace with source
+				dst[k] = v
+			}
+		} else {
+			// Not a map, just set the value
+			dst[k] = v
+		}
+	}
+}
+
+// UpdateState updates the state of a session (merges new state with existing)
+func (s *Store) UpdateState(id string, state map[string]interface{}) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	session, ok := s.sessions[id]
+	if !ok {
+		return fmt.Errorf("session not found")
+	}
+
+	// Deep merge the new state into the existing state
+	deepMerge(session.State, state)
+	session.UpdatedAt = time.Now()
+	return nil
+}
+
+// EndSession marks a session as ended
+func (s *Store) EndSession(id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	session, ok := s.sessions[id]
+	if !ok {
+		return fmt.Errorf("session not found")
+	}
+
+	now := time.Now()
+	session.EndedAt = &now
+	session.Active = false
+	session.UpdatedAt = now
+	return nil
+}
+
+// AddEvent adds an event to a session
+func (s *Store) AddEvent(id string, name string, data map[string]interface{}) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	session, ok := s.sessions[id]
+	if !ok {
+		return fmt.Errorf("session not found")
+	}
+
+	event := Event{
+		Timestamp: time.Now(),
+		Name:      name,
+		Data:      data,
+	}
+	session.Events = append(session.Events, event)
+	session.UpdatedAt = time.Now()
+	return nil
+}
+
+// AddMetric adds a metric to a session
+func (s *Store) AddMetric(id string, name string, value float64, tags []string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	session, ok := s.sessions[id]
+	if !ok {
+		return fmt.Errorf("session not found")
+	}
+
+	metric := Metric{
+		Timestamp: time.Now(),
+		Name:      name,
+		Value:     value,
+		Tags:      tags,
+	}
+	session.Metrics = append(session.Metrics, metric)
+	session.UpdatedAt = time.Now()
+	return nil
+}
+
+var store = NewStore()
+
+func main() {
+	http.HandleFunc("/api/sessions", handleSessions)
+	http.HandleFunc("/api/sessions/", handleSessionOperations)
+	http.HandleFunc("/api/grafana/sessions", handleGrafanaData)
+
+	port := ":8080"
+	log.Printf("Starting datacat server on %s", port)
+	log.Fatal(http.ListenAndServe(port, nil))
+}
+
+// handleSessions handles POST /api/sessions to create a new session
+func handleSessions(w http.ResponseWriter, r *http.Request) {
+	if r.Method == "POST" {
+		session := store.CreateSession()
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"session_id": session.ID})
+		return
+	}
+
+	http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+}
+
+// handleSessionOperations handles operations on specific sessions
+func handleSessionOperations(w http.ResponseWriter, r *http.Request) {
+	// Extract session ID from path
+	path := r.URL.Path
+	pathParts := strings.TrimPrefix(path, "/api/sessions/")
+	
+	// Split to get session ID and operation
+	parts := strings.SplitN(pathParts, "/", 2)
+	sessionID := parts[0]
+	operation := ""
+	if len(parts) > 1 {
+		operation = parts[1]
+	}
+
+	if len(sessionID) == 0 {
+		http.Error(w, "Session ID required", http.StatusBadRequest)
+		return
+	}
+
+	// GET /api/sessions/{id} - Get session details
+	if r.Method == "GET" && operation == "" {
+		session, ok := store.GetSession(sessionID)
+		if !ok {
+			http.Error(w, "Session not found", http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(session)
+		return
+	}
+
+	// POST /api/sessions/{id}/state - Update state
+	if r.Method == "POST" && operation == "state" {
+		var state map[string]interface{}
+		if err := json.NewDecoder(r.Body).Decode(&state); err != nil {
+			http.Error(w, "Invalid request body", http.StatusBadRequest)
+			return
+		}
+
+		if err := store.UpdateState(sessionID, state); err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+		return
+	}
+
+	// POST /api/sessions/{id}/events - Add event
+	if r.Method == "POST" && operation == "events" {
+		var eventData struct {
+			Name string                 `json:"name"`
+			Data map[string]interface{} `json:"data"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&eventData); err != nil {
+			http.Error(w, "Invalid request body", http.StatusBadRequest)
+			return
+		}
+
+		if err := store.AddEvent(sessionID, eventData.Name, eventData.Data); err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+		return
+	}
+
+	// POST /api/sessions/{id}/metrics - Add metric
+	if r.Method == "POST" && operation == "metrics" {
+		var metricData struct {
+			Name  string   `json:"name"`
+			Value float64  `json:"value"`
+			Tags  []string `json:"tags,omitempty"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&metricData); err != nil {
+			http.Error(w, "Invalid request body", http.StatusBadRequest)
+			return
+		}
+
+		if err := store.AddMetric(sessionID, metricData.Name, metricData.Value, metricData.Tags); err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+		return
+	}
+
+	// POST /api/sessions/{id}/end - End session
+	if r.Method == "POST" && operation == "end" {
+		if err := store.EndSession(sessionID); err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+		return
+	}
+
+	http.Error(w, "Not found", http.StatusNotFound)
+}
+
+// handleGrafanaData handles GET /api/grafana/sessions to export all data in JSON format
+func handleGrafanaData(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	sessions := store.GetAllSessions()
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(sessions)
+}
