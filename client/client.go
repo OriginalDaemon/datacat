@@ -18,14 +18,21 @@ type Client struct {
 
 // Session represents a datacat session
 type Session struct {
-	ID        string                 `json:"id"`
-	CreatedAt time.Time              `json:"created_at"`
-	UpdatedAt time.Time              `json:"updated_at"`
-	EndedAt   *time.Time             `json:"ended_at,omitempty"`
-	Active    bool                   `json:"active"`
+	ID           string                 `json:"id"`
+	CreatedAt    time.Time              `json:"created_at"`
+	UpdatedAt    time.Time              `json:"updated_at"`
+	EndedAt      *time.Time             `json:"ended_at,omitempty"`
+	Active       bool                   `json:"active"`
+	State        map[string]interface{} `json:"state"`
+	StateHistory []StateSnapshot        `json:"state_history"`
+	Events       []Event                `json:"events"`
+	Metrics      []Metric               `json:"metrics"`
+}
+
+// StateSnapshot represents the state at a specific point in time
+type StateSnapshot struct {
+	Timestamp time.Time              `json:"timestamp"`
 	State     map[string]interface{} `json:"state"`
-	Events    []Event                `json:"events"`
-	Metrics   []Metric               `json:"metrics"`
 }
 
 // Event represents an event in a session

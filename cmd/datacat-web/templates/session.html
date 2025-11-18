@@ -28,8 +28,102 @@
                 {{end}}
             </td>
         </tr>
+        <tr>
+            <th>State Changes</th>
+            <td>{{len .Session.StateHistory}} updates recorded</td>
+        </tr>
     </table>
+</div>
 
+<!-- State Timeline -->
+{{if .Session.StateHistory}}
+<div class="card">
+    <h2>State Change Timeline</h2>
+    <p style="margin-bottom: 20px; color: #666;">
+        Click on any point to view the cumulative state at that moment in time.
+    </p>
+    
+    <div style="position: relative; margin: 30px 0;">
+        <!-- Timeline line -->
+        <div style="position: absolute; top: 20px; left: 0; right: 0; height: 2px; background: #ddd;"></div>
+        
+        <!-- Timeline points -->
+        <div style="display: flex; justify-content: space-between; position: relative;">
+            {{range $index, $snapshot := .Session.StateHistory}}
+            <div style="flex: 0 0 auto; text-align: center; z-index: 1;">
+                <div class="timeline-point" 
+                     data-index="{{$index}}"
+                     style="width: 20px; height: 20px; border-radius: 50%; background: #667eea; margin: 10px auto; cursor: pointer; border: 3px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.2); transition: transform 0.2s;"
+                     onmouseover="this.style.transform='scale(1.3)'"
+                     onmouseout="this.style.transform='scale(1)'"
+                     onclick="showStateAtIndex({{$index}})">
+                </div>
+                <div style="font-size: 11px; color: #666; margin-top: 5px;">
+                    {{$snapshot.Timestamp.Format "15:04:05"}}
+                </div>
+            </div>
+            {{end}}
+        </div>
+    </div>
+    
+    <!-- State display area -->
+    <div id="state-display" style="margin-top: 30px; display: none;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+            <h3 id="state-title" style="margin: 0;">State at: <span id="state-time"></span></h3>
+            <button onclick="closeStateDisplay()" class="btn btn-secondary" style="padding: 5px 15px; font-size: 13px;">Close</button>
+        </div>
+        <pre id="state-content" style="background: #f8f9fa; padding: 15px; border-radius: 4px; overflow-x: auto; max-height: 500px;"></pre>
+    </div>
+</div>
+
+<script>
+const stateHistory = [
+    {{range .Session.StateHistory}}
+    {
+        timestamp: "{{.Timestamp.Format "2006-01-02 15:04:05"}}",
+        state: {{.State | printf "%#v"}}
+    },
+    {{end}}
+];
+
+function showStateAtIndex(index) {
+    const snapshot = stateHistory[index];
+    const display = document.getElementById('state-display');
+    const title = document.getElementById('state-time');
+    const content = document.getElementById('state-content');
+    
+    title.textContent = snapshot.timestamp;
+    content.textContent = JSON.stringify(snapshot.state, null, 2);
+    display.style.display = 'block';
+    
+    // Scroll to the state display
+    display.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    
+    // Highlight the selected point
+    document.querySelectorAll('.timeline-point').forEach((point, i) => {
+        if (i === index) {
+            point.style.background = '#764ba2';
+            point.style.transform = 'scale(1.3)';
+        } else {
+            point.style.background = '#667eea';
+            point.style.transform = 'scale(1)';
+        }
+    });
+}
+
+function closeStateDisplay() {
+    document.getElementById('state-display').style.display = 'none';
+    
+    // Reset all points
+    document.querySelectorAll('.timeline-point').forEach(point => {
+        point.style.background = '#667eea';
+        point.style.transform = 'scale(1)';
+    });
+}
+</script>
+{{end}}
+
+<div class="card">
     <h3>Current State</h3>
     <pre style="background: #f8f9fa; padding: 15px; border-radius: 4px; overflow-x: auto;">{{.Session.State | printf "%#v"}}</pre>
 </div>

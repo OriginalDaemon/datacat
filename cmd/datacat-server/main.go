@@ -15,14 +15,21 @@ import (
 
 // Session represents a registered session
 type Session struct {
-	ID        string                 `json:"id"`
-	CreatedAt time.Time              `json:"created_at"`
-	UpdatedAt time.Time              `json:"updated_at"`
-	EndedAt   *time.Time             `json:"ended_at,omitempty"`
-	Active    bool                   `json:"active"`
+	ID           string                 `json:"id"`
+	CreatedAt    time.Time              `json:"created_at"`
+	UpdatedAt    time.Time              `json:"updated_at"`
+	EndedAt      *time.Time             `json:"ended_at,omitempty"`
+	Active       bool                   `json:"active"`
+	State        map[string]interface{} `json:"state"`
+	StateHistory []StateSnapshot        `json:"state_history"`
+	Events       []Event                `json:"events"`
+	Metrics      []Metric               `json:"metrics"`
+}
+
+// StateSnapshot represents the state at a specific point in time
+type StateSnapshot struct {
+	Timestamp time.Time              `json:"timestamp"`
 	State     map[string]interface{} `json:"state"`
-	Events    []Event                `json:"events"`
-	Metrics   []Metric               `json:"metrics"`
 }
 
 // Event represents an event logged in a session
@@ -132,13 +139,14 @@ func (s *Store) CreateSession() *Session {
 	defer s.mu.Unlock()
 
 	session := &Session{
-		ID:        uuid.New().String(),
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
-		Active:    true,
-		State:     make(map[string]interface{}),
-		Events:    []Event{},
-		Metrics:   []Metric{},
+		ID:           uuid.New().String(),
+		CreatedAt:    time.Now(),
+		UpdatedAt:    time.Now(),
+		Active:       true,
+		State:        make(map[string]interface{}),
+		StateHistory: []StateSnapshot{},
+		Events:       []Event{},
+		Metrics:      []Metric{},
 	}
 
 	s.sessions[session.ID] = session
@@ -188,6 +196,29 @@ func deepMerge(dst, src map[string]interface{}) {
 	}
 }
 
+// deepCopyState creates a deep copy of a state map
+func deepCopyState(state map[string]interface{}) map[string]interface{} {
+	copy := make(map[string]interface{})
+	for k, v := range state {
+		if vMap, ok := v.(map[string]interface{}); ok {
+			copy[k] = deepCopyState(vMap)
+		} else if vSlice, ok := v.([]interface{}); ok {
+			copySlice := make([]interface{}, len(vSlice))
+			for i, item := range vSlice {
+				if itemMap, ok := item.(map[string]interface{}); ok {
+					copySlice[i] = deepCopyState(itemMap)
+				} else {
+					copySlice[i] = item
+				}
+			}
+			copy[k] = copySlice
+		} else {
+			copy[k] = v
+		}
+	}
+	return copy
+}
+
 // UpdateState updates the state of a session (merges new state with existing)
 func (s *Store) UpdateState(id string, state map[string]interface{}) error {
 	s.mu.Lock()
@@ -201,6 +232,13 @@ func (s *Store) UpdateState(id string, state map[string]interface{}) error {
 	// Deep merge the new state into the existing state
 	deepMerge(session.State, state)
 	session.UpdatedAt = time.Now()
+	
+	// Create a snapshot of the current state
+	snapshot := StateSnapshot{
+		Timestamp: time.Now(),
+		State:     deepCopyState(session.State),
+	}
+	session.StateHistory = append(session.StateHistory, snapshot)
 	
 	// Save to database asynchronously
 	go s.saveSessionToDB(session)
