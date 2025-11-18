@@ -12,6 +12,7 @@ datacat-server
 datacat-web
 cmd/datacat-server/datacat-server
 cmd/datacat-web/datacat-web
+bin/
 
 # Test binary, built with `go test -c`
 *.test

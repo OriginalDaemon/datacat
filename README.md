@@ -21,13 +21,31 @@ datacat/
 ├── examples/              # Example applications
 │   ├── *.py              # Python examples
 │   └── go-client-example/ # Go example
+├── scripts/               # PowerShell scripts for Windows
 ├── tests/                 # Integration tests
 └── docs/                  # Documentation site (just-the-docs)
 ```
 
 ## 🚀 Quick Start
 
-### 1. Start the API Server
+### Option A: Using Scripts (Windows PowerShell)
+
+```powershell
+# Setup environment
+.\scripts\setup.ps1
+
+# Start both server and web UI
+.\scripts\run-both.ps1
+
+# In another terminal, run an example
+.\scripts\run-example.ps1 -Example complete
+```
+
+See [scripts/README.md](scripts/README.md) for all available scripts.
+
+### Option B: Manual Setup
+
+#### 1. Start the API Server
 
 ```bash
 cd cmd/datacat-server
@@ -36,7 +54,7 @@ go run main.go
 
 Server runs on `http://localhost:8080` with BadgerDB persistence.
 
-### 2. Start the Web UI (Optional)
+#### 2. Start the Web UI (Optional)
 
 ```bash
 cd cmd/datacat-web
@@ -45,7 +63,7 @@ go run main.go
 
 Dashboard available at `http://localhost:8081`
 
-### 3. Use a Client Library
+#### 3. Use a Client Library
 
 **Python:**
 ```bash
