@@ -34,7 +34,7 @@ jobs:
       continue-on-error: true
 
   test-go:
-    name: Go Tests
+    name: Go Tests with Coverage
     runs-on: ubuntu-latest
     
     steps:
@@ -48,11 +48,18 @@ jobs:
     - name: Build
       run: go build -v ./...
     
-    - name: Test
-      run: go test -v ./...
+    - name: Test with coverage
+      run: go test -v -coverprofile=coverage.out -covermode=atomic ./...
+    
+    - name: Upload Go coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        files: ./coverage.out
+        flags: go
+        name: go-coverage
 
   test-python:
-    name: Python Integration Tests
+    name: Python Integration Tests with Coverage
     runs-on: ubuntu-latest
     
     steps:
@@ -77,16 +84,16 @@ jobs:
     - name: Build Go service
       run: go build -o datacat
     
-    - name: Run integration tests
+    - name: Run integration tests with coverage
       run: |
-        python -m pytest tests/test_integration.py -v
+        python -m pytest tests/test_integration.py -v --cov=python --cov-report=xml --cov-report=term
     
-    - name: Upload coverage
+    - name: Upload Python coverage to Codecov
       uses: codecov/codecov-action@v3
-      if: always()
       with:
-        file: ./coverage.xml
-        fail_ci_if_error: false
+        files: ./coverage.xml
+        flags: python
+        name: python-coverage
 
   test-persistence:
     name: Test Data Persistence

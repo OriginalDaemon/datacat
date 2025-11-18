@@ -1,0 +1,266 @@
+{{define "content"}}
+<div class="card">
+    <h2>Metrics Visualization</h2>
+    <p style="margin-bottom: 20px; color: #666;">
+        Visualize metrics across sessions with advanced filtering. Filter by state history to analyze specific scenarios.
+    </p>
+
+    <form id="metrics-form" class="filter-form">
+        <div class="form-group">
+            <label for="metric_name">Metric Name *</label>
+            <select id="metric_name" name="metric_name" required>
+                <option value="">Select metric...</option>
+                <option value="cpu_usage">CPU Usage</option>
+                <option value="memory_usage">Memory Usage</option>
+                <option value="memory_mb">Memory (MB)</option>
+                <option value="cpu_percent">CPU Percent</option>
+                <option value="window_count">Window Count</option>
+                <option value="test_metric">Test Metric</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label for="aggregation">Aggregation</label>
+            <select id="aggregation" name="aggregation">
+                <option value="all">All Values</option>
+                <option value="peak">Peak per Session</option>
+                <option value="average">Average per Session</option>
+                <option value="min">Min per Session</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label for="filter_mode">Filter Mode</label>
+            <select id="filter_mode" name="filter_mode" onchange="toggleFilterInputs()">
+                <option value="none">No Filter</option>
+                <option value="current_state">Current State</option>
+                <option value="state_history">State History (Ever Had)</option>
+                <option value="state_array_contains">State Array Contains</option>
+            </select>
+        </div>
+
+        <div class="form-group" id="filter_path_group" style="display: none;">
+            <label for="filter_path">State Path</label>
+            <input type="text" id="filter_path" name="filter_path" placeholder="e.g., application.status or window_state.open">
+            <small style="color: #666;">Use dot notation for nested paths</small>
+        </div>
+
+        <div class="form-group" id="filter_value_group" style="display: none;">
+            <label for="filter_value">Filter Value</label>
+            <input type="text" id="filter_value" name="filter_value" placeholder="e.g., running or space probe">
+        </div>
+
+        <div class="form-group">
+            <label>&nbsp;</label>
+            <button type="submit" class="btn">Generate Chart</button>
+        </div>
+    </form>
+
+    <div id="stats-container" style="display: none;" class="stats-grid">
+        <div class="stat-card">
+            <h3>Sessions Matched</h3>
+            <div class="value" id="stat-sessions">0</div>
+        </div>
+        <div class="stat-card">
+            <h3>Peak Value</h3>
+            <div class="value" id="stat-peak">0</div>
+        </div>
+        <div class="stat-card">
+            <h3>Average Value</h3>
+            <div class="value" id="stat-average">0</div>
+        </div>
+        <div class="stat-card">
+            <h3>Min Value</h3>
+            <div class="value" id="stat-min">0</div>
+        </div>
+    </div>
+
+    <div class="chart-container">
+        <canvas id="metricsChart"></canvas>
+    </div>
+</div>
+
+<div class="card">
+    <h2>Example Queries</h2>
+    <div style="display: grid; gap: 15px;">
+        <div style="padding: 15px; background: #f8f9fa; border-radius: 4px;">
+            <h4 style="margin-bottom: 10px; color: #667eea;">📊 Peak Memory for Sessions with "space probe" Window</h4>
+            <p style="margin-bottom: 10px; color: #666;">Shows peak memory usage for sessions that ever had "space probe" in their open windows list.</p>
+            <button class="btn btn-secondary" onclick="loadExample1()">Load Example</button>
+        </div>
+        <div style="padding: 15px; background: #f8f9fa; border-radius: 4px;">
+            <h4 style="margin-bottom: 10px; color: #667eea;">📈 CPU Usage for Running Applications</h4>
+            <p style="margin-bottom: 10px; color: #666;">Shows all CPU usage metrics from sessions currently marked as running.</p>
+            <button class="btn btn-secondary" onclick="loadExample2()">Load Example</button>
+        </div>
+        <div style="padding: 15px; background: #f8f9fa; border-radius: 4px;">
+            <h4 style="margin-bottom: 10px; color: #667eea;">💾 Average Memory by Application Version</h4>
+            <p style="margin-bottom: 10px; color: #666;">Compare average memory usage across different application versions.</p>
+            <button class="btn btn-secondary" onclick="loadExample3()">Load Example</button>
+        </div>
+    </div>
+</div>
+
+<script>
+let chart = null;
+
+function toggleFilterInputs() {
+    const filterMode = document.getElementById('filter_mode').value;
+    const pathGroup = document.getElementById('filter_path_group');
+    const valueGroup = document.getElementById('filter_value_group');
+    
+    if (filterMode === 'none') {
+        pathGroup.style.display = 'none';
+        valueGroup.style.display = 'none';
+    } else {
+        pathGroup.style.display = 'flex';
+        valueGroup.style.display = 'flex';
+    }
+}
+
+function loadExample1() {
+    document.getElementById('metric_name').value = 'memory_usage';
+    document.getElementById('aggregation').value = 'peak';
+    document.getElementById('filter_mode').value = 'state_array_contains';
+    toggleFilterInputs();
+    document.getElementById('filter_path').value = 'window_state.open';
+    document.getElementById('filter_value').value = 'space probe';
+    document.getElementById('metrics-form').dispatchEvent(new Event('submit'));
+}
+
+function loadExample2() {
+    document.getElementById('metric_name').value = 'cpu_usage';
+    document.getElementById('aggregation').value = 'all';
+    document.getElementById('filter_mode').value = 'current_state';
+    toggleFilterInputs();
+    document.getElementById('filter_path').value = 'application.status';
+    document.getElementById('filter_value').value = 'running';
+    document.getElementById('metrics-form').dispatchEvent(new Event('submit'));
+}
+
+function loadExample3() {
+    document.getElementById('metric_name').value = 'memory_usage';
+    document.getElementById('aggregation').value = 'average';
+    document.getElementById('filter_mode').value = 'none';
+    toggleFilterInputs();
+    document.getElementById('metrics-form').dispatchEvent(new Event('submit'));
+}
+
+document.getElementById('metrics-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const metricName = document.getElementById('metric_name').value;
+    const aggregation = document.getElementById('aggregation').value;
+    const filterMode = document.getElementById('filter_mode').value;
+    const filterPath = document.getElementById('filter_path').value;
+    const filterValue = document.getElementById('filter_value').value;
+    
+    if (!metricName) {
+        alert('Please select a metric name');
+        return;
+    }
+    
+    // Build query params
+    const params = new URLSearchParams({
+        metric: metricName,
+        aggregation: aggregation,
+        filter_mode: filterMode
+    });
+    
+    if (filterMode !== 'none' && filterPath) {
+        params.append('filter_path', filterPath);
+        params.append('filter_value', filterValue);
+    }
+    
+    try {
+        const response = await fetch(`/api/timeseries?${params}`);
+        const data = await response.json();
+        
+        renderChart(data);
+        updateStats(data);
+    } catch (error) {
+        console.error('Error fetching data:', error);
+        alert('Error loading metrics data');
+    }
+});
+
+function updateStats(data) {
+    const container = document.getElementById('stats-container');
+    container.style.display = 'grid';
+    
+    document.getElementById('stat-sessions').textContent = data.sessions_matched || 0;
+    document.getElementById('stat-peak').textContent = data.peak ? data.peak.toFixed(2) : '0';
+    document.getElementById('stat-average').textContent = data.average ? data.average.toFixed(2) : '0';
+    document.getElementById('stat-min').textContent = data.min ? data.min.toFixed(2) : '0';
+}
+
+function renderChart(data) {
+    const ctx = document.getElementById('metricsChart').getContext('2d');
+    
+    if (chart) {
+        chart.destroy();
+    }
+    
+    // Prepare data for Chart.js
+    const labels = data.points.map(p => new Date(p.timestamp).toLocaleTimeString());
+    const values = data.points.map(p => p.value);
+    
+    chart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: data.metric_name,
+                data: values,
+                borderColor: 'rgb(102, 126, 234)',
+                backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                tension: 0.1,
+                fill: true,
+                pointRadius: 3,
+                pointHoverRadius: 5
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                title: {
+                    display: true,
+                    text: `${data.metric_name} - ${data.aggregation_type || 'All Values'}`,
+                    font: {
+                        size: 16
+                    }
+                },
+                legend: {
+                    display: true,
+                    position: 'top'
+                },
+                tooltip: {
+                    callbacks: {
+                        afterLabel: function(context) {
+                            const point = data.points[context.dataIndex];
+                            return `Session: ${point.session_id.substring(0, 8)}...`;
+                        }
+                    }
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    title: {
+                        display: true,
+                        text: 'Value'
+                    }
+                },
+                x: {
+                    title: {
+                        display: true,
+                        text: 'Time'
+                    }
+                }
+            }
+        }
+    });
+}
+</script>
+{{end}}

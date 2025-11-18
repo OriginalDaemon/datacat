@@ -1,0 +1,49 @@
+{{define "content"}}
+<div class="stats-grid">
+    <div class="stat-card">
+        <h3>Total Sessions</h3>
+        <div class="value">{{len .Sessions}}</div>
+    </div>
+    <div class="stat-card">
+        <h3>Active Sessions</h3>
+        <div class="value">
+            {{$active := 0}}
+            {{range .Sessions}}
+                {{if .Active}}{{$active = add $active 1}}{{end}}
+            {{end}}
+            {{$active}}
+        </div>
+    </div>
+    <div class="stat-card">
+        <h3>Total Events</h3>
+        <div class="value">
+            {{$events := 0}}
+            {{range .Sessions}}
+                {{$events = add $events (len .Events)}}
+            {{end}}
+            {{$events}}
+        </div>
+    </div>
+    <div class="stat-card">
+        <h3>Total Metrics</h3>
+        <div class="value">
+            {{$metrics := 0}}
+            {{range .Sessions}}
+                {{$metrics = add $metrics (len .Metrics)}}
+            {{end}}
+            {{$metrics}}
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <h2>Recent Sessions</h2>
+    <button class="btn" hx-get="/sessions" hx-target="#sessions-list" hx-swap="innerHTML">
+        <span class="htmx-indicator"><span class="spinner"></span></span>
+        Refresh Sessions
+    </button>
+    <div id="sessions-list" hx-get="/sessions" hx-trigger="load" hx-swap="innerHTML">
+        <p>Loading sessions...</p>
+    </div>
+</div>
+{{end}}

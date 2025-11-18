@@ -1,0 +1,87 @@
+{{define "content"}}
+<div class="card">
+    <h2>Session: {{slice .Session.ID 0 16}}...</h2>
+    
+    <table style="margin-bottom: 20px;">
+        <tr>
+            <th style="width: 200px;">Created</th>
+            <td>{{.Session.CreatedAt.Format "2006-01-02 15:04:05"}}</td>
+        </tr>
+        <tr>
+            <th>Updated</th>
+            <td>{{.Session.UpdatedAt.Format "2006-01-02 15:04:05"}}</td>
+        </tr>
+        {{if .Session.EndedAt}}
+        <tr>
+            <th>Ended</th>
+            <td>{{.Session.EndedAt.Format "2006-01-02 15:04:05"}}</td>
+        </tr>
+        {{end}}
+        <tr>
+            <th>Status</th>
+            <td>
+                {{if .Session.Active}}
+                    <span class="badge badge-active">Active</span>
+                {{else}}
+                    <span class="badge badge-inactive">Ended</span>
+                {{end}}
+            </td>
+        </tr>
+    </table>
+
+    <h3>Current State</h3>
+    <pre style="background: #f8f9fa; padding: 15px; border-radius: 4px; overflow-x: auto;">{{.Session.State | printf "%#v"}}</pre>
+
+    <h3>Events ({{len .Session.Events}})</h3>
+    <table>
+        <thead>
+            <tr>
+                <th>Timestamp</th>
+                <th>Name</th>
+                <th>Data</th>
+            </tr>
+        </thead>
+        <tbody>
+            {{range .Session.Events}}
+            <tr>
+                <td>{{.Timestamp.Format "15:04:05"}}</td>
+                <td><strong>{{.Name}}</strong></td>
+                <td><pre style="margin: 0;">{{.Data | printf "%v"}}</pre></td>
+            </tr>
+            {{else}}
+            <tr>
+                <td colspan="3" style="text-align: center; padding: 20px; color: #999;">No events</td>
+            </tr>
+            {{end}}
+        </tbody>
+    </table>
+
+    <h3>Metrics ({{len .Session.Metrics}})</h3>
+    <table>
+        <thead>
+            <tr>
+                <th>Timestamp</th>
+                <th>Name</th>
+                <th>Value</th>
+                <th>Tags</th>
+            </tr>
+        </thead>
+        <tbody>
+            {{range .Session.Metrics}}
+            <tr>
+                <td>{{.Timestamp.Format "15:04:05"}}</td>
+                <td><strong>{{.Name}}</strong></td>
+                <td>{{printf "%.2f" .Value}}</td>
+                <td>{{range .Tags}}<span class="badge" style="background: #e9ecef; color: #495057; margin: 2px;">{{.}}</span>{{end}}</td>
+            </tr>
+            {{else}}
+            <tr>
+                <td colspan="4" style="text-align: center; padding: 20px; color: #999;">No metrics</td>
+            </tr>
+            {{end}}
+        </tbody>
+    </table>
+</div>
+
+<a href="/" class="btn btn-secondary">Back to Dashboard</a>
+{{end}}

@@ -1,5 +1,10 @@
 # datacat
 
+[![Tests](https://github.com/OriginalDaemon/datacat/workflows/Tests/badge.svg)](https://github.com/OriginalDaemon/datacat/actions)
+[![codecov](https://codecov.io/gh/OriginalDaemon/datacat/branch/main/graph/badge.svg)](https://codecov.io/gh/OriginalDaemon/datacat)
+[![Go Report Card](https://goreportcard.com/badge/github.com/OriginalDaemon/datacat)](https://goreportcard.com/report/github.com/OriginalDaemon/datacat)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 A REST API service for logging arbitrary application data, events, and metrics with session tracking.
 
 ## Overview
