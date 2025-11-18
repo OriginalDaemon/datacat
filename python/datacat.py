@@ -16,11 +16,11 @@ import traceback
 
 try:
     # Python 3
-    from urllib.request import urlopen, Request
-    from urllib.error import URLError, HTTPError
+    from urllib.request import urlopen, Request  # type: ignore
+    from urllib.error import URLError, HTTPError  # type: ignore
 except ImportError:
     # Python 2
-    from urllib2 import urlopen, Request, URLError, HTTPError
+    from urllib2 import urlopen, Request, URLError, HTTPError  # type: ignore
 
 
 class DatacatClient(object):
@@ -57,7 +57,7 @@ class DatacatClient(object):
 
         request = Request(url, data=data, headers=headers)
         if method != "GET":
-            request.get_method = lambda: method
+            request.get_method = lambda: method  # type: ignore[method-assign]
 
         try:
             response = urlopen(request)
