@@ -1,5 +1,0 @@
-setup.py
-datacat.egg-info/PKG-INFO
-datacat.egg-info/SOURCES.txt
-datacat.egg-info/dependency_links.txt
-datacat.egg-info/top_level.txt

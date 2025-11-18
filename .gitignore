@@ -37,6 +37,10 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
+*.egg-info/
+*.egg
+dist/
+build/
 
 # Editor/IDE
 # .idea/
