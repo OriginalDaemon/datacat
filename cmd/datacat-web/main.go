@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -69,7 +70,11 @@ func main() {
 }
 
 func handleIndex(w http.ResponseWriter, r *http.Request) {
-	tmpl, err := template.ParseFS(content, "templates/index.html", "templates/base.html")
+	funcMap := template.FuncMap{
+		"add": func(a, b int) int { return a + b },
+		"sub": func(a, b int) int { return a - b },
+	}
+	tmpl, err := template.New("base.html").Funcs(funcMap).ParseFS(content, "templates/base.html", "templates/index.html")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -91,28 +96,99 @@ func handleIndex(w http.ResponseWriter, r *http.Request) {
 		Sessions: sessions,
 	}
 
-	tmpl.Execute(w, data)
+	err = tmpl.Execute(w, data)
+	if err != nil {
+		log.Printf("Template execution error: %v", err)
+	}
 }
 
 func handleSessions(w http.ResponseWriter, r *http.Request) {
+	// Parse query parameters
+	page := 1
+	perPage := 20
+	sortBy := r.URL.Query().Get("sort")
+	sortOrder := r.URL.Query().Get("order")
+	stateFilter := r.URL.Query().Get("state_filter")
+
+	if sortBy == "" {
+		sortBy = "created_at"
+	}
+	if sortOrder == "" {
+		sortOrder = "desc"
+	}
+
+	// Get page number
+	if p := r.URL.Query().Get("page"); p != "" {
+		if parsed, err := strconv.Atoi(p); err == nil && parsed > 0 {
+			page = parsed
+		}
+	}
+
 	sessions, err := datacatClient.GetAllSessions()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	// Sort sessions by created_at descending
-	sort.Slice(sessions, func(i, j int) bool {
-		return sessions[i].CreatedAt.After(sessions[j].CreatedAt)
-	})
+	// Apply state filter if provided
+	if stateFilter != "" {
+		sessions = filterSessionsByState(sessions, stateFilter)
+	}
 
-	tmpl, err := template.ParseFS(content, "templates/sessions.html")
+	// Sort sessions
+	sortSessions(sessions, sortBy, sortOrder)
+
+	// Paginate
+	totalSessions := len(sessions)
+	totalPages := (totalSessions + perPage - 1) / perPage
+	start := (page - 1) * perPage
+	end := start + perPage
+	if end > totalSessions {
+		end = totalSessions
+	}
+	if start > totalSessions {
+		start = totalSessions
+	}
+
+	paginatedSessions := sessions[start:end]
+
+	// Prepare pagination data
+	type SessionsData struct {
+		Sessions    []*client.Session
+		CurrentPage int
+		TotalPages  int
+		TotalCount  int
+		SortBy      string
+		SortOrder   string
+		StateFilter string
+		HasPrev     bool
+		HasNext     bool
+	}
+
+	data := SessionsData{
+		Sessions:    paginatedSessions,
+		CurrentPage: page,
+		TotalPages:  totalPages,
+		TotalCount:  totalSessions,
+		SortBy:      sortBy,
+		SortOrder:   sortOrder,
+		StateFilter: stateFilter,
+		HasPrev:     page > 1,
+		HasNext:     page < totalPages,
+	}
+
+	funcMap := template.FuncMap{
+		"add": func(a, b int) int { return a + b },
+		"sub": func(a, b int) int { return a - b },
+		"eq":  func(a, b string) bool { return a == b },
+	}
+	t, err := template.New("sessions_enhanced.html").Funcs(funcMap).ParseFS(content, "templates/sessions_enhanced.html")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	tmpl.Execute(w, sessions)
+	t.Execute(w, data)
 }
 
 func handleSessionDetail(w http.ResponseWriter, r *http.Request) {
@@ -124,7 +200,7 @@ func handleSessionDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tmpl, err := template.ParseFS(content, "templates/session.html", "templates/base.html")
+	tmpl, err := template.ParseFS(content, "templates/base.html", "templates/session.html")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -135,11 +211,11 @@ func handleSessionDetail(w http.ResponseWriter, r *http.Request) {
 		Session: session,
 	}
 
-	tmpl.Execute(w, data)
+	tmpl.ExecuteTemplate(w, "base.html", data)
 }
 
 func handleMetrics(w http.ResponseWriter, r *http.Request) {
-	tmpl, err := template.ParseFS(content, "templates/metrics.html", "templates/base.html")
+	tmpl, err := template.ParseFS(content, "templates/base.html", "templates/metrics.html")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -149,7 +225,7 @@ func handleMetrics(w http.ResponseWriter, r *http.Request) {
 		Title: "Metrics Visualization",
 	}
 
-	tmpl.Execute(w, data)
+	tmpl.ExecuteTemplate(w, "base.html", data)
 }
 
 func handleTimeseriesAPI(w http.ResponseWriter, r *http.Request) {
@@ -398,4 +474,103 @@ func matchesStateFilter(state map[string]interface{}, filter, value string) bool
 	// Convert current to string and compare
 	currentStr := fmt.Sprintf("%v", current)
 	return currentStr == value
+}
+
+func sortSessions(sessions []*client.Session, sortBy, sortOrder string) {
+	sort.Slice(sessions, func(i, j int) bool {
+		var less bool
+		switch sortBy {
+		case "created_at":
+			less = sessions[i].CreatedAt.Before(sessions[j].CreatedAt)
+		case "updated_at":
+			less = sessions[i].UpdatedAt.Before(sessions[j].UpdatedAt)
+		case "status":
+			less = sessions[i].Active && !sessions[j].Active
+		case "events":
+			less = len(sessions[i].Events) < len(sessions[j].Events)
+		case "metrics":
+			less = len(sessions[i].Metrics) < len(sessions[j].Metrics)
+		default:
+			less = sessions[i].CreatedAt.Before(sessions[j].CreatedAt)
+		}
+		
+		if sortOrder == "desc" {
+			return !less
+		}
+		return less
+	})
+}
+
+func filterSessionsByState(sessions []*client.Session, filterJSON string) []*client.Session {
+	// Parse the JSON filter
+	var filterState map[string]interface{}
+	if err := json.Unmarshal([]byte(filterJSON), &filterState); err != nil {
+		// If JSON is invalid, return all sessions
+		return sessions
+	}
+
+	var filtered []*client.Session
+	for _, session := range sessions {
+		if matchesStateHistory(session, filterState) {
+			filtered = append(filtered, session)
+		}
+	}
+	return filtered
+}
+
+func matchesStateHistory(session *client.Session, filterState map[string]interface{}) bool {
+	// Check if the session's current state or any historical state matches the filter
+	// For simplicity, we'll check if the current state contains all keys/values from the filter
+	return stateContainsAll(session.State, filterState)
+}
+
+func stateContainsAll(state, filter map[string]interface{}) bool {
+	for key, filterValue := range filter {
+		stateValue, exists := state[key]
+		if !exists {
+			return false
+		}
+
+		// If filter value is a map, recurse
+		if filterMap, ok := filterValue.(map[string]interface{}); ok {
+			if stateMap, ok := stateValue.(map[string]interface{}); ok {
+				if !stateContainsAll(stateMap, filterMap) {
+					return false
+				}
+			} else {
+				return false
+			}
+		} else if filterArray, ok := filterValue.([]interface{}); ok {
+			// If filter value is an array, check if state array contains all elements
+			if stateArray, ok := stateValue.([]interface{}); ok {
+				if !arrayContainsAll(stateArray, filterArray) {
+					return false
+				}
+			} else {
+				return false
+			}
+		} else {
+			// Direct comparison
+			if fmt.Sprintf("%v", stateValue) != fmt.Sprintf("%v", filterValue) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func arrayContainsAll(stateArray, filterArray []interface{}) bool {
+	for _, filterItem := range filterArray {
+		found := false
+		for _, stateItem := range stateArray {
+			if fmt.Sprintf("%v", stateItem) == fmt.Sprintf("%v", filterItem) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	return true
 }

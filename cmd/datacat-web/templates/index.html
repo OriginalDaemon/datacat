@@ -37,12 +37,11 @@
 </div>
 
 <div class="card">
-    <h2>Recent Sessions</h2>
-    <button class="btn" hx-get="/sessions" hx-target="#sessions-list" hx-swap="innerHTML">
-        <span class="htmx-indicator"><span class="spinner"></span></span>
-        Refresh Sessions
-    </button>
-    <div id="sessions-list" hx-get="/sessions" hx-trigger="load" hx-swap="innerHTML">
+    <h2>Sessions</h2>
+    <p style="margin-bottom: 15px; color: #666;">
+        Use the controls below to sort and filter sessions. You can filter by state using JSON format.
+    </p>
+    <div id="sessions-container" hx-get="/sessions" hx-trigger="load" hx-swap="innerHTML">
         <p>Loading sessions...</p>
     </div>
 </div>
