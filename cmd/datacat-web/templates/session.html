@@ -1,6 +1,7 @@
 {{define "content"}}
 <div class="card">
     <h2>Session: {{slice .Session.ID 0 16}}...</h2>
+    <p style="color: #666; margin-bottom: 20px; font-family: monospace; font-size: 12px;">Full ID: {{.Session.ID}}</p>
     
     <table style="margin-bottom: 20px;">
         <tr>
@@ -31,7 +32,154 @@
 
     <h3>Current State</h3>
     <pre style="background: #f8f9fa; padding: 15px; border-radius: 4px; overflow-x: auto;">{{.Session.State | printf "%#v"}}</pre>
+</div>
 
+<!-- Metrics Timeseries Visualization -->
+{{if .Session.Metrics}}
+<div class="card">
+    <h2>Metrics Timeseries</h2>
+    <p style="margin-bottom: 15px; color: #666;">
+        Visualize how metrics changed over time during this session.
+    </p>
+    
+    <div id="metric-charts"></div>
+</div>
+
+<script>
+(function() {
+    // Group metrics by name
+    const metricsByName = {};
+    const metrics = [
+        {{range .Session.Metrics}}
+        {
+            name: "{{.Name}}",
+            timestamp: new Date("{{.Timestamp.Format "2006-01-02T15:04:05Z07:00"}}"),
+            value: {{.Value}},
+            tags: [{{range .Tags}}"{{.}}",{{end}}]
+        },
+        {{end}}
+    ];
+
+    metrics.forEach(m => {
+        if (!metricsByName[m.name]) {
+            metricsByName[m.name] = [];
+        }
+        metricsByName[m.name].push(m);
+    });
+
+    // Create a chart for each metric
+    const container = document.getElementById('metric-charts');
+    Object.keys(metricsByName).sort().forEach((metricName, index) => {
+        const metricData = metricsByName[metricName];
+        
+        // Sort by timestamp
+        metricData.sort((a, b) => a.timestamp - b.timestamp);
+        
+        // Calculate statistics
+        const values = metricData.map(m => m.value);
+        const peak = Math.max(...values);
+        const min = Math.min(...values);
+        const avg = values.reduce((a, b) => a + b, 0) / values.length;
+        
+        // Create container for this chart
+        const chartDiv = document.createElement('div');
+        chartDiv.style.marginBottom = '30px';
+        
+        const title = document.createElement('h3');
+        title.textContent = metricName;
+        title.style.marginBottom = '10px';
+        chartDiv.appendChild(title);
+        
+        const stats = document.createElement('p');
+        stats.style.fontSize = '14px';
+        stats.style.color = '#666';
+        stats.style.marginBottom = '10px';
+        stats.innerHTML = `<strong>Peak:</strong> ${peak.toFixed(2)} | <strong>Average:</strong> ${avg.toFixed(2)} | <strong>Min:</strong> ${min.toFixed(2)} | <strong>Points:</strong> ${metricData.length}`;
+        chartDiv.appendChild(stats);
+        
+        const canvasContainer = document.createElement('div');
+        canvasContainer.style.position = 'relative';
+        canvasContainer.style.height = '300px';
+        canvasContainer.style.marginBottom = '20px';
+        
+        const canvas = document.createElement('canvas');
+        canvas.id = 'chart-' + index;
+        canvasContainer.appendChild(canvas);
+        chartDiv.appendChild(canvasContainer);
+        
+        container.appendChild(chartDiv);
+        
+        // Create chart
+        new Chart(canvas, {
+            type: 'line',
+            data: {
+                labels: metricData.map(m => m.timestamp),
+                datasets: [{
+                    label: metricName,
+                    data: metricData.map(m => m.value),
+                    borderColor: '#667eea',
+                    backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.4,
+                    pointRadius: 4,
+                    pointHoverRadius: 6
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        callbacks: {
+                            title: function(context) {
+                                return context[0].label;
+                            },
+                            label: function(context) {
+                                return metricName + ': ' + context.parsed.y.toFixed(2);
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        type: 'time',
+                        time: {
+                            displayFormats: {
+                                second: 'HH:mm:ss',
+                                minute: 'HH:mm',
+                                hour: 'HH:mm'
+                            }
+                        },
+                        title: {
+                            display: true,
+                            text: 'Time'
+                        },
+                        ticks: {
+                            maxRotation: 45,
+                            minRotation: 45
+                        }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'Value'
+                        }
+                    }
+                }
+            }
+        });
+    });
+})();
+</script>
+{{end}}
+
+<!-- Events Table -->
+<div class="card">
     <h3>Events ({{len .Session.Events}})</h3>
     <table>
         <thead>
@@ -55,8 +203,11 @@
             {{end}}
         </tbody>
     </table>
+</div>
 
-    <h3>Metrics ({{len .Session.Metrics}})</h3>
+<!-- Metrics Table -->
+<div class="card">
+    <h3>Metrics Data ({{len .Session.Metrics}})</h3>
     <table>
         <thead>
             <tr>
