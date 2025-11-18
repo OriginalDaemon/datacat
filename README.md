@@ -18,11 +18,19 @@ datacat provides a Go-based REST API service that allows applications to:
 
 ### Go Service (Backend)
 
-A lightweight REST API server written in Go that manages sessions and data storage.
+A lightweight REST API server written in Go with BadgerDB for fast data persistence.
+
+### Go Client Library
+
+A Go client library (`client/`) for interacting with the datacat API from Go applications.
 
 ### Python Client (Frontend)
 
 A Python module compatible with both Python 2.7+ and Python 3.x for easy interaction with the datacat service.
+
+### Web UI (htmx)
+
+An interactive web dashboard built with htmx for browsing sessions and visualizing metrics with advanced filtering capabilities.
 
 ## Installation
 
@@ -109,6 +117,52 @@ Response: {"status": "ok"}
 GET /api/grafana/sessions
 Response: Array of all session objects
 ```
+
+## Web UI
+
+The datacat web UI provides an interactive dashboard for browsing sessions and visualizing metrics.
+
+### Starting the Web UI
+
+```bash
+cd web
+go run main.go
+```
+
+The web UI will be available at `http://localhost:8081`
+
+### Features
+
+- **Dashboard**: Overview of all sessions with statistics
+- **Session Browser**: View detailed session information including state, events, and metrics
+- **Advanced Metrics Visualization**:
+  - Interactive timeseries charts using Chart.js
+  - Multiple filtering modes:
+    - Current state filtering
+    - State history filtering (sessions that ever had a value)
+    - Array contains filtering (e.g., find sessions with "space probe" in open_windows)
+  - Aggregation modes:
+    - All values: Show every metric point
+    - Peak per session: Show highest value from each session
+    - Average per session: Show average value from each session
+    - Min per session: Show lowest value from each session
+  - Real-time statistics (peak, average, min values)
+
+### Example Queries
+
+**Peak memory for sessions with "space probe" window open:**
+- Metric: `memory_usage`
+- Aggregation: `peak`
+- Filter Mode: `State Array Contains`
+- Filter Path: `window_state.open`
+- Filter Value: `space probe`
+
+**CPU usage for currently running applications:**
+- Metric: `cpu_usage`
+- Aggregation: `all`
+- Filter Mode: `Current State`
+- Filter Path: `application.status`
+- Filter Value: `running`
 
 ## Python Client Usage
 
