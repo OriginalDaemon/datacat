@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -824,8 +825,15 @@ func TestHandleIndexError(t *testing.T) {
 
 	handleIndex(w, req)
 
-	if w.Code != http.StatusInternalServerError {
-		t.Errorf("Expected status 500, got %d", w.Code)
+	// With graceful error handling, we now return 200 and render the page with empty sessions
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200 (graceful degradation), got %d", w.Code)
+	}
+
+	// Verify that the response contains the page (not an error page)
+	body := w.Body.String()
+	if !strings.Contains(body, "Datacat Dashboard") {
+		t.Error("Expected page to render with dashboard title")
 	}
 }
 
