@@ -20,18 +20,21 @@ var content embed.FS
 
 var datacatClient *client.Client
 
+// PageData represents the data passed to HTML templates
 type PageData struct {
 	Title    string
 	Sessions []*client.Session
 	Session  *client.Session
 }
 
+// TimeseriesPoint represents a single point in a time series
 type TimeseriesPoint struct {
 	Timestamp time.Time `json:"timestamp"`
 	Value     float64   `json:"value"`
 	SessionID string    `json:"session_id"`
 }
 
+// TimeseriesData represents aggregated time series data for a metric
 type TimeseriesData struct {
 	MetricName      string            `json:"metric_name"`
 	Points          []TimeseriesPoint `json:"points"`
@@ -42,6 +45,7 @@ type TimeseriesData struct {
 	AggregationType string            `json:"aggregation_type"`
 }
 
+// SessionMetrics represents metric statistics for a single session
 type SessionMetrics struct {
 	SessionID string
 	Peak      float64
@@ -188,7 +192,10 @@ func handleSessions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	t.Execute(w, data)
+	if err := t.Execute(w, data); err != nil {
+		log.Printf("Template execution error: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+	}
 }
 
 func handleSessionDetail(w http.ResponseWriter, r *http.Request) {
@@ -211,7 +218,10 @@ func handleSessionDetail(w http.ResponseWriter, r *http.Request) {
 		Session: session,
 	}
 
-	tmpl.ExecuteTemplate(w, "base.html", data)
+	if err := tmpl.ExecuteTemplate(w, "base.html", data); err != nil {
+		log.Printf("Template execution error: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+	}
 }
 
 func handleMetrics(w http.ResponseWriter, r *http.Request) {
@@ -225,7 +235,10 @@ func handleMetrics(w http.ResponseWriter, r *http.Request) {
 		Title: "Metrics Visualization",
 	}
 
-	tmpl.ExecuteTemplate(w, "base.html", data)
+	if err := tmpl.ExecuteTemplate(w, "base.html", data); err != nil {
+		log.Printf("Template execution error: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+	}
 }
 
 func handleTimeseriesAPI(w http.ResponseWriter, r *http.Request) {

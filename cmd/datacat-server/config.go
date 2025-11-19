@@ -33,7 +33,7 @@ func LoadConfig(path string) *Config {
 	if err != nil {
 		log.Printf("Config file not found, using defaults")
 		config := DefaultConfig()
-		SaveConfig(path, config)
+		_ = SaveConfig(path, config) // Ignore error, will use defaults if save fails
 		return config
 	}
 	defer file.Close()

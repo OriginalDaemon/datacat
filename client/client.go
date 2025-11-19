@@ -5,7 +5,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"os"
 	"os/exec"
@@ -76,7 +76,7 @@ func (dm *DaemonManager) Start() error {
 		return fmt.Errorf("failed to marshal config: %w", err)
 	}
 
-	if err := ioutil.WriteFile(configPath, configData, 0644); err != nil {
+	if err := os.WriteFile(configPath, configData, 0644); err != nil {
 		return fmt.Errorf("failed to write config: %w", err)
 	}
 
@@ -100,7 +100,7 @@ func (dm *DaemonManager) Stop() error {
 		if err := dm.process.Process.Kill(); err != nil {
 			return err
 		}
-		dm.process.Wait()
+		_ = dm.process.Wait() // Wait for process to exit, error is expected after Kill
 	}
 	dm.started = false
 	return nil
@@ -216,7 +216,7 @@ func (c *Client) CreateSession() (string, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := ioutil.ReadAll(resp.Body)
+		body, _ := io.ReadAll(resp.Body)
 		return "", fmt.Errorf("create session failed with status %d: %s", resp.StatusCode, string(body))
 	}
 
@@ -237,7 +237,7 @@ func (c *Client) GetSession(sessionID string) (*Session, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := ioutil.ReadAll(resp.Body)
+		body, _ := io.ReadAll(resp.Body)
 		return nil, fmt.Errorf("get session failed with status %d: %s", resp.StatusCode, string(body))
 	}
 
@@ -283,7 +283,7 @@ func (c *Client) UpdateState(sessionID string, state map[string]interface{}) err
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := ioutil.ReadAll(resp.Body)
+		body, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("update state failed with status %d: %s", resp.StatusCode, string(body))
 	}
 
@@ -328,7 +328,7 @@ func (c *Client) LogEvent(sessionID, name string, data map[string]interface{}) e
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := ioutil.ReadAll(resp.Body)
+		body, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("log event failed with status %d: %s", resp.StatusCode, string(body))
 	}
 
@@ -375,7 +375,7 @@ func (c *Client) LogMetric(sessionID, name string, value float64, tags []string)
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := ioutil.ReadAll(resp.Body)
+		body, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("log metric failed with status %d: %s", resp.StatusCode, string(body))
 	}
 
@@ -413,7 +413,7 @@ func (c *Client) EndSession(sessionID string) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := ioutil.ReadAll(resp.Body)
+		body, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("end session failed with status %d: %s", resp.StatusCode, string(body))
 	}
 
@@ -449,7 +449,7 @@ func (c *Client) Heartbeat(sessionID string) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := ioutil.ReadAll(resp.Body)
+		body, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("heartbeat failed with status %d: %s", resp.StatusCode, string(body))
 	}
 
@@ -465,7 +465,7 @@ func (c *Client) GetAllSessions() ([]*Session, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := ioutil.ReadAll(resp.Body)
+		body, _ := io.ReadAll(resp.Body)
 		return nil, fmt.Errorf("get sessions failed with status %d: %s", resp.StatusCode, string(body))
 	}
 

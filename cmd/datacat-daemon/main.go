@@ -315,7 +315,7 @@ func (d *Daemon) handleEnd(w http.ResponseWriter, r *http.Request) {
 		bytes.NewBuffer(endData),
 	)
 	if err == nil {
-		resp.Body.Close()
+		_ = resp.Body.Close()
 	}
 
 	// Remove session from daemon
@@ -402,7 +402,7 @@ func (d *Daemon) sendStateUpdate(sessionID string, state map[string]interface{})
 		log.Printf("Failed to send state update: %v", err)
 		return
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 }
 
 // sendEvent sends an event to the server
@@ -417,7 +417,7 @@ func (d *Daemon) sendEvent(sessionID string, event EventData) {
 		log.Printf("Failed to send event: %v", err)
 		return
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 }
 
 // sendMetric sends a metric to the server
@@ -432,7 +432,7 @@ func (d *Daemon) sendMetric(sessionID string, metric MetricData) {
 		log.Printf("Failed to send metric: %v", err)
 		return
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 }
 
 // heartbeatMonitor checks for hung applications
