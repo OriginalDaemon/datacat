@@ -500,3 +500,158 @@ func TestHandleTimeseriesAPIError(t *testing.T) {
 		t.Errorf("Expected status 500, got %d", w.Code)
 	}
 }
+
+func TestShouldIncludeSessionStateHistory(t *testing.T) {
+	session := &client.Session{
+		State: map[string]interface{}{
+			"status": "running",
+		},
+	}
+	
+	// Test state_history mode
+	if !shouldIncludeSession(session, "state_history", "status", "running") {
+		t.Error("Expected session to be included with state_history mode")
+	}
+}
+
+func TestStateArrayContainsInvalidPath(t *testing.T) {
+	state := map[string]interface{}{
+		"simple": "value",
+	}
+	
+	// Test non-map intermediate value
+	if stateArrayContains(state, "simple.nested", "value") {
+		t.Error("Expected false for non-map intermediate value")
+	}
+}
+
+func TestMatchesStateFilterInvalidPath(t *testing.T) {
+	state := map[string]interface{}{
+		"value": "string",
+	}
+	
+	// Test accessing nested path on non-map
+	if matchesStateFilter(state, "value.nested", "anything") {
+		t.Error("Expected false for invalid nested path")
+	}
+}
+
+func TestSortSessionsDescending(t *testing.T) {
+	now := time.Now()
+	sessions := []*client.Session{
+		{ID: "1", CreatedAt: now.Add(-2 * time.Hour)},
+		{ID: "2", CreatedAt: now.Add(-1 * time.Hour)},
+		{ID: "3", CreatedAt: now},
+	}
+	
+	sortSessions(sessions, "created_at", "desc")
+	
+	if sessions[0].ID != "3" {
+		t.Errorf("Expected first session to be 3, got %s", sessions[0].ID)
+	}
+	if sessions[2].ID != "1" {
+		t.Errorf("Expected last session to be 1, got %s", sessions[2].ID)
+	}
+}
+
+func TestStateContainsAllComplexTypes(t *testing.T) {
+	state := map[string]interface{}{
+		"config": map[string]interface{}{
+			"nested": map[string]interface{}{
+				"deep": "value",
+			},
+		},
+	}
+	
+	// Test deeply nested maps
+	filter := map[string]interface{}{
+		"config": map[string]interface{}{
+			"nested": map[string]interface{}{
+				"deep": "value",
+			},
+		},
+	}
+	
+	if !stateContainsAll(state, filter) {
+		t.Error("Expected state to contain deeply nested filter")
+	}
+}
+
+func TestHandleTimeseriesAPIDefaultAggregation(t *testing.T) {
+	// Create a mock server
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sessions := []*client.Session{
+			{
+				ID: "session1",
+				Metrics: []client.Metric{
+					{Name: "cpu", Value: 50.0, Timestamp: time.Now().Add(-1 * time.Minute)},
+				},
+			},
+		}
+		json.NewEncoder(w).Encode(sessions)
+	}))
+	defer mockServer.Close()
+	
+	datacatClient = client.NewClient(mockServer.URL)
+	
+	// Test with no aggregation parameter (should default to "all")
+	req := httptest.NewRequest("GET", "/api/timeseries?metric=cpu", nil)
+	w := httptest.NewRecorder()
+	
+	handleTimeseriesAPI(w, req)
+	
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+	
+	var result TimeseriesData
+	json.NewDecoder(w.Body).Decode(&result)
+	
+	if result.AggregationType != "all" {
+		t.Errorf("Expected aggregation type 'all', got %s", result.AggregationType)
+	}
+}
+
+func TestHandleTimeseriesAPIWithFilters(t *testing.T) {
+	// Create a mock server
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sessions := []*client.Session{
+			{
+				ID:    "session1",
+				State: map[string]interface{}{"env": "prod"},
+				Metrics: []client.Metric{
+					{Name: "cpu", Value: 50.0, Timestamp: time.Now()},
+				},
+			},
+			{
+				ID:    "session2",
+				State: map[string]interface{}{"env": "dev"},
+				Metrics: []client.Metric{
+					{Name: "cpu", Value: 30.0, Timestamp: time.Now()},
+				},
+			},
+		}
+		json.NewEncoder(w).Encode(sessions)
+	}))
+	defer mockServer.Close()
+	
+	datacatClient = client.NewClient(mockServer.URL)
+	
+	// Test with filter
+	req := httptest.NewRequest("GET", "/api/timeseries?metric=cpu&filter_mode=current_state&filter_path=env&filter_value=prod", nil)
+	w := httptest.NewRecorder()
+	
+	handleTimeseriesAPI(w, req)
+	
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+	
+	var result TimeseriesData
+	json.NewDecoder(w.Body).Decode(&result)
+	
+	// Should only include session1 (prod)
+	if result.SessionsMatched != 1 {
+		t.Errorf("Expected 1 session matched, got %d", result.SessionsMatched)
+	}
+}

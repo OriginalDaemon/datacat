@@ -601,3 +601,35 @@ func TestDaemonManagerStop(t *testing.T) {
 		t.Errorf("Stop should not fail for non-started daemon: %v", err)
 	}
 }
+
+func TestFindDaemonBinary(t *testing.T) {
+	// This just tests that findDaemonBinary doesn't panic
+	binary := findDaemonBinary()
+	if binary == "" {
+		t.Error("findDaemonBinary should return a non-empty string")
+	}
+}
+
+func TestCreateSessionDaemonEmptyResponse(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Return empty session_id
+		response := map[string]string{"session_id": ""}
+		json.NewEncoder(w).Encode(response)
+	}))
+	defer server.Close()
+	
+	client := &Client{
+		BaseURL:    server.URL,
+		HTTPClient: &http.Client{Timeout: 30 * time.Second},
+		UseDaemon:  true,
+	}
+	
+	sessionID, err := client.CreateSession()
+	if err != nil {
+		t.Fatalf("CreateSession should not fail: %v", err)
+	}
+	// Empty string is still valid
+	if sessionID != "" {
+		t.Errorf("Expected empty session_id, got %s", sessionID)
+	}
+}

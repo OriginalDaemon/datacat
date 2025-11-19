@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 	"time"
 )
@@ -870,4 +871,237 @@ func TestSendMetricError(t *testing.T) {
 	
 	// This should log an error but not panic
 	daemon.sendMetric("test-session", MetricData{Name: "metric", Value: 1.0})
+}
+
+func TestHandleHeartbeatRecovery(t *testing.T) {
+	config := DefaultConfig()
+	daemon := NewDaemon(config)
+	
+	sessionID := "test-session-id"
+	daemon.mu.Lock()
+	daemon.sessions[sessionID] = &SessionBuffer{
+		SessionID:     sessionID,
+		LastHeartbeat: time.Now().Add(-10 * time.Second),
+		HangLogged:    true, // Mark as hung
+		Events:        []EventData{},
+	}
+	daemon.mu.Unlock()
+	
+	heartbeatData := map[string]interface{}{
+		"session_id": sessionID,
+	}
+	body, _ := json.Marshal(heartbeatData)
+	
+	req := httptest.NewRequest("POST", "/heartbeat", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+	
+	daemon.handleHeartbeat(w, req)
+	
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+	
+	// Verify recovery event was added
+	daemon.mu.RLock()
+	buffer := daemon.sessions[sessionID]
+	daemon.mu.RUnlock()
+	
+	buffer.mu.Lock()
+	if len(buffer.Events) != 1 {
+		t.Errorf("Expected 1 recovery event, got %d", len(buffer.Events))
+	}
+	if buffer.Events[0].Name != "application_recovered" {
+		t.Errorf("Expected application_recovered event, got %s", buffer.Events[0].Name)
+	}
+	if buffer.HangLogged {
+		t.Error("HangLogged should be reset after recovery")
+	}
+	buffer.mu.Unlock()
+}
+
+func TestHandleEndForwardsToServer(t *testing.T) {
+	// Create a mock server that tracks if end was called
+	endCalled := false
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/sessions/test-session/end" {
+			endCalled = true
+		}
+		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	}))
+	defer mockServer.Close()
+	
+	config := DefaultConfig()
+	config.ServerURL = mockServer.URL
+	daemon := NewDaemon(config)
+	
+	sessionID := "test-session"
+	daemon.mu.Lock()
+	daemon.sessions[sessionID] = &SessionBuffer{
+		SessionID: sessionID,
+	}
+	daemon.mu.Unlock()
+	
+	endData := map[string]interface{}{
+		"session_id": sessionID,
+	}
+	body, _ := json.Marshal(endData)
+	
+	req := httptest.NewRequest("POST", "/end", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+	
+	daemon.handleEnd(w, req)
+	
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+	
+	if !endCalled {
+		t.Error("Expected end to be forwarded to server")
+	}
+}
+
+func TestCheckHeartbeat(t *testing.T) {
+	config := DefaultConfig()
+	config.HeartbeatTimeoutSeconds = 1 // Short timeout for testing
+	daemon := NewDaemon(config)
+	
+	sessionID := "test-session-id"
+	daemon.mu.Lock()
+	daemon.sessions[sessionID] = &SessionBuffer{
+		SessionID:     sessionID,
+		LastHeartbeat: time.Now().Add(-2 * time.Second), // Older than timeout
+		Events:        []EventData{},
+		HangLogged:    false,
+	}
+	daemon.mu.Unlock()
+	
+	// Check heartbeat - should detect hang
+	daemon.checkHeartbeat(sessionID)
+	
+	// Verify hang event was logged
+	daemon.mu.RLock()
+	buffer := daemon.sessions[sessionID]
+	daemon.mu.RUnlock()
+	
+	buffer.mu.Lock()
+	if len(buffer.Events) != 1 {
+		t.Errorf("Expected 1 hang event, got %d", len(buffer.Events))
+	}
+	if buffer.Events[0].Name != "application_appears_hung" {
+		t.Errorf("Expected application_appears_hung event, got %s", buffer.Events[0].Name)
+	}
+	if !buffer.HangLogged {
+		t.Error("HangLogged should be true after detecting hang")
+	}
+	buffer.mu.Unlock()
+	
+	// Check heartbeat again - should not log duplicate event
+	daemon.checkHeartbeat(sessionID)
+	
+	buffer.mu.Lock()
+	if len(buffer.Events) != 1 {
+		t.Errorf("Expected still 1 hang event (no duplicate), got %d", len(buffer.Events))
+	}
+	buffer.mu.Unlock()
+}
+
+func TestCheckHeartbeatNonExistent(t *testing.T) {
+	config := DefaultConfig()
+	daemon := NewDaemon(config)
+	
+	// Check heartbeat for non-existent session should not panic
+	daemon.checkHeartbeat("non-existent")
+}
+
+func TestIsProcessRunning(t *testing.T) {
+	// Test with current process (should be running)
+	if !isProcessRunning(os.Getpid()) {
+		t.Error("Current process should be running")
+	}
+	
+	// Test with a PID that definitely doesn't exist
+	if isProcessRunning(99999) {
+		t.Error("PID 99999 should not be running")
+	}
+}
+
+func TestCheckParentProcess(t *testing.T) {
+	config := DefaultConfig()
+	daemon := NewDaemon(config)
+	
+	sessionID := "test-session-id"
+	daemon.mu.Lock()
+	daemon.sessions[sessionID] = &SessionBuffer{
+		SessionID:    sessionID,
+		ParentPID:    99999, // Non-existent PID
+		Events:       []EventData{},
+		CrashLogged:  false,
+	}
+	daemon.mu.Unlock()
+	
+	// Check parent process - should detect crash
+	daemon.checkParentProcess(sessionID)
+	
+	// Verify crash event was logged
+	daemon.mu.RLock()
+	buffer := daemon.sessions[sessionID]
+	daemon.mu.RUnlock()
+	
+	buffer.mu.Lock()
+	if len(buffer.Events) != 1 {
+		t.Errorf("Expected 1 crash event, got %d", len(buffer.Events))
+	}
+	if buffer.Events[0].Name != "parent_process_crashed" {
+		t.Errorf("Expected parent_process_crashed event, got %s", buffer.Events[0].Name)
+	}
+	if !buffer.CrashLogged {
+		t.Error("CrashLogged should be true after detecting crash")
+	}
+	buffer.mu.Unlock()
+	
+	// Check again - should not log duplicate event
+	daemon.checkParentProcess(sessionID)
+	
+	buffer.mu.Lock()
+	if len(buffer.Events) != 1 {
+		t.Errorf("Expected still 1 crash event (no duplicate), got %d", len(buffer.Events))
+	}
+	buffer.mu.Unlock()
+}
+
+func TestCheckParentProcessNonExistent(t *testing.T) {
+	config := DefaultConfig()
+	daemon := NewDaemon(config)
+	
+	// Check parent process for non-existent session should not panic
+	daemon.checkParentProcess("non-existent")
+}
+
+func TestCheckParentProcessNoPID(t *testing.T) {
+	config := DefaultConfig()
+	daemon := NewDaemon(config)
+	
+	sessionID := "test-session-id"
+	daemon.mu.Lock()
+	daemon.sessions[sessionID] = &SessionBuffer{
+		SessionID:   sessionID,
+		ParentPID:   0, // No parent PID
+		Events:      []EventData{},
+		CrashLogged: false,
+	}
+	daemon.mu.Unlock()
+	
+	// Check parent process - should skip
+	daemon.checkParentProcess(sessionID)
+	
+	// Verify no event was logged
+	daemon.mu.RLock()
+	buffer := daemon.sessions[sessionID]
+	daemon.mu.RUnlock()
+	
+	buffer.mu.Lock()
+	if len(buffer.Events) != 0 {
+		t.Errorf("Expected 0 events when no parent PID, got %d", len(buffer.Events))
+	}
+	buffer.mu.Unlock()
 }

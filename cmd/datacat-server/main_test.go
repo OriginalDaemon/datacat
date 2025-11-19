@@ -283,6 +283,26 @@ func TestDeepMerge(t *testing.T) {
 	}
 }
 
+func TestDeepMergeNonMap(t *testing.T) {
+	dst := map[string]interface{}{
+		"a": "value_a",
+		"b": "value_b",
+	}
+	
+	src := map[string]interface{}{
+		"b": map[string]interface{}{
+			"nested": "value",
+		},
+	}
+	
+	deepMerge(dst, src)
+	
+	// When src value is a map and dst value is not, src should replace dst
+	if _, ok := dst["b"].(map[string]interface{}); !ok {
+		t.Error("Expected b to be replaced with map")
+	}
+}
+
 func TestDeepCopyState(t *testing.T) {
 	original := map[string]interface{}{
 		"a": "value",
@@ -303,6 +323,30 @@ func TestDeepCopyState(t *testing.T) {
 	}
 	if original["b"].(map[string]interface{})["b1"] != "nested" {
 		t.Error("Nested value in original should not be modified")
+	}
+}
+
+func TestDeepCopyStateWithSlices(t *testing.T) {
+	original := map[string]interface{}{
+		"items": []interface{}{"a", "b", "c"},
+		"nested": []interface{}{
+			map[string]interface{}{"key": "value1"},
+			map[string]interface{}{"key": "value2"},
+		},
+	}
+	
+	copied := deepCopyState(original)
+	
+	// Modify copy
+	copied["items"].([]interface{})[0] = "modified"
+	copied["nested"].([]interface{})[0].(map[string]interface{})["key"] = "modified"
+	
+	// Original should remain unchanged
+	if original["items"].([]interface{})[0] != "a" {
+		t.Error("Original array should not be modified")
+	}
+	if original["nested"].([]interface{})[0].(map[string]interface{})["key"] != "value1" {
+		t.Error("Original nested array should not be modified")
 	}
 }
 
