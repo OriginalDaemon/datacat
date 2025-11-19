@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 	"time"
 )
@@ -295,4 +296,812 @@ func TestSessionBuffer(t *testing.T) {
 	if buffer.CrashLogged {
 		t.Error("CrashLogged should be false initially")
 	}
+}
+
+func TestHasStateChanged(t *testing.T) {
+	daemon := NewDaemon(DefaultConfig())
+	
+	// Test no change
+	old := map[string]interface{}{"key": "value"}
+	new := map[string]interface{}{"key": "value"}
+	if daemon.hasStateChanged(old, new) {
+		t.Error("Expected no change when states are equal")
+	}
+	
+	// Test new key added
+	new2 := map[string]interface{}{"key": "value", "new_key": "new_value"}
+	if !daemon.hasStateChanged(old, new2) {
+		t.Error("Expected change when new key is added")
+	}
+	
+	// Test value changed
+	new3 := map[string]interface{}{"key": "different"}
+	if !daemon.hasStateChanged(old, new3) {
+		t.Error("Expected change when value is changed")
+	}
+	
+	// Test nested objects
+	oldNested := map[string]interface{}{
+		"outer": map[string]interface{}{"inner": "value"},
+	}
+	newNested := map[string]interface{}{
+		"outer": map[string]interface{}{"inner": "different"},
+	}
+	if !daemon.hasStateChanged(oldNested, newNested) {
+		t.Error("Expected change when nested value is changed")
+	}
+}
+
+func TestDeepEqual(t *testing.T) {
+	daemon := NewDaemon(DefaultConfig())
+	
+	// Test equal values
+	if !daemon.deepEqual("value", "value") {
+		t.Error("Expected equal strings to be equal")
+	}
+	
+	if !daemon.deepEqual(123, 123) {
+		t.Error("Expected equal numbers to be equal")
+	}
+	
+	// Test unequal values
+	if daemon.deepEqual("value1", "value2") {
+		t.Error("Expected different strings to not be equal")
+	}
+	
+	// Test maps
+	map1 := map[string]interface{}{"key": "value"}
+	map2 := map[string]interface{}{"key": "value"}
+	if !daemon.deepEqual(map1, map2) {
+		t.Error("Expected equal maps to be equal")
+	}
+	
+	map3 := map[string]interface{}{"key": "different"}
+	if daemon.deepEqual(map1, map3) {
+		t.Error("Expected different maps to not be equal")
+	}
+}
+
+func TestMergeState(t *testing.T) {
+	daemon := NewDaemon(DefaultConfig())
+	
+	// Test simple merge
+	old := map[string]interface{}{"key1": "value1"}
+	new := map[string]interface{}{"key2": "value2"}
+	merged := daemon.mergeState(old, new)
+	
+	if merged["key1"] != "value1" {
+		t.Error("Expected old key to be preserved")
+	}
+	if merged["key2"] != "value2" {
+		t.Error("Expected new key to be added")
+	}
+	
+	// Test overwrite
+	old2 := map[string]interface{}{"key": "old_value"}
+	new2 := map[string]interface{}{"key": "new_value"}
+	merged2 := daemon.mergeState(old2, new2)
+	
+	if merged2["key"] != "new_value" {
+		t.Error("Expected new value to overwrite old value")
+	}
+	
+	// Test nested merge
+	old3 := map[string]interface{}{
+		"nested": map[string]interface{}{
+			"key1": "value1",
+			"key2": "value2",
+		},
+	}
+	new3 := map[string]interface{}{
+		"nested": map[string]interface{}{
+			"key2": "new_value2",
+			"key3": "value3",
+		},
+	}
+	merged3 := daemon.mergeState(old3, new3)
+	
+	nested := merged3["nested"].(map[string]interface{})
+	if nested["key1"] != "value1" {
+		t.Error("Expected nested key1 to be preserved")
+	}
+	if nested["key2"] != "new_value2" {
+		t.Error("Expected nested key2 to be updated")
+	}
+	if nested["key3"] != "value3" {
+		t.Error("Expected nested key3 to be added")
+	}
+}
+
+func TestFlushSession(t *testing.T) {
+	// Create a mock server
+	var stateUpdates, events, metrics int
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/sessions/test-session/state":
+			stateUpdates++
+		case "/api/sessions/test-session/events":
+			events++
+		case "/api/sessions/test-session/metrics":
+			metrics++
+		}
+		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	}))
+	defer mockServer.Close()
+	
+	config := DefaultConfig()
+	config.ServerURL = mockServer.URL
+	daemon := NewDaemon(config)
+	
+	// Create session buffer with data
+	daemon.mu.Lock()
+	daemon.sessions["test-session"] = &SessionBuffer{
+		SessionID: "test-session",
+		StateUpdates: []map[string]interface{}{
+			{"key": "value1"},
+			{"key": "value2"},
+		},
+		Events: []EventData{
+			{Name: "event1", Data: map[string]interface{}{}},
+		},
+		Metrics: []MetricData{
+			{Name: "metric1", Value: 1.0},
+		},
+	}
+	daemon.mu.Unlock()
+	
+	// Flush the session
+	daemon.flushSession("test-session")
+	
+	// Wait a bit for async operations
+	time.Sleep(100 * time.Millisecond)
+	
+	// Verify buffer is cleared
+	daemon.mu.RLock()
+	buffer := daemon.sessions["test-session"]
+	daemon.mu.RUnlock()
+	
+	buffer.mu.Lock()
+	if len(buffer.StateUpdates) != 0 {
+		t.Errorf("Expected 0 state updates after flush, got %d", len(buffer.StateUpdates))
+	}
+	if len(buffer.Events) != 0 {
+		t.Errorf("Expected 0 events after flush, got %d", len(buffer.Events))
+	}
+	if len(buffer.Metrics) != 0 {
+		t.Errorf("Expected 0 metrics after flush, got %d", len(buffer.Metrics))
+	}
+	buffer.mu.Unlock()
+}
+
+func TestFlushSessionNonExistent(t *testing.T) {
+	config := DefaultConfig()
+	daemon := NewDaemon(config)
+	
+	// Flush non-existent session should not panic
+	daemon.flushSession("non-existent")
+}
+
+func TestHandleRegisterMethodNotAllowed(t *testing.T) {
+	config := DefaultConfig()
+	daemon := NewDaemon(config)
+	
+	req := httptest.NewRequest("GET", "/register", nil)
+	w := httptest.NewRecorder()
+	
+	daemon.handleRegister(w, req)
+	
+	if w.Code != http.StatusMethodNotAllowed {
+		t.Errorf("Expected status 405, got %d", w.Code)
+	}
+}
+
+func TestHandleStateMethodNotAllowed(t *testing.T) {
+	config := DefaultConfig()
+	daemon := NewDaemon(config)
+	
+	req := httptest.NewRequest("GET", "/state", nil)
+	w := httptest.NewRecorder()
+	
+	daemon.handleState(w, req)
+	
+	if w.Code != http.StatusMethodNotAllowed {
+		t.Errorf("Expected status 405, got %d", w.Code)
+	}
+}
+
+func TestHandleEventMethodNotAllowed(t *testing.T) {
+	config := DefaultConfig()
+	daemon := NewDaemon(config)
+	
+	req := httptest.NewRequest("GET", "/event", nil)
+	w := httptest.NewRecorder()
+	
+	daemon.handleEvent(w, req)
+	
+	if w.Code != http.StatusMethodNotAllowed {
+		t.Errorf("Expected status 405, got %d", w.Code)
+	}
+}
+
+func TestHandleMetricMethodNotAllowed(t *testing.T) {
+	config := DefaultConfig()
+	daemon := NewDaemon(config)
+	
+	req := httptest.NewRequest("GET", "/metric", nil)
+	w := httptest.NewRecorder()
+	
+	daemon.handleMetric(w, req)
+	
+	if w.Code != http.StatusMethodNotAllowed {
+		t.Errorf("Expected status 405, got %d", w.Code)
+	}
+}
+
+func TestHandleHeartbeatMethodNotAllowed(t *testing.T) {
+	config := DefaultConfig()
+	daemon := NewDaemon(config)
+	
+	req := httptest.NewRequest("GET", "/heartbeat", nil)
+	w := httptest.NewRecorder()
+	
+	daemon.handleHeartbeat(w, req)
+	
+	if w.Code != http.StatusMethodNotAllowed {
+		t.Errorf("Expected status 405, got %d", w.Code)
+	}
+}
+
+func TestHandleEndMethodNotAllowed(t *testing.T) {
+	config := DefaultConfig()
+	daemon := NewDaemon(config)
+	
+	req := httptest.NewRequest("GET", "/end", nil)
+	w := httptest.NewRecorder()
+	
+	daemon.handleEnd(w, req)
+	
+	if w.Code != http.StatusMethodNotAllowed {
+		t.Errorf("Expected status 405, got %d", w.Code)
+	}
+}
+
+func TestHandleStateWithoutSession(t *testing.T) {
+	config := DefaultConfig()
+	daemon := NewDaemon(config)
+	
+	stateData := map[string]interface{}{
+		"session_id": "non-existent",
+		"state":      map[string]interface{}{"key": "value"},
+	}
+	body, _ := json.Marshal(stateData)
+	
+	req := httptest.NewRequest("POST", "/state", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+	
+	daemon.handleState(w, req)
+	
+	if w.Code != http.StatusNotFound {
+		t.Errorf("Expected status 404, got %d", w.Code)
+	}
+}
+
+func TestHandleEventWithoutSession(t *testing.T) {
+	config := DefaultConfig()
+	daemon := NewDaemon(config)
+	
+	eventData := map[string]interface{}{
+		"session_id": "non-existent",
+		"name":       "test_event",
+		"data":       map[string]interface{}{},
+	}
+	body, _ := json.Marshal(eventData)
+	
+	req := httptest.NewRequest("POST", "/event", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+	
+	daemon.handleEvent(w, req)
+	
+	if w.Code != http.StatusNotFound {
+		t.Errorf("Expected status 404, got %d", w.Code)
+	}
+}
+
+func TestHandleMetricWithoutSession(t *testing.T) {
+	config := DefaultConfig()
+	daemon := NewDaemon(config)
+	
+	metricData := map[string]interface{}{
+		"session_id": "non-existent",
+		"name":       "test_metric",
+		"value":      1.0,
+	}
+	body, _ := json.Marshal(metricData)
+	
+	req := httptest.NewRequest("POST", "/metric", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+	
+	daemon.handleMetric(w, req)
+	
+	if w.Code != http.StatusNotFound {
+		t.Errorf("Expected status 404, got %d", w.Code)
+	}
+}
+
+func TestHandleRegisterInvalidJSON(t *testing.T) {
+	// Create a mock server
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("invalid json"))
+	}))
+	defer mockServer.Close()
+	
+	config := DefaultConfig()
+	config.ServerURL = mockServer.URL
+	daemon := NewDaemon(config)
+	
+	req := httptest.NewRequest("POST", "/register", nil)
+	w := httptest.NewRecorder()
+	
+	daemon.handleRegister(w, req)
+	
+	// Should get an error due to invalid response
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("Expected status 500, got %d", w.Code)
+	}
+}
+
+func TestHandleRegisterInvalidSessionID(t *testing.T) {
+	// Create a mock server that returns invalid session_id type
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		response := map[string]interface{}{"session_id": 12345} // Not a string
+		json.NewEncoder(w).Encode(response)
+	}))
+	defer mockServer.Close()
+	
+	config := DefaultConfig()
+	config.ServerURL = mockServer.URL
+	daemon := NewDaemon(config)
+	
+	req := httptest.NewRequest("POST", "/register", nil)
+	w := httptest.NewRecorder()
+	
+	daemon.handleRegister(w, req)
+	
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("Expected status 500, got %d", w.Code)
+	}
+}
+
+func TestHandleStateInvalidJSON(t *testing.T) {
+	config := DefaultConfig()
+	daemon := NewDaemon(config)
+	
+	req := httptest.NewRequest("POST", "/state", bytes.NewReader([]byte("invalid json")))
+	w := httptest.NewRecorder()
+	
+	daemon.handleState(w, req)
+	
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400, got %d", w.Code)
+	}
+}
+
+func TestHandleEventInvalidJSON(t *testing.T) {
+	config := DefaultConfig()
+	daemon := NewDaemon(config)
+	
+	req := httptest.NewRequest("POST", "/event", bytes.NewReader([]byte("invalid json")))
+	w := httptest.NewRecorder()
+	
+	daemon.handleEvent(w, req)
+	
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400, got %d", w.Code)
+	}
+}
+
+func TestHandleMetricInvalidJSON(t *testing.T) {
+	config := DefaultConfig()
+	daemon := NewDaemon(config)
+	
+	req := httptest.NewRequest("POST", "/metric", bytes.NewReader([]byte("invalid json")))
+	w := httptest.NewRecorder()
+	
+	daemon.handleMetric(w, req)
+	
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400, got %d", w.Code)
+	}
+}
+
+func TestHandleHeartbeatInvalidJSON(t *testing.T) {
+	config := DefaultConfig()
+	daemon := NewDaemon(config)
+	
+	req := httptest.NewRequest("POST", "/heartbeat", bytes.NewReader([]byte("invalid json")))
+	w := httptest.NewRecorder()
+	
+	daemon.handleHeartbeat(w, req)
+	
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400, got %d", w.Code)
+	}
+}
+
+func TestHandleHeartbeatNonExistentSession(t *testing.T) {
+	config := DefaultConfig()
+	daemon := NewDaemon(config)
+	
+	heartbeatData := map[string]interface{}{
+		"session_id": "non-existent",
+	}
+	body, _ := json.Marshal(heartbeatData)
+	
+	req := httptest.NewRequest("POST", "/heartbeat", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+	
+	daemon.handleHeartbeat(w, req)
+	
+	if w.Code != http.StatusNotFound {
+		t.Errorf("Expected status 404, got %d", w.Code)
+	}
+}
+
+func TestHandleEndInvalidJSON(t *testing.T) {
+	config := DefaultConfig()
+	daemon := NewDaemon(config)
+	
+	req := httptest.NewRequest("POST", "/end", bytes.NewReader([]byte("invalid json")))
+	w := httptest.NewRecorder()
+	
+	daemon.handleEnd(w, req)
+	
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400, got %d", w.Code)
+	}
+}
+
+func TestHandleEndNonExistentSession(t *testing.T) {
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		w.Write([]byte("session not found"))
+	}))
+	defer mockServer.Close()
+	
+	config := DefaultConfig()
+	config.ServerURL = mockServer.URL
+	daemon := NewDaemon(config)
+	
+	sessionID := "test-session"
+	daemon.mu.Lock()
+	daemon.sessions[sessionID] = &SessionBuffer{
+		SessionID: sessionID,
+	}
+	daemon.mu.Unlock()
+	
+	endData := map[string]interface{}{
+		"session_id": sessionID,
+	}
+	body, _ := json.Marshal(endData)
+	
+	req := httptest.NewRequest("POST", "/end", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+	
+	daemon.handleEnd(w, req)
+	
+	// The daemon always returns 200, even if server returns error
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+	
+	// Verify session was removed from daemon
+	daemon.mu.RLock()
+	_, exists := daemon.sessions[sessionID]
+	daemon.mu.RUnlock()
+	
+	if exists {
+		t.Error("Session should have been removed from daemon")
+	}
+}
+
+func TestHandleStateNoChange(t *testing.T) {
+	config := DefaultConfig()
+	daemon := NewDaemon(config)
+	
+	sessionID := "test-session-id"
+	daemon.mu.Lock()
+	daemon.sessions[sessionID] = &SessionBuffer{
+		SessionID:    sessionID,
+		StateUpdates: []map[string]interface{}{},
+		LastState:    map[string]interface{}{"key": "value"},
+	}
+	daemon.mu.Unlock()
+	
+	// Send same state (no change)
+	stateData := map[string]interface{}{
+		"session_id": sessionID,
+		"state":      map[string]interface{}{"key": "value"},
+	}
+	body, _ := json.Marshal(stateData)
+	
+	req := httptest.NewRequest("POST", "/state", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+	
+	daemon.handleState(w, req)
+	
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+	
+	// Verify no state update was added
+	daemon.mu.RLock()
+	buffer := daemon.sessions[sessionID]
+	daemon.mu.RUnlock()
+	
+	buffer.mu.Lock()
+	if len(buffer.StateUpdates) != 0 {
+		t.Errorf("Expected 0 state updates when state doesn't change, got %d", len(buffer.StateUpdates))
+	}
+	buffer.mu.Unlock()
+}
+
+func TestSendStateUpdateError(t *testing.T) {
+	config := DefaultConfig()
+	config.ServerURL = "http://invalid-host-that-does-not-exist-12345:99999"
+	daemon := NewDaemon(config)
+	
+	// This should log an error but not panic
+	daemon.sendStateUpdate("test-session", map[string]interface{}{"key": "value"})
+}
+
+func TestSendEventError(t *testing.T) {
+	config := DefaultConfig()
+	config.ServerURL = "http://invalid-host-that-does-not-exist-12345:99999"
+	daemon := NewDaemon(config)
+	
+	// This should log an error but not panic
+	daemon.sendEvent("test-session", EventData{Name: "event", Data: map[string]interface{}{}})
+}
+
+func TestSendMetricError(t *testing.T) {
+	config := DefaultConfig()
+	config.ServerURL = "http://invalid-host-that-does-not-exist-12345:99999"
+	daemon := NewDaemon(config)
+	
+	// This should log an error but not panic
+	daemon.sendMetric("test-session", MetricData{Name: "metric", Value: 1.0})
+}
+
+func TestHandleHeartbeatRecovery(t *testing.T) {
+	config := DefaultConfig()
+	daemon := NewDaemon(config)
+	
+	sessionID := "test-session-id"
+	daemon.mu.Lock()
+	daemon.sessions[sessionID] = &SessionBuffer{
+		SessionID:     sessionID,
+		LastHeartbeat: time.Now().Add(-10 * time.Second),
+		HangLogged:    true, // Mark as hung
+		Events:        []EventData{},
+	}
+	daemon.mu.Unlock()
+	
+	heartbeatData := map[string]interface{}{
+		"session_id": sessionID,
+	}
+	body, _ := json.Marshal(heartbeatData)
+	
+	req := httptest.NewRequest("POST", "/heartbeat", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+	
+	daemon.handleHeartbeat(w, req)
+	
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+	
+	// Verify recovery event was added
+	daemon.mu.RLock()
+	buffer := daemon.sessions[sessionID]
+	daemon.mu.RUnlock()
+	
+	buffer.mu.Lock()
+	if len(buffer.Events) != 1 {
+		t.Errorf("Expected 1 recovery event, got %d", len(buffer.Events))
+	}
+	if buffer.Events[0].Name != "application_recovered" {
+		t.Errorf("Expected application_recovered event, got %s", buffer.Events[0].Name)
+	}
+	if buffer.HangLogged {
+		t.Error("HangLogged should be reset after recovery")
+	}
+	buffer.mu.Unlock()
+}
+
+func TestHandleEndForwardsToServer(t *testing.T) {
+	// Create a mock server that tracks if end was called
+	endCalled := false
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/sessions/test-session/end" {
+			endCalled = true
+		}
+		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	}))
+	defer mockServer.Close()
+	
+	config := DefaultConfig()
+	config.ServerURL = mockServer.URL
+	daemon := NewDaemon(config)
+	
+	sessionID := "test-session"
+	daemon.mu.Lock()
+	daemon.sessions[sessionID] = &SessionBuffer{
+		SessionID: sessionID,
+	}
+	daemon.mu.Unlock()
+	
+	endData := map[string]interface{}{
+		"session_id": sessionID,
+	}
+	body, _ := json.Marshal(endData)
+	
+	req := httptest.NewRequest("POST", "/end", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+	
+	daemon.handleEnd(w, req)
+	
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+	
+	if !endCalled {
+		t.Error("Expected end to be forwarded to server")
+	}
+}
+
+func TestCheckHeartbeat(t *testing.T) {
+	config := DefaultConfig()
+	config.HeartbeatTimeoutSeconds = 1 // Short timeout for testing
+	daemon := NewDaemon(config)
+	
+	sessionID := "test-session-id"
+	daemon.mu.Lock()
+	daemon.sessions[sessionID] = &SessionBuffer{
+		SessionID:     sessionID,
+		LastHeartbeat: time.Now().Add(-2 * time.Second), // Older than timeout
+		Events:        []EventData{},
+		HangLogged:    false,
+	}
+	daemon.mu.Unlock()
+	
+	// Check heartbeat - should detect hang
+	daemon.checkHeartbeat(sessionID)
+	
+	// Verify hang event was logged
+	daemon.mu.RLock()
+	buffer := daemon.sessions[sessionID]
+	daemon.mu.RUnlock()
+	
+	buffer.mu.Lock()
+	if len(buffer.Events) != 1 {
+		t.Errorf("Expected 1 hang event, got %d", len(buffer.Events))
+	}
+	if buffer.Events[0].Name != "application_appears_hung" {
+		t.Errorf("Expected application_appears_hung event, got %s", buffer.Events[0].Name)
+	}
+	if !buffer.HangLogged {
+		t.Error("HangLogged should be true after detecting hang")
+	}
+	buffer.mu.Unlock()
+	
+	// Check heartbeat again - should not log duplicate event
+	daemon.checkHeartbeat(sessionID)
+	
+	buffer.mu.Lock()
+	if len(buffer.Events) != 1 {
+		t.Errorf("Expected still 1 hang event (no duplicate), got %d", len(buffer.Events))
+	}
+	buffer.mu.Unlock()
+}
+
+func TestCheckHeartbeatNonExistent(t *testing.T) {
+	config := DefaultConfig()
+	daemon := NewDaemon(config)
+	
+	// Check heartbeat for non-existent session should not panic
+	daemon.checkHeartbeat("non-existent")
+}
+
+func TestIsProcessRunning(t *testing.T) {
+	// Test with current process (should be running)
+	if !isProcessRunning(os.Getpid()) {
+		t.Error("Current process should be running")
+	}
+	
+	// Test with a PID that definitely doesn't exist
+	if isProcessRunning(99999) {
+		t.Error("PID 99999 should not be running")
+	}
+}
+
+func TestCheckParentProcess(t *testing.T) {
+	config := DefaultConfig()
+	daemon := NewDaemon(config)
+	
+	sessionID := "test-session-id"
+	daemon.mu.Lock()
+	daemon.sessions[sessionID] = &SessionBuffer{
+		SessionID:    sessionID,
+		ParentPID:    99999, // Non-existent PID
+		Events:       []EventData{},
+		CrashLogged:  false,
+	}
+	daemon.mu.Unlock()
+	
+	// Check parent process - should detect crash
+	daemon.checkParentProcess(sessionID)
+	
+	// Verify crash event was logged
+	daemon.mu.RLock()
+	buffer := daemon.sessions[sessionID]
+	daemon.mu.RUnlock()
+	
+	buffer.mu.Lock()
+	if len(buffer.Events) != 1 {
+		t.Errorf("Expected 1 crash event, got %d", len(buffer.Events))
+	}
+	if buffer.Events[0].Name != "parent_process_crashed" {
+		t.Errorf("Expected parent_process_crashed event, got %s", buffer.Events[0].Name)
+	}
+	if !buffer.CrashLogged {
+		t.Error("CrashLogged should be true after detecting crash")
+	}
+	buffer.mu.Unlock()
+	
+	// Check again - should not log duplicate event
+	daemon.checkParentProcess(sessionID)
+	
+	buffer.mu.Lock()
+	if len(buffer.Events) != 1 {
+		t.Errorf("Expected still 1 crash event (no duplicate), got %d", len(buffer.Events))
+	}
+	buffer.mu.Unlock()
+}
+
+func TestCheckParentProcessNonExistent(t *testing.T) {
+	config := DefaultConfig()
+	daemon := NewDaemon(config)
+	
+	// Check parent process for non-existent session should not panic
+	daemon.checkParentProcess("non-existent")
+}
+
+func TestCheckParentProcessNoPID(t *testing.T) {
+	config := DefaultConfig()
+	daemon := NewDaemon(config)
+	
+	sessionID := "test-session-id"
+	daemon.mu.Lock()
+	daemon.sessions[sessionID] = &SessionBuffer{
+		SessionID:   sessionID,
+		ParentPID:   0, // No parent PID
+		Events:      []EventData{},
+		CrashLogged: false,
+	}
+	daemon.mu.Unlock()
+	
+	// Check parent process - should skip
+	daemon.checkParentProcess(sessionID)
+	
+	// Verify no event was logged
+	daemon.mu.RLock()
+	buffer := daemon.sessions[sessionID]
+	daemon.mu.RUnlock()
+	
+	buffer.mu.Lock()
+	if len(buffer.Events) != 0 {
+		t.Errorf("Expected 0 events when no parent PID, got %d", len(buffer.Events))
+	}
+	buffer.mu.Unlock()
 }
