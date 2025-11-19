@@ -187,7 +187,10 @@ if err != nil {
 }
 defer c.Close()
 
-sessionID, _ := c.CreateSession()
+sessionID, err := c.CreateSession()
+if err != nil {
+    log.Fatal(err)
+}
 c.UpdateState(sessionID, map[string]interface{}{"status": "running"})
 
 // Send heartbeats - daemon detects hangs and crashes
@@ -202,7 +205,10 @@ c.EndSession(sessionID)
 import "github.com/OriginalDaemon/datacat/client"
 
 c := client.NewClient("http://localhost:8080")
-sessionID, _ := c.CreateSession()
+sessionID, err := c.CreateSession()
+if err != nil {
+    log.Fatal(err)
+}
 
 c.UpdateState(sessionID, map[string]interface{}{"status": "running"})
 c.LogEvent(sessionID, "user_login", map[string]interface{}{"user": "alice"})
