@@ -14,16 +14,16 @@ import (
 
 // SessionBuffer holds pending updates for a session
 type SessionBuffer struct {
-	SessionID      string
-	StateUpdates   []map[string]interface{}
-	Events         []EventData
-	Metrics        []MetricData
-	LastHeartbeat  time.Time
-	LastState      map[string]interface{}
-	HangLogged     bool
-	ParentPID      int  // Parent process ID
-	CrashLogged    bool // Whether crash has been logged
-	mu             sync.Mutex
+	SessionID     string
+	StateUpdates  []map[string]interface{}
+	Events        []EventData
+	Metrics       []MetricData
+	LastHeartbeat time.Time
+	LastState     map[string]interface{}
+	HangLogged    bool
+	ParentPID     int  // Parent process ID
+	CrashLogged   bool // Whether crash has been logged
+	mu            sync.Mutex
 }
 
 // EventData represents an event to be logged
@@ -506,12 +506,12 @@ func (d *Daemon) deepEqual(a, b interface{}) bool {
 // mergeState deep merges new state into old state
 func (d *Daemon) mergeState(old, new map[string]interface{}) map[string]interface{} {
 	result := make(map[string]interface{})
-	
+
 	// Copy old state
 	for k, v := range old {
 		result[k] = v
 	}
-	
+
 	// Merge new state
 	for k, v := range new {
 		if oldVal, exists := result[k]; exists {
@@ -524,7 +524,7 @@ func (d *Daemon) mergeState(old, new map[string]interface{}) map[string]interfac
 		}
 		result[k] = v
 	}
-	
+
 	return result
 }
 
@@ -599,6 +599,6 @@ func isProcessRunning(pid int) bool {
 func main() {
 	config := LoadConfig("daemon_config.json")
 	daemon := NewDaemon(config)
-	
+
 	log.Fatal(daemon.Start())
 }

@@ -37,8 +37,8 @@ func NewDaemonManager(daemonPort, serverURL, daemonBinary string) *DaemonManager
 func findDaemonBinary() string {
 	// Check common locations
 	possiblePaths := []string{
-		"datacat-daemon",                    // In PATH
-		"./datacat-daemon",                  // Current directory
+		"datacat-daemon",                      // In PATH
+		"./datacat-daemon",                    // Current directory
 		"./cmd/datacat-daemon/datacat-daemon", // Development
 	}
 
