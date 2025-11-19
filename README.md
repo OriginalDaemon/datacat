@@ -15,6 +15,7 @@ This repository contains multiple independent programs and libraries:
 datacat/
 ├── cmd/
 │   ├── datacat-server/    # Main REST API service (Go)
+│   ├── datacat-daemon/    # Local batching daemon (Go) ⭐ NEW
 │   └── datacat-web/       # Web UI dashboard (Go + htmx)
 ├── client/                # Go client library
 ├── python/                # Python client library (2.7+ and 3.x)
@@ -87,6 +88,16 @@ The core service providing session management, state tracking, and data persiste
 - **Features:** Session lifecycle, deep merge state updates, event/metric logging
 - **Port:** 8080 (default)
 - **[Full Documentation](cmd/datacat-server/README.md)**
+
+### [datacat-daemon](cmd/datacat-daemon/) - Local Batching Daemon ⭐ NEW
+
+Intelligent local service that reduces network traffic through batching and smart filtering.
+
+- **Technology:** Go HTTP server
+- **Features:** 10-100x network reduction, smart state filtering, auto-retry with queueing
+- **Port:** 8079 (default)
+- **Architecture:** Client → Daemon (local) → Server (remote)
+- **[Full Documentation](cmd/datacat-daemon/README.md)**
 
 ### [datacat-web](cmd/datacat-web/) - Web Dashboard
 
