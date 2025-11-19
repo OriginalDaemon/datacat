@@ -1,6 +1,10 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 )
@@ -452,4 +456,318 @@ func TestEndSessionErrors(t *testing.T) {
 	if err == nil {
 		t.Error("Expected error when ending non-existent session")
 	}
+}
+
+func TestHTTPHandlers(t *testing.T) {
+	tmpDir := t.TempDir()
+	config := DefaultConfig()
+	var err error
+	store, err = NewStore(tmpDir, config)
+	if err != nil {
+		t.Fatalf("NewStore failed: %v", err)
+	}
+	defer store.Close()
+	
+	// Test handleSessions POST - create session
+	t.Run("CreateSession", func(t *testing.T) {
+		req := httptest.NewRequest("POST", "/api/sessions", nil)
+		w := httptest.NewRecorder()
+		
+		handleSessions(w, req)
+		
+		if w.Code != http.StatusOK {
+			t.Errorf("Expected status 200, got %d", w.Code)
+		}
+		
+		var response map[string]string
+		json.NewDecoder(w.Body).Decode(&response)
+		
+		if response["session_id"] == "" {
+			t.Error("Expected session_id in response")
+		}
+	})
+	
+	// Test handleSessions with invalid method
+	t.Run("CreateSessionInvalidMethod", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/api/sessions", nil)
+		w := httptest.NewRecorder()
+		
+		handleSessions(w, req)
+		
+		if w.Code != http.StatusMethodNotAllowed {
+			t.Errorf("Expected status 405, got %d", w.Code)
+		}
+	})
+	
+	// Create a session for subsequent tests
+	session := store.CreateSession()
+	sessionID := session.ID
+	
+	// Test handleSessionOperations GET - get session
+	t.Run("GetSession", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/api/sessions/"+sessionID, nil)
+		w := httptest.NewRecorder()
+		
+		handleSessionOperations(w, req)
+		
+		if w.Code != http.StatusOK {
+			t.Errorf("Expected status 200, got %d", w.Code)
+		}
+		
+		var retrieved Session
+		json.NewDecoder(w.Body).Decode(&retrieved)
+		
+		if retrieved.ID != sessionID {
+			t.Errorf("Expected session ID %s, got %s", sessionID, retrieved.ID)
+		}
+	})
+	
+	// Test get non-existent session
+	t.Run("GetNonExistentSession", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/api/sessions/non-existent", nil)
+		w := httptest.NewRecorder()
+		
+		handleSessionOperations(w, req)
+		
+		if w.Code != http.StatusNotFound {
+			t.Errorf("Expected status 404, got %d", w.Code)
+		}
+	})
+	
+	// Test update state
+	t.Run("UpdateState", func(t *testing.T) {
+		stateData := map[string]interface{}{"key": "value"}
+		body, _ := json.Marshal(stateData)
+		
+		req := httptest.NewRequest("POST", "/api/sessions/"+sessionID+"/state", bytes.NewReader(body))
+		w := httptest.NewRecorder()
+		
+		handleSessionOperations(w, req)
+		
+		if w.Code != http.StatusOK {
+			t.Errorf("Expected status 200, got %d", w.Code)
+		}
+	})
+	
+	// Test update state with invalid JSON
+	t.Run("UpdateStateInvalidJSON", func(t *testing.T) {
+		req := httptest.NewRequest("POST", "/api/sessions/"+sessionID+"/state", bytes.NewReader([]byte("invalid")))
+		w := httptest.NewRecorder()
+		
+		handleSessionOperations(w, req)
+		
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("Expected status 400, got %d", w.Code)
+		}
+	})
+	
+	// Test update state for non-existent session
+	t.Run("UpdateStateNonExistent", func(t *testing.T) {
+		stateData := map[string]interface{}{"key": "value"}
+		body, _ := json.Marshal(stateData)
+		
+		req := httptest.NewRequest("POST", "/api/sessions/non-existent/state", bytes.NewReader(body))
+		w := httptest.NewRecorder()
+		
+		handleSessionOperations(w, req)
+		
+		if w.Code != http.StatusNotFound {
+			t.Errorf("Expected status 404, got %d", w.Code)
+		}
+	})
+	
+	// Test add event
+	t.Run("AddEvent", func(t *testing.T) {
+		eventData := map[string]interface{}{
+			"name": "test_event",
+			"data": map[string]interface{}{"msg": "hello"},
+		}
+		body, _ := json.Marshal(eventData)
+		
+		req := httptest.NewRequest("POST", "/api/sessions/"+sessionID+"/events", bytes.NewReader(body))
+		w := httptest.NewRecorder()
+		
+		handleSessionOperations(w, req)
+		
+		if w.Code != http.StatusOK {
+			t.Errorf("Expected status 200, got %d", w.Code)
+		}
+	})
+	
+	// Test add event with invalid JSON
+	t.Run("AddEventInvalidJSON", func(t *testing.T) {
+		req := httptest.NewRequest("POST", "/api/sessions/"+sessionID+"/events", bytes.NewReader([]byte("invalid")))
+		w := httptest.NewRecorder()
+		
+		handleSessionOperations(w, req)
+		
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("Expected status 400, got %d", w.Code)
+		}
+	})
+	
+	// Test add event for non-existent session
+	t.Run("AddEventNonExistent", func(t *testing.T) {
+		eventData := map[string]interface{}{
+			"name": "test_event",
+			"data": map[string]interface{}{},
+		}
+		body, _ := json.Marshal(eventData)
+		
+		req := httptest.NewRequest("POST", "/api/sessions/non-existent/events", bytes.NewReader(body))
+		w := httptest.NewRecorder()
+		
+		handleSessionOperations(w, req)
+		
+		if w.Code != http.StatusNotFound {
+			t.Errorf("Expected status 404, got %d", w.Code)
+		}
+	})
+	
+	// Test add metric
+	t.Run("AddMetric", func(t *testing.T) {
+		metricData := map[string]interface{}{
+			"name":  "cpu_usage",
+			"value": 75.5,
+			"tags":  []string{"tag1"},
+		}
+		body, _ := json.Marshal(metricData)
+		
+		req := httptest.NewRequest("POST", "/api/sessions/"+sessionID+"/metrics", bytes.NewReader(body))
+		w := httptest.NewRecorder()
+		
+		handleSessionOperations(w, req)
+		
+		if w.Code != http.StatusOK {
+			t.Errorf("Expected status 200, got %d", w.Code)
+		}
+	})
+	
+	// Test add metric with invalid JSON
+	t.Run("AddMetricInvalidJSON", func(t *testing.T) {
+		req := httptest.NewRequest("POST", "/api/sessions/"+sessionID+"/metrics", bytes.NewReader([]byte("invalid")))
+		w := httptest.NewRecorder()
+		
+		handleSessionOperations(w, req)
+		
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("Expected status 400, got %d", w.Code)
+		}
+	})
+	
+	// Test add metric for non-existent session
+	t.Run("AddMetricNonExistent", func(t *testing.T) {
+		metricData := map[string]interface{}{
+			"name":  "metric",
+			"value": 1.0,
+		}
+		body, _ := json.Marshal(metricData)
+		
+		req := httptest.NewRequest("POST", "/api/sessions/non-existent/metrics", bytes.NewReader(body))
+		w := httptest.NewRecorder()
+		
+		handleSessionOperations(w, req)
+		
+		if w.Code != http.StatusNotFound {
+			t.Errorf("Expected status 404, got %d", w.Code)
+		}
+	})
+	
+	// Test end session
+	t.Run("EndSession", func(t *testing.T) {
+		req := httptest.NewRequest("POST", "/api/sessions/"+sessionID+"/end", nil)
+		w := httptest.NewRecorder()
+		
+		handleSessionOperations(w, req)
+		
+		if w.Code != http.StatusOK {
+			t.Errorf("Expected status 200, got %d", w.Code)
+		}
+	})
+	
+	// Test end non-existent session
+	t.Run("EndNonExistentSession", func(t *testing.T) {
+		req := httptest.NewRequest("POST", "/api/sessions/non-existent/end", nil)
+		w := httptest.NewRecorder()
+		
+		handleSessionOperations(w, req)
+		
+		if w.Code != http.StatusNotFound {
+			t.Errorf("Expected status 404, got %d", w.Code)
+		}
+	})
+	
+	// Test invalid operation
+	t.Run("InvalidOperation", func(t *testing.T) {
+		req := httptest.NewRequest("POST", "/api/sessions/"+sessionID+"/invalid", nil)
+		w := httptest.NewRecorder()
+		
+		handleSessionOperations(w, req)
+		
+		if w.Code != http.StatusNotFound {
+			t.Errorf("Expected status 404, got %d", w.Code)
+		}
+	})
+	
+	// Test missing session ID
+	t.Run("MissingSessionID", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/api/sessions//state", nil)
+		w := httptest.NewRecorder()
+		
+		handleSessionOperations(w, req)
+		
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("Expected status 400, got %d", w.Code)
+		}
+	})
+	
+	// Test handleGrafanaData
+	t.Run("GrafanaData", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/api/grafana/sessions", nil)
+		w := httptest.NewRecorder()
+		
+		handleGrafanaData(w, req)
+		
+		if w.Code != http.StatusOK {
+			t.Errorf("Expected status 200, got %d", w.Code)
+		}
+		
+		var sessions []*Session
+		json.NewDecoder(w.Body).Decode(&sessions)
+		
+		if len(sessions) == 0 {
+			t.Error("Expected at least one session")
+		}
+	})
+	
+	// Test handleGrafanaData with invalid method
+	t.Run("GrafanaDataInvalidMethod", func(t *testing.T) {
+		req := httptest.NewRequest("POST", "/api/grafana/sessions", nil)
+		w := httptest.NewRecorder()
+		
+		handleGrafanaData(w, req)
+		
+		if w.Code != http.StatusMethodNotAllowed {
+			t.Errorf("Expected status 405, got %d", w.Code)
+		}
+	})
+}
+
+func TestStartCleanupRoutine(t *testing.T) {
+	tmpDir := t.TempDir()
+	config := DefaultConfig()
+	config.CleanupIntervalHours = 0 // Set to 0 for immediate cleanup in test
+	var err error
+	store, err = NewStore(tmpDir, config)
+	if err != nil {
+		t.Fatalf("NewStore failed: %v", err)
+	}
+	defer store.Close()
+	
+	// Start cleanup routine (it will run once since interval is 0)
+	// We can't easily test the goroutine, but we can test that it doesn't panic
+	go store.StartCleanupRoutine()
+	
+	// Give it a moment to start
+	time.Sleep(100 * time.Millisecond)
 }
