@@ -900,6 +900,6 @@ func TestCloseStore(t *testing.T) {
 	}
 
 	// Closing again should not panic
-	err = store.Close()
+	_ = store.Close()
 	// BadgerDB returns error when closing an already closed DB, which is expected
 }
