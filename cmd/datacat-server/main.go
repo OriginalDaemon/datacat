@@ -373,15 +373,12 @@ var store *Store
 
 func main() {
 	// Load configuration
-	config, err := LoadConfig("./config.json")
-	if err != nil {
-		log.Fatalf("Failed to load configuration: %v", err)
-	}
+	config := LoadConfig("./config.json")
 	log.Printf("Configuration loaded: Data path=%s, Retention=%d days, Port=%s",
 		config.DataPath, config.RetentionDays, config.ServerPort)
 
 	// Initialize store with BadgerDB
-	store, err = NewStore(config.DataPath, config)
+	store, err := NewStore(config.DataPath, config)
 	if err != nil {
 		log.Fatalf("Failed to initialize store: %v", err)
 	}

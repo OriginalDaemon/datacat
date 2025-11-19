@@ -25,10 +25,13 @@ from datacat import DatacatClient, create_session
 class TestDatacatIntegration(unittest.TestCase):
     """Integration tests for datacat service"""
 
+    service_process: subprocess.Popen  # type: ignore
+    base_url: str
+
     @classmethod
     def setUpClass(cls):
         """Start the datacat service before tests"""
-        cls.service_process = None
+        cls.service_process = None  # type: ignore
         cls.base_url = "http://localhost:8080"
 
         # Build the service
