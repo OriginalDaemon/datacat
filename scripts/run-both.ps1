@@ -2,15 +2,15 @@
 # Run both the datacat server and web UI in parallel
 
 Write-Host "Starting datacat server and web UI..." -ForegroundColor Green
-Write-Host "Server API: http://localhost:8080" -ForegroundColor Cyan
-Write-Host "Web UI: http://localhost:8081" -ForegroundColor Cyan
+Write-Host "Server API: http://localhost:9090" -ForegroundColor Cyan
+Write-Host "Web UI: http://localhost:8080" -ForegroundColor Cyan
 Write-Host "Press Ctrl+C to stop both services" -ForegroundColor Yellow
 Write-Host ""
 
 # Start server in background job
 $serverJob = Start-Job -ScriptBlock {
     Set-Location $using:PSScriptRoot/../cmd/datacat-server
-    go run main.go
+    go run main.go config.go
 }
 
 # Wait a moment for server to start
