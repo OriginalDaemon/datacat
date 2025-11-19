@@ -7,13 +7,116 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"os"
+	"os/exec"
 	"time"
 )
 
+// DaemonManager manages the local datacat daemon subprocess
+type DaemonManager struct {
+	daemonPort   string
+	serverURL    string
+	daemonBinary string
+	process      *exec.Cmd
+	started      bool
+}
+
+// NewDaemonManager creates a new daemon manager
+func NewDaemonManager(daemonPort, serverURL, daemonBinary string) *DaemonManager {
+	if daemonBinary == "" {
+		daemonBinary = findDaemonBinary()
+	}
+	return &DaemonManager{
+		daemonPort:   daemonPort,
+		serverURL:    serverURL,
+		daemonBinary: daemonBinary,
+	}
+}
+
+// findDaemonBinary finds the daemon binary in common locations
+func findDaemonBinary() string {
+	// Check common locations
+	possiblePaths := []string{
+		"datacat-daemon",                    // In PATH
+		"./datacat-daemon",                  // Current directory
+		"./cmd/datacat-daemon/datacat-daemon", // Development
+	}
+
+	for _, path := range possiblePaths {
+		if _, err := exec.LookPath(path); err == nil {
+			return path
+		}
+		if _, err := os.Stat(path); err == nil {
+			return path
+		}
+	}
+
+	return "datacat-daemon" // Default and let it fail if not found
+}
+
+// Start starts the daemon subprocess
+func (dm *DaemonManager) Start() error {
+	if dm.started && dm.process != nil && dm.process.Process != nil {
+		return nil // Already running
+	}
+
+	// Create config for daemon
+	config := map[string]interface{}{
+		"daemon_port":               dm.daemonPort,
+		"server_url":                dm.serverURL,
+		"batch_interval_seconds":    5,
+		"max_batch_size":            100,
+		"heartbeat_timeout_seconds": 60,
+	}
+
+	// Write config to temporary file
+	configPath := "daemon_config.json"
+	configData, err := json.MarshalIndent(config, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal config: %w", err)
+	}
+
+	if err := ioutil.WriteFile(configPath, configData, 0644); err != nil {
+		return fmt.Errorf("failed to write config: %w", err)
+	}
+
+	// Start daemon process
+	dm.process = exec.Command(dm.daemonBinary)
+	if err := dm.process.Start(); err != nil {
+		return fmt.Errorf("failed to start daemon binary '%s': %w", dm.daemonBinary, err)
+	}
+
+	dm.started = true
+
+	// Wait a bit for daemon to start
+	time.Sleep(1 * time.Second)
+
+	return nil
+}
+
+// Stop stops the daemon subprocess
+func (dm *DaemonManager) Stop() error {
+	if dm.process != nil && dm.process.Process != nil {
+		if err := dm.process.Process.Kill(); err != nil {
+			return err
+		}
+		dm.process.Wait()
+	}
+	dm.started = false
+	return nil
+}
+
+// IsRunning checks if daemon is running
+func (dm *DaemonManager) IsRunning() bool {
+	return dm.started && dm.process != nil && dm.process.Process != nil
+}
+
 // Client is a datacat API client
 type Client struct {
-	BaseURL    string
-	HTTPClient *http.Client
+	BaseURL       string
+	HTTPClient    *http.Client
+	UseDaemon     bool
+	DaemonManager *DaemonManager
 }
 
 // Session represents a datacat session
@@ -57,12 +160,56 @@ func NewClient(baseURL string) *Client {
 		HTTPClient: &http.Client{
 			Timeout: 30 * time.Second,
 		},
+		UseDaemon: false,
 	}
+}
+
+// NewClientWithDaemon creates a new datacat client that uses a local daemon
+func NewClientWithDaemon(serverURL, daemonPort string) (*Client, error) {
+	dm := NewDaemonManager(daemonPort, serverURL, "")
+	if err := dm.Start(); err != nil {
+		return nil, fmt.Errorf("failed to start daemon: %w", err)
+	}
+
+	return &Client{
+		BaseURL: fmt.Sprintf("http://localhost:%s", daemonPort),
+		HTTPClient: &http.Client{
+			Timeout: 30 * time.Second,
+		},
+		UseDaemon:     true,
+		DaemonManager: dm,
+	}, nil
+}
+
+// Close closes the client and stops the daemon if running
+func (c *Client) Close() error {
+	if c.DaemonManager != nil {
+		return c.DaemonManager.Stop()
+	}
+	return nil
 }
 
 // CreateSession creates a new session
 func (c *Client) CreateSession() (string, error) {
-	resp, err := c.HTTPClient.Post(c.BaseURL+"/api/sessions", "application/json", nil)
+	var url string
+	var reqData []byte
+	var err error
+
+	if c.UseDaemon {
+		url = c.BaseURL + "/register"
+		// Send parent PID so daemon can monitor for crashes
+		data := map[string]interface{}{
+			"parent_pid": os.Getpid(),
+		}
+		reqData, err = json.Marshal(data)
+		if err != nil {
+			return "", fmt.Errorf("failed to marshal request: %w", err)
+		}
+	} else {
+		url = c.BaseURL + "/api/sessions"
+	}
+
+	resp, err := c.HTTPClient.Post(url, "application/json", bytes.NewBuffer(reqData))
 	if err != nil {
 		return "", fmt.Errorf("failed to create session: %w", err)
 	}
@@ -104,12 +251,26 @@ func (c *Client) GetSession(sessionID string) (*Session, error) {
 
 // UpdateState updates session state
 func (c *Client) UpdateState(sessionID string, state map[string]interface{}) error {
-	data, err := json.Marshal(state)
+	var url string
+	var data interface{}
+
+	if c.UseDaemon {
+		url = c.BaseURL + "/state"
+		data = map[string]interface{}{
+			"session_id": sessionID,
+			"state":      state,
+		}
+	} else {
+		url = c.BaseURL + "/api/sessions/" + sessionID + "/state"
+		data = state
+	}
+
+	jsonData, err := json.Marshal(data)
 	if err != nil {
 		return fmt.Errorf("failed to marshal state: %w", err)
 	}
 
-	req, err := http.NewRequest("POST", c.BaseURL+"/api/sessions/"+sessionID+"/state", bytes.NewBuffer(data))
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
@@ -131,17 +292,30 @@ func (c *Client) UpdateState(sessionID string, state map[string]interface{}) err
 
 // LogEvent logs an event
 func (c *Client) LogEvent(sessionID, name string, data map[string]interface{}) error {
-	eventData := map[string]interface{}{
-		"name": name,
-		"data": data,
+	var url string
+	var requestData interface{}
+
+	if c.UseDaemon {
+		url = c.BaseURL + "/event"
+		requestData = map[string]interface{}{
+			"session_id": sessionID,
+			"name":       name,
+			"data":       data,
+		}
+	} else {
+		url = c.BaseURL + "/api/sessions/" + sessionID + "/events"
+		requestData = map[string]interface{}{
+			"name": name,
+			"data": data,
+		}
 	}
 
-	jsonData, err := json.Marshal(eventData)
+	jsonData, err := json.Marshal(requestData)
 	if err != nil {
 		return fmt.Errorf("failed to marshal event: %w", err)
 	}
 
-	req, err := http.NewRequest("POST", c.BaseURL+"/api/sessions/"+sessionID+"/events", bytes.NewBuffer(jsonData))
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
@@ -163,10 +337,24 @@ func (c *Client) LogEvent(sessionID, name string, data map[string]interface{}) e
 
 // LogMetric logs a metric
 func (c *Client) LogMetric(sessionID, name string, value float64, tags []string) error {
-	metricData := map[string]interface{}{
-		"name":  name,
-		"value": value,
-		"tags":  tags,
+	var url string
+	var metricData interface{}
+
+	if c.UseDaemon {
+		url = c.BaseURL + "/metric"
+		metricData = map[string]interface{}{
+			"session_id": sessionID,
+			"name":       name,
+			"value":      value,
+			"tags":       tags,
+		}
+	} else {
+		url = c.BaseURL + "/api/sessions/" + sessionID + "/metrics"
+		metricData = map[string]interface{}{
+			"name":  name,
+			"value": value,
+			"tags":  tags,
+		}
 	}
 
 	jsonData, err := json.Marshal(metricData)
@@ -174,7 +362,7 @@ func (c *Client) LogMetric(sessionID, name string, value float64, tags []string)
 		return fmt.Errorf("failed to marshal metric: %w", err)
 	}
 
-	req, err := http.NewRequest("POST", c.BaseURL+"/api/sessions/"+sessionID+"/metrics", bytes.NewBuffer(jsonData))
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
@@ -196,7 +384,24 @@ func (c *Client) LogMetric(sessionID, name string, value float64, tags []string)
 
 // EndSession ends a session
 func (c *Client) EndSession(sessionID string) error {
-	req, err := http.NewRequest("POST", c.BaseURL+"/api/sessions/"+sessionID+"/end", nil)
+	var url string
+	var reqData []byte
+	var err error
+
+	if c.UseDaemon {
+		url = c.BaseURL + "/end"
+		data := map[string]interface{}{
+			"session_id": sessionID,
+		}
+		reqData, err = json.Marshal(data)
+		if err != nil {
+			return fmt.Errorf("failed to marshal request: %w", err)
+		}
+	} else {
+		url = c.BaseURL + "/api/sessions/" + sessionID + "/end"
+	}
+
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(reqData))
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
@@ -210,6 +415,42 @@ func (c *Client) EndSession(sessionID string) error {
 	if resp.StatusCode != http.StatusOK {
 		body, _ := ioutil.ReadAll(resp.Body)
 		return fmt.Errorf("end session failed with status %d: %s", resp.StatusCode, string(body))
+	}
+
+	return nil
+}
+
+// Heartbeat sends a heartbeat to the daemon (only works when using daemon)
+func (c *Client) Heartbeat(sessionID string) error {
+	if !c.UseDaemon {
+		return nil // Heartbeat only relevant with daemon
+	}
+
+	url := c.BaseURL + "/heartbeat"
+	data := map[string]interface{}{
+		"session_id": sessionID,
+	}
+
+	jsonData, err := json.Marshal(data)
+	if err != nil {
+		return fmt.Errorf("failed to marshal heartbeat: %w", err)
+	}
+
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to send heartbeat: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := ioutil.ReadAll(resp.Body)
+		return fmt.Errorf("heartbeat failed with status %d: %s", resp.StatusCode, string(body))
 	}
 
 	return nil

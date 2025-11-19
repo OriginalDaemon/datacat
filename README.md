@@ -89,15 +89,20 @@ The core service providing session management, state tracking, and data persiste
 - **Port:** 8080 (default)
 - **[Full Documentation](cmd/datacat-server/README.md)**
 
-### [datacat-daemon](cmd/datacat-daemon/) - Local Batching Daemon ⭐ NEW
+### [datacat-daemon](cmd/datacat-daemon/) - Local Batching Daemon ⭐ RECOMMENDED
 
-Intelligent local service that reduces network traffic through batching and smart filtering.
+Intelligent local subprocess that reduces network traffic through batching and smart filtering.
 
-- **Technology:** Go HTTP server
-- **Features:** 10-100x network reduction, smart state filtering, auto-retry with queueing
+- **Technology:** Go HTTP server subprocess
+- **Features:** 
+  - **10-100x network reduction** through intelligent batching
+  - **Smart state filtering** (only sends changed state)
+  - **Parent process monitoring** (detects crashes/abnormal exits)
+  - **Hang detection** (monitors heartbeats)
+  - **Auto-retry with queueing**
 - **Port:** 8079 (default)
-- **Architecture:** Client → Daemon (local) → Server (remote)
-- **[Full Documentation](cmd/datacat-daemon/README.md)**
+- **Architecture:** Application → Daemon (subprocess) → Server (remote)
+- **Usage:** Automatically started by client libraries when `use_daemon=True`
 
 ### [datacat-web](cmd/datacat-web/) - Web Dashboard
 
@@ -128,17 +133,20 @@ Python 2.7+ and 3.x compatible client with advanced features.
 
 ### Python Client
 
+**With Local Daemon (Recommended):**
+
 ```python
 from datacat import create_session
 
-session = create_session("http://localhost:8080")
+# Create session with local daemon (automatic batching and crash detection)
+session = create_session("http://localhost:8080", use_daemon=True)
 
 # Nested state updates with deep merge
 session.update_state({
     "window_state": {"open": ["w1", "w2"], "active": "w1"}
 })
 
-# Log events and metrics
+# Log events and metrics (batched by daemon)
 session.log_event("user_action", {"action": "click"})
 session.log_metric("memory_usage", 1024.5)
 
@@ -148,7 +156,7 @@ try:
 except Exception:
     session.log_exception(extra_data={"context": "user_action"})
 
-# Heartbeat monitoring for hang detection
+# Heartbeat monitoring - daemon detects hangs and crashes
 session.start_heartbeat_monitor(timeout=60)
 while running:
     session.heartbeat()
@@ -157,7 +165,38 @@ while running:
 session.end()
 ```
 
+**Direct to Server (No Daemon):**
+
+```python
+# For simple use cases without batching/monitoring
+session = create_session("http://localhost:8080", use_daemon=False)
+# ... same API as above
+```
+
 ### Go Client
+
+**With Local Daemon (Recommended):**
+
+```go
+import "github.com/OriginalDaemon/datacat/client"
+
+// Create client with local daemon
+c, err := client.NewClientWithDaemon("http://localhost:8080", "8079")
+if err != nil {
+    log.Fatal(err)
+}
+defer c.Close()
+
+sessionID, _ := c.CreateSession()
+c.UpdateState(sessionID, map[string]interface{}{"status": "running"})
+
+// Send heartbeats - daemon detects hangs and crashes
+c.Heartbeat(sessionID)
+
+c.EndSession(sessionID)
+```
+
+**Direct to Server (No Daemon):**
 
 ```go
 import "github.com/OriginalDaemon/datacat/client"
