@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -19,6 +21,8 @@ type SessionBuffer struct {
 	LastHeartbeat  time.Time
 	LastState      map[string]interface{}
 	HangLogged     bool
+	ParentPID      int  // Parent process ID
+	CrashLogged    bool // Whether crash has been logged
 	mu             sync.Mutex
 }
 
@@ -58,6 +62,9 @@ func (d *Daemon) Start() error {
 	// Start heartbeat monitor goroutine
 	go d.heartbeatMonitor()
 
+	// Start parent process monitor goroutine
+	go d.parentProcessMonitor()
+
 	// Setup HTTP handlers
 	http.HandleFunc("/register", d.handleRegister)
 	http.HandleFunc("/state", d.handleState)
@@ -78,6 +85,12 @@ func (d *Daemon) handleRegister(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+
+	// Parse request body to get parent PID
+	var req struct {
+		ParentPID int `json:"parent_pid"`
+	}
+	json.NewDecoder(r.Body).Decode(&req)
 
 	// Forward to server to create session
 	resp, err := http.Post(d.config.ServerURL+"/api/sessions", "application/json", nil)
@@ -109,10 +122,12 @@ func (d *Daemon) handleRegister(w http.ResponseWriter, r *http.Request) {
 		LastHeartbeat: time.Now(),
 		LastState:     make(map[string]interface{}),
 		HangLogged:    false,
+		ParentPID:     req.ParentPID,
+		CrashLogged:   false,
 	}
 	d.mu.Unlock()
 
-	log.Printf("Registered session: %s", sessionID)
+	log.Printf("Registered session: %s (parent PID: %d)", sessionID, req.ParentPID)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(result)
@@ -511,6 +526,74 @@ func (d *Daemon) mergeState(old, new map[string]interface{}) map[string]interfac
 	}
 	
 	return result
+}
+
+// parentProcessMonitor checks if parent processes are still alive
+func (d *Daemon) parentProcessMonitor() {
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		d.mu.RLock()
+		sessionIDs := make([]string, 0, len(d.sessions))
+		for id := range d.sessions {
+			sessionIDs = append(sessionIDs, id)
+		}
+		d.mu.RUnlock()
+
+		for _, sessionID := range sessionIDs {
+			d.checkParentProcess(sessionID)
+		}
+	}
+}
+
+// checkParentProcess checks if parent process is still alive
+func (d *Daemon) checkParentProcess(sessionID string) {
+	d.mu.RLock()
+	buffer, exists := d.sessions[sessionID]
+	d.mu.RUnlock()
+
+	if !exists {
+		return
+	}
+
+	buffer.mu.Lock()
+	defer buffer.mu.Unlock()
+
+	// Skip if no parent PID set or already logged
+	if buffer.ParentPID == 0 || buffer.CrashLogged {
+		return
+	}
+
+	// Check if process is still running
+	if !isProcessRunning(buffer.ParentPID) {
+		// Parent process has crashed or exited abnormally
+		buffer.Events = append(buffer.Events, EventData{
+			Name: "parent_process_crashed",
+			Data: map[string]interface{}{
+				"parent_pid": buffer.ParentPID,
+			},
+		})
+		buffer.CrashLogged = true
+		log.Printf("Session %s: parent process %d crashed/exited", sessionID, buffer.ParentPID)
+
+		// Immediately flush this event
+		go d.flushSession(sessionID)
+	}
+}
+
+// isProcessRunning checks if a process with the given PID is running
+func isProcessRunning(pid int) bool {
+	// Send signal 0 to check if process exists
+	// This works on Unix-like systems
+	process, err := os.FindProcess(pid)
+	if err != nil {
+		return false
+	}
+
+	// On Unix, FindProcess always succeeds, so we need to send signal 0
+	err = process.Signal(syscall.Signal(0))
+	return err == nil
 }
 
 func main() {
