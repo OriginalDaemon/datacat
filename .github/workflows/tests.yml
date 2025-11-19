@@ -35,37 +35,8 @@ jobs:
       run: |
         mypy python/ --ignore-missing-imports
 
-  test-go:
-    name: Go Tests with Coverage
-    runs-on: ubuntu-latest
-    
-    steps:
-    - uses: actions/checkout@v4
-    
-    - name: Set up Go
-      uses: actions/setup-go@v4
-      with:
-        go-version: '1.21'
-    
-    - name: Build datacat-server
-      run: cd cmd/datacat-server && go build -v
-    
-    - name: Build datacat-web
-      run: cd cmd/datacat-web && go build -v
-    
-    - name: Test with coverage
-      run: go test -v -coverprofile=coverage.out -covermode=atomic ./...
-    
-    - name: Upload Go coverage to Codecov
-      uses: codecov/codecov-action@v5
-      with:
-        files: ./coverage.out
-        flags: go
-        name: go-coverage
-        token: ${{ secrets.CODECOV_TOKEN }}
-
-  test-python:
-    name: Python Tests with Coverage
+  test-with-coverage:
+    name: Run Tests and Upload Coverage
     runs-on: ubuntu-latest
     
     steps:
@@ -88,18 +59,26 @@ jobs:
         pip install -e python/
     
     - name: Build datacat-server
+      run: cd cmd/datacat-server && go build -v
+    
+    - name: Build datacat-web
+      run: cd cmd/datacat-web && go build -v
+    
+    - name: Build datacat for Python tests
       run: cd cmd/datacat-server && go build -o ../../datacat
     
-    - name: Run tests with coverage
+    - name: Run Go tests with coverage
+      run: go test -v -coverprofile=coverage.out -covermode=atomic ./...
+    
+    - name: Run Python tests with coverage
       run: |
         python -m pytest tests/ -v --cov=python --cov-report=xml --cov-report=term
     
-    - name: Upload Python coverage to Codecov
+    - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v5
       with:
-        files: ./coverage.xml
-        flags: python
-        name: python-coverage
+        files: ./coverage.out,./coverage.xml
+        flags: go,python
         token: ${{ secrets.CODECOV_TOKEN }}
 
   test-persistence:
