@@ -7,6 +7,7 @@ including error handling, HeartbeatMonitor, and edge cases.
 
 import json
 import os
+import subprocess
 import sys
 import threading
 import time
@@ -16,7 +17,13 @@ from unittest.mock import Mock, patch, MagicMock
 # Add python directory to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "python"))
 
-from datacat import DatacatClient, HeartbeatMonitor, Session, create_session
+from datacat import (
+    DatacatClient,
+    DaemonManager,
+    HeartbeatMonitor,
+    Session,
+    create_session,
+)
 
 try:
     from urllib.error import HTTPError, URLError
@@ -533,6 +540,548 @@ class TestEdgeCases(unittest.TestCase):
         self.assertTrue(monitor.is_running())
 
         monitor.stop()
+
+
+class TestDaemonManager(unittest.TestCase):
+    """Test DaemonManager functionality"""
+
+    def test_daemon_manager_initialization(self):
+        """Test DaemonManager initialization with defaults"""
+        manager = DaemonManager()
+        self.assertEqual(manager.daemon_port, "8079")
+        self.assertEqual(manager.server_url, "http://localhost:8080")
+        self.assertIsNotNone(manager.daemon_binary)
+        self.assertIsNone(manager.process)
+        self.assertFalse(manager._started)
+
+    def test_daemon_manager_initialization_with_params(self):
+        """Test DaemonManager initialization with custom parameters"""
+        manager = DaemonManager(
+            daemon_port="9999",
+            server_url="http://example.com:8080",
+            daemon_binary="/custom/path/daemon",
+        )
+        self.assertEqual(manager.daemon_port, "9999")
+        self.assertEqual(manager.server_url, "http://example.com:8080")
+        self.assertEqual(manager.daemon_binary, "/custom/path/daemon")
+
+    def test_find_daemon_binary_returns_default(self):
+        """Test that _find_daemon_binary returns a default value"""
+        manager = DaemonManager()
+        binary = manager._find_daemon_binary()
+        # Should return some path (could be default or found path)
+        self.assertIsInstance(binary, str)
+        self.assertTrue(len(binary) > 0)
+
+    @patch("datacat.subprocess.call")
+    def test_is_in_path_unix(self, mock_call):
+        """Test _is_in_path on Unix systems"""
+        manager = DaemonManager()
+
+        # Mock successful result (binary in PATH)
+        mock_call.return_value = 0
+        with patch("sys.platform", "linux"):
+            result = manager._is_in_path("test-binary")
+        self.assertTrue(result)
+
+        # Verify 'which' was called on Unix
+        mock_call.assert_called_with(
+            ["which", "test-binary"], stdout=subprocess.PIPE, stderr=subprocess.PIPE
+        )
+
+    @patch("datacat.subprocess.call")
+    def test_is_in_path_windows(self, mock_call):
+        """Test _is_in_path on Windows systems"""
+        manager = DaemonManager()
+
+        # Mock successful result (binary in PATH)
+        mock_call.return_value = 0
+        with patch("sys.platform", "win32"):
+            result = manager._is_in_path("test-binary.exe")
+        self.assertTrue(result)
+
+        # Verify 'where' was called on Windows
+        mock_call.assert_called_with(
+            ["where", "test-binary.exe"], stdout=subprocess.PIPE, stderr=subprocess.PIPE
+        )
+
+    @patch("datacat.subprocess.call")
+    def test_is_in_path_not_found(self, mock_call):
+        """Test _is_in_path when binary is not in PATH"""
+        manager = DaemonManager()
+
+        # Mock unsuccessful result (binary not in PATH)
+        mock_call.return_value = 1
+        result = manager._is_in_path("nonexistent-binary")
+        self.assertFalse(result)
+
+    @patch("datacat.subprocess.call")
+    def test_is_in_path_exception_handling(self, mock_call):
+        """Test _is_in_path handles exceptions gracefully"""
+        manager = DaemonManager()
+
+        # Mock exception
+        mock_call.side_effect = Exception("Command failed")
+        result = manager._is_in_path("test-binary")
+        self.assertFalse(result)
+
+    @patch("datacat.os.path.exists")
+    def test_find_daemon_binary_checks_paths(self, mock_exists):
+        """Test that _find_daemon_binary checks various paths"""
+        manager = DaemonManager()
+
+        # Mock that binary exists in second path
+        def exists_side_effect(path):
+            return path == "./datacat-daemon"
+
+        mock_exists.side_effect = exists_side_effect
+
+        binary = manager._find_daemon_binary()
+        self.assertEqual(binary, "./datacat-daemon")
+
+    @patch("datacat.os.path.exists")
+    @patch("datacat.subprocess.call")
+    def test_find_daemon_binary_returns_default_when_not_found(
+        self, mock_call, mock_exists
+    ):
+        """Test that _find_daemon_binary returns default when not found anywhere"""
+        manager = DaemonManager()
+
+        # Mock that binary doesn't exist anywhere
+        mock_exists.return_value = False
+        mock_call.return_value = 1  # Not in PATH
+
+        binary = manager._find_daemon_binary()
+        self.assertEqual(binary, "datacat-daemon")
+
+    def test_is_running_when_not_started(self):
+        """Test is_running returns False when not started"""
+        manager = DaemonManager()
+        self.assertFalse(manager.is_running())
+
+    @patch("datacat.subprocess.Popen")
+    @patch("datacat.subprocess.call")
+    @patch("datacat.time.sleep")
+    @patch("datacat.atexit.register")
+    @patch("builtins.open", new_callable=MagicMock)
+    def test_daemon_start_success(
+        self, mock_open, mock_atexit, mock_sleep, mock_call, mock_popen
+    ):
+        """Test successful daemon start"""
+        # Mock that binary is not in PATH (so it uses default)
+        mock_call.return_value = 1
+
+        # Mock process that stays alive
+        mock_process = Mock()
+        mock_process.poll.return_value = None  # Process is running
+        mock_popen.return_value = mock_process
+
+        manager = DaemonManager()
+        manager.start()
+
+        # Verify daemon was started
+        self.assertTrue(manager._started)
+        self.assertEqual(manager.process, mock_process)
+        # Popen should be called for starting the daemon
+        self.assertTrue(mock_popen.called)
+        mock_atexit.assert_called_once()
+
+    @patch("datacat.subprocess.Popen")
+    @patch("datacat.subprocess.call")
+    @patch("datacat.time.sleep")
+    @patch("builtins.open", new_callable=MagicMock)
+    def test_daemon_start_failure(self, mock_open, mock_sleep, mock_call, mock_popen):
+        """Test daemon start when process fails immediately"""
+        # Mock that binary is not in PATH
+        mock_call.return_value = 1
+
+        # Mock process that exits immediately
+        mock_process = Mock()
+        mock_process.poll.return_value = 1  # Process exited
+        mock_popen.return_value = mock_process
+
+        manager = DaemonManager()
+
+        with self.assertRaises(Exception) as context:
+            manager.start()
+
+        self.assertIn("failed to start", str(context.exception).lower())
+
+    @patch("datacat.subprocess.Popen")
+    @patch("builtins.open", new_callable=MagicMock)
+    def test_daemon_start_binary_not_found(self, mock_open, mock_popen):
+        """Test daemon start when binary is not found"""
+        # Mock OSError (binary not found)
+        mock_popen.side_effect = OSError("No such file or directory")
+
+        manager = DaemonManager(daemon_binary="/nonexistent/daemon")
+
+        with self.assertRaises(Exception) as context:
+            manager.start()
+
+        self.assertIn("Failed to start daemon binary", str(context.exception))
+        self.assertIn("/nonexistent/daemon", str(context.exception))
+
+    @patch("datacat.subprocess.Popen")
+    @patch("datacat.subprocess.call")
+    @patch("datacat.time.sleep")
+    @patch("datacat.atexit.register")
+    @patch("builtins.open", new_callable=MagicMock)
+    def test_daemon_start_idempotent(
+        self, mock_open, mock_atexit, mock_sleep, mock_call, mock_popen
+    ):
+        """Test that calling start multiple times doesn't start multiple daemons"""
+        # Mock that binary is not in PATH
+        mock_call.return_value = 1
+
+        # Mock process that stays alive
+        mock_process = Mock()
+        mock_process.poll.return_value = None  # Process is running
+        mock_popen.return_value = mock_process
+
+        manager = DaemonManager()
+        initial_popen_call_count = mock_popen.call_count
+        manager.start()
+        after_first_start = mock_popen.call_count
+
+        # Call start again
+        manager.start()
+        after_second_start = mock_popen.call_count
+
+        # Should not call Popen again for the second start
+        self.assertEqual(after_first_start, after_second_start)
+
+    @patch("datacat.subprocess.Popen")
+    @patch("datacat.subprocess.call")
+    @patch("datacat.time.sleep")
+    @patch("datacat.atexit.register")
+    @patch("builtins.open", new_callable=MagicMock)
+    def test_daemon_stop(
+        self, mock_open, mock_atexit, mock_sleep, mock_call, mock_popen
+    ):
+        """Test stopping the daemon"""
+        # Mock that binary is not in PATH
+        mock_call.return_value = 1
+
+        # Mock process that stays alive
+        mock_process = Mock()
+        mock_process.poll.return_value = None  # Process is running
+        mock_process.wait.return_value = None
+        mock_popen.return_value = mock_process
+
+        manager = DaemonManager()
+        manager.start()
+        manager.stop()
+
+        # Verify daemon was stopped
+        self.assertFalse(manager._started)
+        mock_process.terminate.assert_called_once()
+        mock_process.wait.assert_called_once()
+
+    @patch("datacat.subprocess.Popen")
+    @patch("datacat.subprocess.call")
+    @patch("datacat.time.sleep")
+    @patch("datacat.atexit.register")
+    @patch("builtins.open", new_callable=MagicMock)
+    def test_daemon_stop_with_kill(
+        self, mock_open, mock_atexit, mock_sleep, mock_call, mock_popen
+    ):
+        """Test stopping daemon when terminate times out"""
+        # Mock that binary is not in PATH
+        mock_call.return_value = 1
+
+        # Mock process that stays alive
+        mock_process = Mock()
+        mock_process.poll.return_value = None  # Process is running
+        mock_process.wait.side_effect = Exception("Timeout")  # Simulate timeout
+        mock_popen.return_value = mock_process
+
+        manager = DaemonManager()
+        manager.start()
+        manager.stop()
+
+        # Verify daemon was terminated and killed
+        mock_process.terminate.assert_called_once()
+        mock_process.kill.assert_called_once()
+        self.assertFalse(manager._started)
+
+    def test_daemon_stop_when_not_running(self):
+        """Test stopping daemon when it's not running"""
+        manager = DaemonManager()
+        # Should not raise
+        manager.stop()
+        self.assertFalse(manager._started)
+
+
+class TestDatacatClientWithDaemon(unittest.TestCase):
+    """Test DatacatClient with daemon enabled"""
+
+    @patch("datacat.DaemonManager")
+    def test_client_with_daemon_initialization(self, mock_daemon_class):
+        """Test client initialization with daemon enabled"""
+        mock_daemon = Mock()
+        mock_daemon_class.return_value = mock_daemon
+
+        client = DatacatClient(
+            base_url="http://example.com:8080", use_daemon=True, daemon_port="9999"
+        )
+
+        # Verify daemon was created and started
+        mock_daemon_class.assert_called_once_with(
+            daemon_port="9999", server_url="http://example.com:8080"
+        )
+        mock_daemon.start.assert_called_once()
+
+        # Verify base_url points to daemon
+        self.assertEqual(client.base_url, "http://localhost:9999")
+        self.assertTrue(client.use_daemon)
+
+    @patch("datacat.urlopen")
+    @patch("datacat.DaemonManager")
+    def test_register_session_with_daemon(self, mock_daemon_class, mock_urlopen):
+        """Test register_session with daemon sends parent PID"""
+        mock_daemon = Mock()
+        mock_daemon_class.return_value = mock_daemon
+
+        mock_response = Mock()
+        mock_response.read.return_value = b'{"session_id": "test-123"}'
+        mock_urlopen.return_value = mock_response
+
+        client = DatacatClient(use_daemon=True)
+        session_id = client.register_session()
+
+        # Verify correct endpoint was called
+        call_args = mock_urlopen.call_args
+        request = call_args[0][0]
+        self.assertTrue(request.get_full_url().endswith("/register"))
+
+        # Verify parent PID was sent
+        sent_data = json.loads(request.data.decode("utf-8"))
+        self.assertIn("parent_pid", sent_data)
+        self.assertEqual(sent_data["parent_pid"], os.getpid())
+
+        self.assertEqual(session_id, "test-123")
+
+    @patch("datacat.urlopen")
+    @patch("datacat.DaemonManager")
+    def test_update_state_with_daemon(self, mock_daemon_class, mock_urlopen):
+        """Test update_state with daemon uses correct format"""
+        mock_daemon = Mock()
+        mock_daemon_class.return_value = mock_daemon
+
+        mock_response = Mock()
+        mock_response.read.return_value = b'{"status": "ok"}'
+        mock_urlopen.return_value = mock_response
+
+        client = DatacatClient(use_daemon=True)
+        client.update_state("session-123", {"key": "value"})
+
+        # Verify correct endpoint and format
+        call_args = mock_urlopen.call_args
+        request = call_args[0][0]
+        self.assertTrue(request.get_full_url().endswith("/state"))
+
+        sent_data = json.loads(request.data.decode("utf-8"))
+        self.assertEqual(sent_data["session_id"], "session-123")
+        self.assertEqual(sent_data["state"], {"key": "value"})
+
+    @patch("datacat.urlopen")
+    @patch("datacat.DaemonManager")
+    def test_log_event_with_daemon(self, mock_daemon_class, mock_urlopen):
+        """Test log_event with daemon uses correct format"""
+        mock_daemon = Mock()
+        mock_daemon_class.return_value = mock_daemon
+
+        mock_response = Mock()
+        mock_response.read.return_value = b'{"status": "ok"}'
+        mock_urlopen.return_value = mock_response
+
+        client = DatacatClient(use_daemon=True)
+        client.log_event("session-123", "test_event", {"data": "value"})
+
+        # Verify correct endpoint and format
+        call_args = mock_urlopen.call_args
+        request = call_args[0][0]
+        self.assertTrue(request.get_full_url().endswith("/event"))
+
+        sent_data = json.loads(request.data.decode("utf-8"))
+        self.assertEqual(sent_data["session_id"], "session-123")
+        self.assertEqual(sent_data["name"], "test_event")
+        self.assertEqual(sent_data["data"], {"data": "value"})
+
+    @patch("datacat.urlopen")
+    @patch("datacat.DaemonManager")
+    def test_log_metric_with_daemon(self, mock_daemon_class, mock_urlopen):
+        """Test log_metric with daemon uses correct format"""
+        mock_daemon = Mock()
+        mock_daemon_class.return_value = mock_daemon
+
+        mock_response = Mock()
+        mock_response.read.return_value = b'{"status": "ok"}'
+        mock_urlopen.return_value = mock_response
+
+        client = DatacatClient(use_daemon=True)
+        client.log_metric("session-123", "cpu_usage", 45.5, ["tag1", "tag2"])
+
+        # Verify correct endpoint and format
+        call_args = mock_urlopen.call_args
+        request = call_args[0][0]
+        self.assertTrue(request.get_full_url().endswith("/metric"))
+
+        sent_data = json.loads(request.data.decode("utf-8"))
+        self.assertEqual(sent_data["session_id"], "session-123")
+        self.assertEqual(sent_data["name"], "cpu_usage")
+        self.assertEqual(sent_data["value"], 45.5)
+        self.assertEqual(sent_data["tags"], ["tag1", "tag2"])
+
+    @patch("datacat.urlopen")
+    @patch("datacat.DaemonManager")
+    def test_end_session_with_daemon(self, mock_daemon_class, mock_urlopen):
+        """Test end_session with daemon uses correct format"""
+        mock_daemon = Mock()
+        mock_daemon_class.return_value = mock_daemon
+
+        mock_response = Mock()
+        mock_response.read.return_value = b'{"status": "ok"}'
+        mock_urlopen.return_value = mock_response
+
+        client = DatacatClient(use_daemon=True)
+        client.end_session("session-123")
+
+        # Verify correct endpoint and format
+        call_args = mock_urlopen.call_args
+        request = call_args[0][0]
+        self.assertTrue(request.get_full_url().endswith("/end"))
+
+        sent_data = json.loads(request.data.decode("utf-8"))
+        self.assertEqual(sent_data["session_id"], "session-123")
+
+
+class TestHeartbeatMonitorWithDaemon(unittest.TestCase):
+    """Test HeartbeatMonitor with daemon enabled"""
+
+    @patch("datacat.DaemonManager")
+    def test_monitor_loop_with_daemon(self, mock_daemon_class):
+        """Test that monitor loop skips hung detection when using daemon"""
+        mock_daemon = Mock()
+        mock_daemon_class.return_value = mock_daemon
+
+        mock_client = DatacatClient(use_daemon=True)
+        mock_client.log_event = Mock()
+
+        monitor = HeartbeatMonitor(
+            mock_client,
+            "test-session",
+            timeout=1,
+            check_interval=0.5,
+        )
+
+        monitor.start()
+
+        # Wait for timeout to pass
+        time.sleep(2)
+
+        # Verify no hung event was logged (daemon handles it)
+        mock_client.log_event.assert_not_called()
+
+        monitor.stop()
+
+    @patch("datacat.urlopen")
+    @patch("datacat.DaemonManager")
+    def test_heartbeat_with_daemon(self, mock_daemon_class, mock_urlopen):
+        """Test that heartbeat sends to daemon when using daemon"""
+        mock_daemon = Mock()
+        mock_daemon_class.return_value = mock_daemon
+
+        mock_response = Mock()
+        mock_response.read.return_value = b'{"status": "ok"}'
+        mock_urlopen.return_value = mock_response
+
+        client = DatacatClient(use_daemon=True, daemon_port="9999")
+        monitor = HeartbeatMonitor(client, "test-session")
+
+        monitor.heartbeat()
+
+        # Verify heartbeat was sent to daemon
+        call_args = mock_urlopen.call_args
+        request = call_args[0][0]
+        self.assertTrue(request.get_full_url().endswith("/heartbeat"))
+        self.assertIn("localhost:9999", request.get_full_url())
+
+        sent_data = json.loads(request.data.decode("utf-8"))
+        self.assertEqual(sent_data["session_id"], "test-session")
+
+    @patch("datacat.urlopen")
+    @patch("datacat.DaemonManager")
+    def test_heartbeat_with_daemon_handles_failure(
+        self, mock_daemon_class, mock_urlopen
+    ):
+        """Test that heartbeat failure with daemon is handled gracefully"""
+        mock_daemon = Mock()
+        mock_daemon_class.return_value = mock_daemon
+
+        # Mock network failure
+        mock_urlopen.side_effect = Exception("Network error")
+
+        client = DatacatClient(use_daemon=True)
+        monitor = HeartbeatMonitor(client, "test-session")
+
+        # Should not raise exception
+        monitor.heartbeat()
+
+
+class TestSessionConvenienceMethods(unittest.TestCase):
+    """Test Session convenience methods"""
+
+    def test_session_update_state(self):
+        """Test Session.update_state wrapper"""
+        mock_client = Mock()
+        mock_client.update_state.return_value = {"status": "ok"}
+
+        session = Session(mock_client, "session-123")
+        result = session.update_state({"key": "value"})
+
+        mock_client.update_state.assert_called_once_with(
+            "session-123", {"key": "value"}
+        )
+        self.assertEqual(result, {"status": "ok"})
+
+    def test_session_log_event(self):
+        """Test Session.log_event wrapper"""
+        mock_client = Mock()
+        mock_client.log_event.return_value = {"status": "ok"}
+
+        session = Session(mock_client, "session-123")
+        result = session.log_event("test_event", {"data": "value"})
+
+        mock_client.log_event.assert_called_once_with(
+            "session-123", "test_event", {"data": "value"}
+        )
+        self.assertEqual(result, {"status": "ok"})
+
+    def test_session_log_metric(self):
+        """Test Session.log_metric wrapper"""
+        mock_client = Mock()
+        mock_client.log_metric.return_value = {"status": "ok"}
+
+        session = Session(mock_client, "session-123")
+        result = session.log_metric("cpu_usage", 45.5, ["tag1"])
+
+        mock_client.log_metric.assert_called_once_with(
+            "session-123", "cpu_usage", 45.5, ["tag1"]
+        )
+        self.assertEqual(result, {"status": "ok"})
+
+    def test_session_get_details(self):
+        """Test Session.get_details wrapper"""
+        mock_client = Mock()
+        mock_client.get_session.return_value = {"id": "session-123", "state": {}}
+
+        session = Session(mock_client, "session-123")
+        result = session.get_details()
+
+        mock_client.get_session.assert_called_once_with("session-123")
+        self.assertEqual(result, {"id": "session-123", "state": {}})
 
 
 if __name__ == "__main__":
