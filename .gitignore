@@ -7,10 +7,10 @@
 *.dll
 *.so
 *.dylib
-datacat
-datacat-server
-datacat-web
-datacat-daemon
+/datacat
+/datacat-server
+/datacat-web
+/datacat-daemon
 cmd/datacat-server/datacat-server
 cmd/datacat-web/datacat-web
 cmd/datacat-daemon/datacat-daemon
@@ -24,6 +24,7 @@ bin/
 coverage.*
 *.coverprofile
 profile.cov
+.coverage
 
 # Dependency directories (remove the comment below to include it)
 # vendor/
@@ -37,6 +38,7 @@ go.work.sum
 
 # Database and config
 datacat_db/
+datacat_data/
 badger_data/
 *.db
 daemon_data/

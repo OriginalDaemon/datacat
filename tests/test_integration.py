@@ -35,9 +35,10 @@ class TestDatacatIntegration(unittest.TestCase):
         cls.base_url = "http://localhost:8080"
 
         # Build the service
+        repo_root = os.path.join(os.path.dirname(__file__), "..")
         build_result = subprocess.run(
-            ["go", "build", "-o", "datacat"],
-            cwd=os.path.join(os.path.dirname(__file__), ".."),
+            ["go", "build", "-o", "datacat", "./cmd/datacat-server"],
+            cwd=repo_root,
             capture_output=True,
         )
 
@@ -213,7 +214,7 @@ class TestDatacatPersistence(unittest.TestCase):
     def tearDown(self):
         """Clean up"""
         # Stop any running service
-        subprocess.run(["pkill", "-f", "./datacat"], capture_output=True)
+        subprocess.run(["pkill", "-f", "datacat"], capture_output=True)
         time.sleep(1)
 
     def start_service(self):

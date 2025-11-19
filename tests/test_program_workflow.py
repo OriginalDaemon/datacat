@@ -43,7 +43,7 @@ class TestProgramWorkflow(unittest.TestCase):
 
         # Build the service
         build_result = subprocess.run(
-            ["go", "build", "-o", "datacat-server", "./cmd/datacat-server"],
+            ["go", "build", "-o", "datacat", "./cmd/datacat-server"],
             cwd=os.path.join(os.path.dirname(__file__), ".."),
             capture_output=True,
         )
@@ -53,7 +53,7 @@ class TestProgramWorkflow(unittest.TestCase):
 
         # Start the service
         cls.service_process = subprocess.Popen(
-            ["./datacat-server"],
+            ["./datacat"],
             cwd=os.path.join(os.path.dirname(__file__), ".."),
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,

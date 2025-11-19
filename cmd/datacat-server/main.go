@@ -378,7 +378,8 @@ func main() {
 		config.DataPath, config.RetentionDays, config.ServerPort)
 
 	// Initialize store with BadgerDB
-	store, err := NewStore(config.DataPath, config)
+	var err error
+	store, err = NewStore(config.DataPath, config)
 	if err != nil {
 		log.Fatalf("Failed to initialize store: %v", err)
 	}

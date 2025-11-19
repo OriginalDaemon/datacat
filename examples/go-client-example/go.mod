@@ -1,6 +1,6 @@
 module github.com/OriginalDaemon/datacat/examples/go-client-example
 
-go 1.21
+go 1.24.10
 
 replace github.com/OriginalDaemon/datacat => ../..
 
