@@ -207,7 +207,10 @@ func handleSessionDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tmpl, err := template.ParseFS(content, "templates/base.html", "templates/session.html")
+	funcMap := template.FuncMap{
+		"replace": strings.ReplaceAll,
+	}
+	tmpl, err := template.New("base.html").Funcs(funcMap).ParseFS(content, "templates/base.html", "templates/session.html")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
