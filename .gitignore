@@ -7,10 +7,10 @@
 *.dll
 *.so
 *.dylib
-datacat
-datacat-server
-datacat-web
-datacat-daemon
+/datacat
+/datacat-server
+/datacat-web
+/datacat-daemon
 cmd/datacat-server/datacat-server
 cmd/datacat-web/datacat-web
 cmd/datacat-daemon/datacat-daemon
