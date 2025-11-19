@@ -192,7 +192,10 @@ func handleSessions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	t.Execute(w, data)
+	if err := t.Execute(w, data); err != nil {
+		log.Printf("Template execution error: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+	}
 }
 
 func handleSessionDetail(w http.ResponseWriter, r *http.Request) {
@@ -215,7 +218,10 @@ func handleSessionDetail(w http.ResponseWriter, r *http.Request) {
 		Session: session,
 	}
 
-	tmpl.ExecuteTemplate(w, "base.html", data)
+	if err := tmpl.ExecuteTemplate(w, "base.html", data); err != nil {
+		log.Printf("Template execution error: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+	}
 }
 
 func handleMetrics(w http.ResponseWriter, r *http.Request) {
@@ -229,7 +235,10 @@ func handleMetrics(w http.ResponseWriter, r *http.Request) {
 		Title: "Metrics Visualization",
 	}
 
-	tmpl.ExecuteTemplate(w, "base.html", data)
+	if err := tmpl.ExecuteTemplate(w, "base.html", data); err != nil {
+		log.Printf("Template execution error: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+	}
 }
 
 func handleTimeseriesAPI(w http.ResponseWriter, r *http.Request) {

@@ -100,7 +100,7 @@ func (dm *DaemonManager) Stop() error {
 		if err := dm.process.Process.Kill(); err != nil {
 			return err
 		}
-		dm.process.Wait()
+		_ = dm.process.Wait() // Wait for process to exit, error is expected after Kill
 	}
 	dm.started = false
 	return nil
