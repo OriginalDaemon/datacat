@@ -33,7 +33,7 @@ class DaemonManager(object):
     """Manages the local datacat daemon subprocess"""
 
     def __init__(
-        self, daemon_port="8079", server_url="http://localhost:8080", daemon_binary=None
+        self, daemon_port="8079", server_url="http://localhost:9090", daemon_binary=None
     ):
         """
         Initialize the daemon manager
@@ -149,7 +149,7 @@ class DatacatClient(object):
     """Client for interacting with the datacat REST API or local daemon"""
 
     def __init__(
-        self, base_url="http://localhost:8080", use_daemon=False, daemon_port="8079"
+        self, base_url="http://localhost:9090", use_daemon=False, daemon_port="8079"
     ):
         """
         Initialize the datacat client
@@ -380,7 +380,7 @@ class DatacatClient(object):
 
     def get_all_sessions(self):
         """
-        Get all sessions (Grafana endpoint)
+        Get all sessions
 
         Returns:
             list: List of all sessions
@@ -388,7 +388,7 @@ class DatacatClient(object):
         Raises:
             Exception: If the request fails
         """
-        url = "{0}/api/grafana/sessions".format(self.base_url)
+        url = "{0}/api/data/sessions".format(self.base_url)
         return self._make_request(url, method="GET")
 
 
@@ -608,7 +608,7 @@ class Session(object):
 
 # Factory function for convenience
 def create_session(
-    base_url="http://localhost:8080", use_daemon=True, daemon_port="8079"
+    base_url="http://localhost:9090", use_daemon=True, daemon_port="8079"
 ):
     """
     Create a new session and return a Session object

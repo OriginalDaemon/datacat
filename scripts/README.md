@@ -30,7 +30,7 @@ This will:
 .\scripts\run-server.ps1
 ```
 
-The server will be available at `http://localhost:8080`
+The server will be available at `http://localhost:9090`
 
 ### Start the Web UI Dashboard
 
@@ -38,9 +38,9 @@ The server will be available at `http://localhost:8080`
 .\scripts\run-web.ps1
 ```
 
-The web UI will be available at `http://localhost:8081`
+The web UI will be available at `http://localhost:8080`
 
-**Note:** The web UI requires the server to be running at `http://localhost:8080`
+**Note:** The web UI requires the server to be running at `http://localhost:9090`
 
 ### Start Both Services
 

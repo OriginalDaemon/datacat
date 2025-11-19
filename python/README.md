@@ -23,7 +23,7 @@ pip install -e git+https://github.com/OriginalDaemon/datacat.git#egg=datacat&sub
 from datacat import create_session
 
 # Create session
-session = create_session("http://localhost:8080")
+session = create_session("http://localhost:9090")
 print("Session ID:", session.session_id)
 
 # Update state
@@ -55,7 +55,7 @@ session.end()
 ```python
 from datacat import create_session
 
-session = create_session("http://localhost:8080")
+session = create_session("http://localhost:9090")
 
 try:
     risky_operation()
@@ -70,7 +70,7 @@ except Exception:
 from datacat import create_session
 import time
 
-session = create_session("http://localhost:8080")
+session = create_session("http://localhost:9090")
 
 # Start heartbeat monitor with 60s timeout
 session.start_heartbeat_monitor(timeout=60)
@@ -117,7 +117,7 @@ For lower-level access, use the `DatacatClient` class:
 ```python
 from datacat import DatacatClient
 
-client = DatacatClient("http://localhost:8080")
+client = DatacatClient("http://localhost:9090")
 
 # Create session
 session_id = client.create_session()

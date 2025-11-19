@@ -15,8 +15,8 @@ func TestDefaultConfig(t *testing.T) {
 	if config.DaemonPort != "8079" {
 		t.Errorf("Expected DaemonPort 8079, got %s", config.DaemonPort)
 	}
-	if config.ServerURL != "http://localhost:8080" {
-		t.Errorf("Expected ServerURL http://localhost:8080, got %s", config.ServerURL)
+	if config.ServerURL != "http://localhost:9090" {
+		t.Errorf("Expected ServerURL http://localhost:9090, got %s", config.ServerURL)
 	}
 	if config.BatchIntervalSeconds != 5 {
 		t.Errorf("Expected BatchIntervalSeconds 5, got %d", config.BatchIntervalSeconds)

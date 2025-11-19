@@ -17,7 +17,7 @@ from datacat import create_session
 
 def main():
     # Create a session for this application instance
-    session = create_session("http://localhost:8080")
+    session = create_session("http://localhost:9090")
     print("Application Session:", session.session_id)
     print()
 

@@ -9,12 +9,12 @@ import (
 )
 
 func TestNewClient(t *testing.T) {
-	client := NewClient("http://localhost:8080")
+	client := NewClient("http://localhost:9090")
 	if client == nil {
 		t.Fatal("NewClient returned nil")
 	}
-	if client.BaseURL != "http://localhost:8080" {
-		t.Errorf("Expected BaseURL to be http://localhost:8080, got %s", client.BaseURL)
+	if client.BaseURL != "http://localhost:9090" {
+		t.Errorf("Expected BaseURL to be http://localhost:9090, got %s", client.BaseURL)
 	}
 	if client.HTTPClient == nil {
 		t.Fatal("HTTPClient is nil")
@@ -207,22 +207,22 @@ func TestGetAllSessions(t *testing.T) {
 
 func TestNewDaemonManager(t *testing.T) {
 	// Test with specified binary
-	dm := NewDaemonManager("8081", "http://localhost:8080", "/path/to/daemon")
+	dm := NewDaemonManager("8081", "http://localhost:9090", "/path/to/daemon")
 	if dm == nil {
 		t.Fatal("NewDaemonManager returned nil")
 	}
 	if dm.daemonPort != "8081" {
 		t.Errorf("Expected port 8081, got %s", dm.daemonPort)
 	}
-	if dm.serverURL != "http://localhost:8080" {
-		t.Errorf("Expected serverURL http://localhost:8080, got %s", dm.serverURL)
+	if dm.serverURL != "http://localhost:9090" {
+		t.Errorf("Expected serverURL http://localhost:9090, got %s", dm.serverURL)
 	}
 	if dm.daemonBinary != "/path/to/daemon" {
 		t.Errorf("Expected binary /path/to/daemon, got %s", dm.daemonBinary)
 	}
 
 	// Test with empty binary (should call findDaemonBinary)
-	dm2 := NewDaemonManager("8081", "http://localhost:8080", "")
+	dm2 := NewDaemonManager("8081", "http://localhost:9090", "")
 	if dm2 == nil {
 		t.Fatal("NewDaemonManager returned nil")
 	}
@@ -232,7 +232,7 @@ func TestNewDaemonManager(t *testing.T) {
 }
 
 func TestDaemonManagerIsRunning(t *testing.T) {
-	dm := NewDaemonManager("8081", "http://localhost:8080", "test-binary")
+	dm := NewDaemonManager("8081", "http://localhost:9090", "test-binary")
 
 	// Initially not running
 	if dm.IsRunning() {
@@ -248,7 +248,7 @@ func TestDaemonManagerIsRunning(t *testing.T) {
 
 func TestClose(t *testing.T) {
 	// Test Close without daemon
-	client := NewClient("http://localhost:8080")
+	client := NewClient("http://localhost:9090")
 	err := client.Close()
 	if err != nil {
 		t.Errorf("Close should not fail without daemon: %v", err)
@@ -259,7 +259,7 @@ func TestClose(t *testing.T) {
 		BaseURL:       "http://localhost:8081",
 		HTTPClient:    &http.Client{},
 		UseDaemon:     true,
-		DaemonManager: NewDaemonManager("8081", "http://localhost:8080", "test-binary"),
+		DaemonManager: NewDaemonManager("8081", "http://localhost:9090", "test-binary"),
 	}
 	err = client2.Close()
 	if err != nil {
@@ -269,7 +269,7 @@ func TestClose(t *testing.T) {
 
 func TestHeartbeat(t *testing.T) {
 	// Test heartbeat with non-daemon client (should be no-op)
-	client := NewClient("http://localhost:8080")
+	client := NewClient("http://localhost:9090")
 	err := client.Heartbeat("test-session")
 	if err != nil {
 		t.Errorf("Heartbeat should not fail for non-daemon client: %v", err)
@@ -593,7 +593,7 @@ func TestInvalidJSONResponses(t *testing.T) {
 }
 
 func TestDaemonManagerStop(t *testing.T) {
-	dm := NewDaemonManager("8081", "http://localhost:8080", "test-binary")
+	dm := NewDaemonManager("8081", "http://localhost:9090", "test-binary")
 
 	// Stopping a non-started daemon should not error
 	err := dm.Stop()

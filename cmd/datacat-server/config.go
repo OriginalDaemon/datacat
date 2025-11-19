@@ -22,7 +22,7 @@ func DefaultConfig() *Config {
 		DataPath:             "./datacat_data",
 		RetentionDays:        365,
 		CleanupIntervalHours: 24,
-		ServerPort:           "8080",
+		ServerPort:           "9090",
 		CleanupInterval:      24 * time.Hour,
 	}
 }

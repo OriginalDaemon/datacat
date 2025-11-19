@@ -36,7 +36,7 @@ class TestDatacatClientErrorHandling(unittest.TestCase):
 
     def setUp(self):
         """Set up test client"""
-        self.client = DatacatClient("http://localhost:8080")
+        self.client = DatacatClient("http://localhost:9090")
 
     @patch("datacat.urlopen")
     def test_http_error_handling(self, mock_urlopen):
@@ -87,11 +87,11 @@ class TestDatacatClientErrorHandling(unittest.TestCase):
 
     def test_base_url_trailing_slash_removal(self):
         """Test that trailing slash is removed from base URL"""
-        client = DatacatClient("http://localhost:8080/")
-        self.assertEqual(client.base_url, "http://localhost:8080")
+        client = DatacatClient("http://localhost:9090/")
+        self.assertEqual(client.base_url, "http://localhost:9090")
 
-        client2 = DatacatClient("http://localhost:8080")
-        self.assertEqual(client2.base_url, "http://localhost:8080")
+        client2 = DatacatClient("http://localhost:9090")
+        self.assertEqual(client2.base_url, "http://localhost:9090")
 
 
 class TestDatacatClientGetAllSessions(unittest.TestCase):
@@ -105,14 +105,14 @@ class TestDatacatClientGetAllSessions(unittest.TestCase):
         mock_response.read.return_value = b'[{"id": "session1"}, {"id": "session2"}]'
         mock_urlopen.return_value = mock_response
 
-        client = DatacatClient("http://localhost:8080")
+        client = DatacatClient("http://localhost:9090")
         sessions = client.get_all_sessions()
 
         # Verify correct endpoint was called
         call_args = mock_urlopen.call_args
         request = call_args[0][0]
         self.assertEqual(
-            request.get_full_url(), "http://localhost:8080/api/grafana/sessions"
+            request.get_full_url(), "http://localhost:9090/api/data/sessions"
         )
 
         # Verify response parsing
@@ -468,7 +468,7 @@ class TestEdgeCases(unittest.TestCase):
             mock_response.read.return_value = b'{"status": "ok"}'
             mock_urlopen.return_value = mock_response
 
-            client = DatacatClient("http://localhost:8080")
+            client = DatacatClient("http://localhost:9090")
 
             # Call log_event with None data (should use empty dict)
             result = client.log_event("session-123", "test_event", None)
@@ -486,7 +486,7 @@ class TestEdgeCases(unittest.TestCase):
             mock_response.read.return_value = b'{"status": "ok"}'
             mock_urlopen.return_value = mock_response
 
-            client = DatacatClient("http://localhost:8080")
+            client = DatacatClient("http://localhost:9090")
 
             # Call log_event without data parameter
             result = client.log_event("session-123", "test_event")
@@ -549,7 +549,7 @@ class TestDaemonManager(unittest.TestCase):
         """Test DaemonManager initialization with defaults"""
         manager = DaemonManager()
         self.assertEqual(manager.daemon_port, "8079")
-        self.assertEqual(manager.server_url, "http://localhost:8080")
+        self.assertEqual(manager.server_url, "http://localhost:9090")
         self.assertIsNotNone(manager.daemon_binary)
         self.assertIsNone(manager.process)
         self.assertFalse(manager._started)

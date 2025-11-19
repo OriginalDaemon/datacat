@@ -43,7 +43,7 @@ cd cmd/datacat-web
 go run main.go
 ```
 
-The web UI will be available at `http://localhost:8081` by default.
+The web UI will be available at `http://localhost:8080` by default.
 
 ## Building
 
@@ -56,7 +56,7 @@ go build -o datacat-web
 ## Configuration
 
 - `PORT` - Web server port (default: 8081)
-- `API_URL` - datacat-server API URL (default: http://localhost:8080)
+- `API_URL` - datacat-server API URL (default: http://localhost:9090)
 
 ## Theme Switcher
 

@@ -62,7 +62,7 @@
               │
 ┌─────────────▼──────────────────────────────────────────────────────┐
 │                  Go REST API Service (Server)                      │
-│                  (http://localhost:8080 or remote)                 │
+│                  (http://localhost:9090 or remote)                 │
 │                                                                     │
 │  ┌────────────────────────────────────────────────────────────┐  │
 │  │                      Endpoints                              │  │
@@ -73,7 +73,7 @@
 │  │  POST   /api/sessions/{id}/events  - Log event              │  │
 │  │  POST   /api/sessions/{id}/metrics - Log metric             │  │
 │  │  POST   /api/sessions/{id}/end     - End session            │  │
-│  │  GET    /api/grafana/sessions      - Export all sessions    │  │
+│  │  GET    /api/data/sessions      - Export all sessions    │  │
 │  └────────────────────────────────────────────────────────────┘  │
 │                              │                                    │
 │  ┌────────────────────────────────────────────────────────────┐  │
@@ -166,7 +166,7 @@
               │
 ┌─────────────▼──────────────────────────────────────────────────────┐
 │                  Go REST API Service (Server)                      │
-│                  (http://localhost:8080)                           │
+│                  (http://localhost:9090)                           │
 └────────────────────────────────────────────────────────────────────┘
 ```
 

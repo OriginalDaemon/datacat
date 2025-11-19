@@ -22,7 +22,7 @@ import (
 
 func main() {
     // Create client
-    c := client.NewClient("http://localhost:8080")
+    c := client.NewClient("http://localhost:9090")
     
     // Create session
     sessionID, err := c.CreateSession()

@@ -39,7 +39,7 @@ class TestProgramWorkflow(unittest.TestCase):
     def setUpClass(cls):
         """Start the datacat service before tests"""
         cls.service_process = None  # type: ignore
-        cls.base_url = "http://localhost:8080"
+        cls.base_url = "http://localhost:9090"
 
         # Build the service
         build_result = subprocess.run(

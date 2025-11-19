@@ -34,7 +34,7 @@ def main():
     print()
 
     # Create session
-    session = create_session("http://localhost:8080")
+    session = create_session("http://localhost:9090")
     print("Session ID:", session.session_id)
 
     # Start heartbeat monitor
@@ -152,7 +152,7 @@ def main():
 
     print("\nSession ended successfully")
     print("Session ID:", session.session_id)
-    print("\nView session at: http://localhost:8081/session/" + session.session_id)
+    print("\nView session at: http://localhost:8080/session/" + session.session_id)
 
 
 if __name__ == "__main__":

@@ -19,7 +19,7 @@ type Config struct {
 func DefaultConfig() *Config {
 	return &Config{
 		DaemonPort:              "8079",
-		ServerURL:               "http://localhost:8080",
+		ServerURL:               "http://localhost:9090",
 		BatchIntervalSeconds:    5,
 		MaxBatchSize:            100,
 		HeartbeatTimeoutSeconds: 60,
