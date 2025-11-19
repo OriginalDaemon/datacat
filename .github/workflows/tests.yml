@@ -72,13 +72,20 @@ jobs:
     
     - name: Run Python tests with coverage
       run: |
-        python -m pytest tests/ -v --cov=python --cov-report=xml --cov-report=term
+        python -m pytest tests/ -v --cov=python --cov-report=xml:coverage-python.xml --cov-report=term
     
-    - name: Upload coverage to Codecov
+    - name: Upload Go coverage to Codecov
       uses: codecov/codecov-action@v5
       with:
-        files: ./coverage.out,./coverage.xml
-        flags: go,python
+        files: ./coverage.out
+        flags: go
+        token: ${{ secrets.CODECOV_TOKEN }}
+    
+    - name: Upload Python coverage to Codecov
+      uses: codecov/codecov-action@v5
+      with:
+        files: ./coverage-python.xml
+        flags: python
         token: ${{ secrets.CODECOV_TOKEN }}
 
   test-persistence:
