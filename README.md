@@ -110,7 +110,7 @@ Interactive web UI for browsing sessions and visualizing metrics.
 
 - **Technology:** Go + htmx + Chart.js
 - **Features:** Session browser, advanced metrics visualization, filtering
-- **Port:** 8081 (default)
+- **Port:** 8080 (default)
 - **[Full Documentation](cmd/datacat-web/README.md)**
 
 ### [Go Client Library](client/)

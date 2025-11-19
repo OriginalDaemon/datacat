@@ -55,7 +55,7 @@ go build -o datacat-web
 
 ## Configuration
 
-- `PORT` - Web server port (default: 8081)
+- `PORT` - Web server port (default: 8080)
 - `API_URL` - datacat-server API URL (default: http://localhost:9090)
 
 ## Theme Switcher
