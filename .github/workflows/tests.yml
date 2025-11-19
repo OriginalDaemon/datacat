@@ -57,11 +57,12 @@ jobs:
       run: go test -v -coverprofile=coverage.out -covermode=atomic ./...
     
     - name: Upload Go coverage to Codecov
-      uses: codecov/codecov-action@v3
+      uses: codecov/codecov-action@v5
       with:
         files: ./coverage.out
         flags: go
         name: go-coverage
+        token: ${{ secrets.CODECOV_TOKEN }}
 
   test-python:
     name: Python Integration Tests with Coverage
@@ -94,11 +95,12 @@ jobs:
         python -m pytest tests/test_integration.py -v --cov=python --cov-report=xml --cov-report=term
     
     - name: Upload Python coverage to Codecov
-      uses: codecov/codecov-action@v3
+      uses: codecov/codecov-action@v5
       with:
         files: ./coverage.xml
         flags: python
         name: python-coverage
+        token: ${{ secrets.CODECOV_TOKEN }}
 
   test-persistence:
     name: Test Data Persistence
