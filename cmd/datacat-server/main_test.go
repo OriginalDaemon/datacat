@@ -1,0 +1,455 @@
+package main
+
+import (
+	"testing"
+	"time"
+)
+
+func TestNewStore(t *testing.T) {
+	tmpDir := t.TempDir()
+	config := DefaultConfig()
+	
+	store, err := NewStore(tmpDir, config)
+	if err != nil {
+		t.Fatalf("NewStore failed: %v", err)
+	}
+	defer store.Close()
+	
+	if store == nil {
+		t.Fatal("NewStore returned nil")
+	}
+	if store.sessions == nil {
+		t.Fatal("sessions map is nil")
+	}
+	if store.db == nil {
+		t.Fatal("database is nil")
+	}
+}
+
+func TestCreateSession(t *testing.T) {
+	tmpDir := t.TempDir()
+	config := DefaultConfig()
+	store, err := NewStore(tmpDir, config)
+	if err != nil {
+		t.Fatalf("NewStore failed: %v", err)
+	}
+	defer store.Close()
+	
+	session := store.CreateSession()
+	if session == nil {
+		t.Fatal("CreateSession returned nil")
+	}
+	if session.ID == "" {
+		t.Error("Session ID is empty")
+	}
+	if !session.Active {
+		t.Error("Session should be active")
+	}
+	if session.State == nil {
+		t.Error("Session state is nil")
+	}
+	
+	// Verify session is in store
+	retrieved, ok := store.GetSession(session.ID)
+	if !ok {
+		t.Error("Session not found in store")
+	}
+	if retrieved.ID != session.ID {
+		t.Errorf("Expected ID %s, got %s", session.ID, retrieved.ID)
+	}
+}
+
+func TestGetSession(t *testing.T) {
+	tmpDir := t.TempDir()
+	config := DefaultConfig()
+	store, err := NewStore(tmpDir, config)
+	if err != nil {
+		t.Fatalf("NewStore failed: %v", err)
+	}
+	defer store.Close()
+	
+	session := store.CreateSession()
+	
+	// Get existing session
+	retrieved, ok := store.GetSession(session.ID)
+	if !ok {
+		t.Error("Session not found")
+	}
+	if retrieved.ID != session.ID {
+		t.Errorf("Expected ID %s, got %s", session.ID, retrieved.ID)
+	}
+	
+	// Try to get non-existent session
+	_, ok = store.GetSession("non-existent")
+	if ok {
+		t.Error("Expected non-existent session to not be found")
+	}
+}
+
+func TestGetAllSessions(t *testing.T) {
+	tmpDir := t.TempDir()
+	config := DefaultConfig()
+	store, err := NewStore(tmpDir, config)
+	if err != nil {
+		t.Fatalf("NewStore failed: %v", err)
+	}
+	defer store.Close()
+	
+	// Create multiple sessions
+	session1 := store.CreateSession()
+	session2 := store.CreateSession()
+	
+	sessions := store.GetAllSessions()
+	if len(sessions) != 2 {
+		t.Errorf("Expected 2 sessions, got %d", len(sessions))
+	}
+	
+	// Verify both sessions are present
+	found1, found2 := false, false
+	for _, s := range sessions {
+		if s.ID == session1.ID {
+			found1 = true
+		}
+		if s.ID == session2.ID {
+			found2 = true
+		}
+	}
+	if !found1 || !found2 {
+		t.Error("Not all sessions found")
+	}
+}
+
+func TestUpdateState(t *testing.T) {
+	tmpDir := t.TempDir()
+	config := DefaultConfig()
+	store, err := NewStore(tmpDir, config)
+	if err != nil {
+		t.Fatalf("NewStore failed: %v", err)
+	}
+	defer store.Close()
+	
+	session := store.CreateSession()
+	
+	newState := map[string]interface{}{
+		"key1": "value1",
+		"key2": 123,
+	}
+	
+	err = store.UpdateState(session.ID, newState)
+	if err != nil {
+		t.Fatalf("UpdateState failed: %v", err)
+	}
+	
+	// Verify state was updated
+	retrieved, _ := store.GetSession(session.ID)
+	if retrieved.State["key1"] != "value1" {
+		t.Errorf("Expected key1 to be value1, got %v", retrieved.State["key1"])
+	}
+	// Since we directly set the state without JSON marshaling, it remains as int
+	if retrieved.State["key2"] != 123 {
+		t.Errorf("Expected key2 to be 123, got %v (type %T)", retrieved.State["key2"], retrieved.State["key2"])
+	}
+	
+	// Check state history
+	if len(retrieved.StateHistory) == 0 {
+		t.Error("State history should not be empty")
+	}
+}
+
+func TestAddEvent(t *testing.T) {
+	tmpDir := t.TempDir()
+	config := DefaultConfig()
+	store, err := NewStore(tmpDir, config)
+	if err != nil {
+		t.Fatalf("NewStore failed: %v", err)
+	}
+	defer store.Close()
+	
+	session := store.CreateSession()
+	
+	eventData := map[string]interface{}{
+		"message": "test event",
+	}
+	
+	err = store.AddEvent(session.ID, "test_event", eventData)
+	if err != nil {
+		t.Fatalf("AddEvent failed: %v", err)
+	}
+	
+	// Verify event was logged
+	retrieved, _ := store.GetSession(session.ID)
+	if len(retrieved.Events) != 1 {
+		t.Errorf("Expected 1 event, got %d", len(retrieved.Events))
+	}
+	if retrieved.Events[0].Name != "test_event" {
+		t.Errorf("Expected event name test_event, got %s", retrieved.Events[0].Name)
+	}
+}
+
+func TestAddMetric(t *testing.T) {
+	tmpDir := t.TempDir()
+	config := DefaultConfig()
+	store, err := NewStore(tmpDir, config)
+	if err != nil {
+		t.Fatalf("NewStore failed: %v", err)
+	}
+	defer store.Close()
+	
+	session := store.CreateSession()
+	
+	err = store.AddMetric(session.ID, "cpu_usage", 75.5, []string{"tag1", "tag2"})
+	if err != nil {
+		t.Fatalf("AddMetric failed: %v", err)
+	}
+	
+	// Verify metric was logged
+	retrieved, _ := store.GetSession(session.ID)
+	if len(retrieved.Metrics) != 1 {
+		t.Errorf("Expected 1 metric, got %d", len(retrieved.Metrics))
+	}
+	if retrieved.Metrics[0].Name != "cpu_usage" {
+		t.Errorf("Expected metric name cpu_usage, got %s", retrieved.Metrics[0].Name)
+	}
+	if retrieved.Metrics[0].Value != 75.5 {
+		t.Errorf("Expected metric value 75.5, got %f", retrieved.Metrics[0].Value)
+	}
+}
+
+func TestEndSession(t *testing.T) {
+	tmpDir := t.TempDir()
+	config := DefaultConfig()
+	store, err := NewStore(tmpDir, config)
+	if err != nil {
+		t.Fatalf("NewStore failed: %v", err)
+	}
+	defer store.Close()
+	
+	session := store.CreateSession()
+	
+	err = store.EndSession(session.ID)
+	if err != nil {
+		t.Fatalf("EndSession failed: %v", err)
+	}
+	
+	// Verify session was ended
+	retrieved, _ := store.GetSession(session.ID)
+	if retrieved.Active {
+		t.Error("Session should not be active")
+	}
+	if retrieved.EndedAt == nil {
+		t.Error("EndedAt should be set")
+	}
+}
+
+func TestDeepMerge(t *testing.T) {
+	dst := map[string]interface{}{
+		"a": "value_a",
+		"b": map[string]interface{}{
+			"b1": "value_b1",
+			"b2": "value_b2",
+		},
+	}
+	
+	src := map[string]interface{}{
+		"b": map[string]interface{}{
+			"b2": "new_value_b2",
+			"b3": "value_b3",
+		},
+		"c": "value_c",
+	}
+	
+	deepMerge(dst, src)
+	
+	if dst["a"] != "value_a" {
+		t.Error("Expected a to remain unchanged")
+	}
+	if dst["c"] != "value_c" {
+		t.Error("Expected c to be added")
+	}
+	
+	b := dst["b"].(map[string]interface{})
+	if b["b1"] != "value_b1" {
+		t.Error("Expected b.b1 to remain unchanged")
+	}
+	if b["b2"] != "new_value_b2" {
+		t.Error("Expected b.b2 to be updated")
+	}
+	if b["b3"] != "value_b3" {
+		t.Error("Expected b.b3 to be added")
+	}
+}
+
+func TestDeepCopyState(t *testing.T) {
+	original := map[string]interface{}{
+		"a": "value",
+		"b": map[string]interface{}{
+			"b1": "nested",
+		},
+	}
+	
+	copied := deepCopyState(original)
+	
+	// Modify copy
+	copied["a"] = "modified"
+	copied["b"].(map[string]interface{})["b1"] = "modified_nested"
+	
+	// Original should remain unchanged
+	if original["a"] != "value" {
+		t.Error("Original should not be modified")
+	}
+	if original["b"].(map[string]interface{})["b1"] != "nested" {
+		t.Error("Nested value in original should not be modified")
+	}
+}
+
+func TestCleanupOldSessions(t *testing.T) {
+	tmpDir := t.TempDir()
+	config := DefaultConfig()
+	config.RetentionDays = 1
+	store, err := NewStore(tmpDir, config)
+	if err != nil {
+		t.Fatalf("NewStore failed: %v", err)
+	}
+	defer store.Close()
+	
+	// Create an old session
+	oldSession := store.CreateSession()
+	oldTime := time.Now().AddDate(0, 0, -2)
+	store.mu.Lock()
+	oldSession.CreatedAt = oldTime
+	oldSession.EndedAt = &oldTime
+	oldSession.UpdatedAt = oldTime
+	oldSession.Active = false
+	store.mu.Unlock()
+	
+	// Create a recent session
+	recentSession := store.CreateSession()
+	
+	// Run cleanup
+	removed, err := store.CleanupOldSessions()
+	if err != nil {
+		t.Fatalf("CleanupOldSessions failed: %v", err)
+	}
+	
+	if removed != 1 {
+		t.Errorf("Expected 1 session to be removed, got %d", removed)
+	}
+	
+	// Check that old session is removed
+	_, ok := store.GetSession(oldSession.ID)
+	if ok {
+		t.Error("Old session should have been removed")
+	}
+	
+	// Check that recent session still exists
+	_, ok = store.GetSession(recentSession.ID)
+	if !ok {
+		t.Error("Recent session should still exist")
+	}
+}
+
+func TestPersistence(t *testing.T) {
+	tmpDir := t.TempDir()
+	config := DefaultConfig()
+	
+	// Create store and session
+	store1, err := NewStore(tmpDir, config)
+	if err != nil {
+		t.Fatalf("NewStore failed: %v", err)
+	}
+	
+	session := store1.CreateSession()
+	sessionID := session.ID
+	
+	// Update state
+	store1.UpdateState(sessionID, map[string]interface{}{"key": "value"})
+	
+	// Wait for async save
+	time.Sleep(200 * time.Millisecond)
+	
+	// Close store
+	store1.Close()
+	
+	// Reopen store
+	store2, err := NewStore(tmpDir, config)
+	if err != nil {
+		t.Fatalf("Failed to reopen store: %v", err)
+	}
+	defer store2.Close()
+	
+	// Verify session persisted
+	retrieved, ok := store2.GetSession(sessionID)
+	if !ok {
+		t.Fatal("Session not found after reload")
+	}
+	if retrieved.ID != sessionID {
+		t.Errorf("Expected ID %s, got %s", sessionID, retrieved.ID)
+	}
+	if retrieved.State["key"] != "value" {
+		t.Errorf("Expected state to be persisted")
+	}
+}
+
+func TestAddEventErrors(t *testing.T) {
+	tmpDir := t.TempDir()
+	config := DefaultConfig()
+	store, err := NewStore(tmpDir, config)
+	if err != nil {
+		t.Fatalf("NewStore failed: %v", err)
+	}
+	defer store.Close()
+	
+	// Try to add event to non-existent session
+	err = store.AddEvent("non-existent", "test", map[string]interface{}{})
+	if err == nil {
+		t.Error("Expected error when adding event to non-existent session")
+	}
+}
+
+func TestAddMetricErrors(t *testing.T) {
+	tmpDir := t.TempDir()
+	config := DefaultConfig()
+	store, err := NewStore(tmpDir, config)
+	if err != nil {
+		t.Fatalf("NewStore failed: %v", err)
+	}
+	defer store.Close()
+	
+	// Try to add metric to non-existent session
+	err = store.AddMetric("non-existent", "test", 0.0, nil)
+	if err == nil {
+		t.Error("Expected error when adding metric to non-existent session")
+	}
+}
+
+func TestUpdateStateErrors(t *testing.T) {
+	tmpDir := t.TempDir()
+	config := DefaultConfig()
+	store, err := NewStore(tmpDir, config)
+	if err != nil {
+		t.Fatalf("NewStore failed: %v", err)
+	}
+	defer store.Close()
+	
+	// Try to update state of non-existent session
+	err = store.UpdateState("non-existent", map[string]interface{}{})
+	if err == nil {
+		t.Error("Expected error when updating state of non-existent session")
+	}
+}
+
+func TestEndSessionErrors(t *testing.T) {
+	tmpDir := t.TempDir()
+	config := DefaultConfig()
+	store, err := NewStore(tmpDir, config)
+	if err != nil {
+		t.Fatalf("NewStore failed: %v", err)
+	}
+	defer store.Close()
+	
+	// Try to end non-existent session
+	err = store.EndSession("non-existent")
+	if err == nil {
+		t.Error("Expected error when ending non-existent session")
+	}
+}
