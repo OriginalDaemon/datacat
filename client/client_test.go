@@ -565,3 +565,39 @@ func TestHTTPErrorResponses(t *testing.T) {
 		t.Error("Expected error for 500 response")
 	}
 }
+
+func TestInvalidJSONResponses(t *testing.T) {
+	// Test CreateSession with invalid JSON response
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("invalid json"))
+	}))
+	defer server.Close()
+	
+	client := NewClient(server.URL)
+	
+	_, err := client.CreateSession()
+	if err == nil {
+		t.Error("Expected error for invalid JSON response in CreateSession")
+	}
+	
+	_, err = client.GetSession("test-id")
+	if err == nil {
+		t.Error("Expected error for invalid JSON response in GetSession")
+	}
+	
+	_, err = client.GetAllSessions()
+	if err == nil {
+		t.Error("Expected error for invalid JSON response in GetAllSessions")
+	}
+}
+
+func TestDaemonManagerStop(t *testing.T) {
+	dm := NewDaemonManager("8081", "http://localhost:8080", "test-binary")
+	
+	// Stopping a non-started daemon should not error
+	err := dm.Stop()
+	if err != nil {
+		t.Errorf("Stop should not fail for non-started daemon: %v", err)
+	}
+}

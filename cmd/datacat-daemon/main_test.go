@@ -626,3 +626,248 @@ func TestHandleMetricWithoutSession(t *testing.T) {
 		t.Errorf("Expected status 404, got %d", w.Code)
 	}
 }
+
+func TestHandleRegisterInvalidJSON(t *testing.T) {
+	// Create a mock server
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("invalid json"))
+	}))
+	defer mockServer.Close()
+	
+	config := DefaultConfig()
+	config.ServerURL = mockServer.URL
+	daemon := NewDaemon(config)
+	
+	req := httptest.NewRequest("POST", "/register", nil)
+	w := httptest.NewRecorder()
+	
+	daemon.handleRegister(w, req)
+	
+	// Should get an error due to invalid response
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("Expected status 500, got %d", w.Code)
+	}
+}
+
+func TestHandleRegisterInvalidSessionID(t *testing.T) {
+	// Create a mock server that returns invalid session_id type
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		response := map[string]interface{}{"session_id": 12345} // Not a string
+		json.NewEncoder(w).Encode(response)
+	}))
+	defer mockServer.Close()
+	
+	config := DefaultConfig()
+	config.ServerURL = mockServer.URL
+	daemon := NewDaemon(config)
+	
+	req := httptest.NewRequest("POST", "/register", nil)
+	w := httptest.NewRecorder()
+	
+	daemon.handleRegister(w, req)
+	
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("Expected status 500, got %d", w.Code)
+	}
+}
+
+func TestHandleStateInvalidJSON(t *testing.T) {
+	config := DefaultConfig()
+	daemon := NewDaemon(config)
+	
+	req := httptest.NewRequest("POST", "/state", bytes.NewReader([]byte("invalid json")))
+	w := httptest.NewRecorder()
+	
+	daemon.handleState(w, req)
+	
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400, got %d", w.Code)
+	}
+}
+
+func TestHandleEventInvalidJSON(t *testing.T) {
+	config := DefaultConfig()
+	daemon := NewDaemon(config)
+	
+	req := httptest.NewRequest("POST", "/event", bytes.NewReader([]byte("invalid json")))
+	w := httptest.NewRecorder()
+	
+	daemon.handleEvent(w, req)
+	
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400, got %d", w.Code)
+	}
+}
+
+func TestHandleMetricInvalidJSON(t *testing.T) {
+	config := DefaultConfig()
+	daemon := NewDaemon(config)
+	
+	req := httptest.NewRequest("POST", "/metric", bytes.NewReader([]byte("invalid json")))
+	w := httptest.NewRecorder()
+	
+	daemon.handleMetric(w, req)
+	
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400, got %d", w.Code)
+	}
+}
+
+func TestHandleHeartbeatInvalidJSON(t *testing.T) {
+	config := DefaultConfig()
+	daemon := NewDaemon(config)
+	
+	req := httptest.NewRequest("POST", "/heartbeat", bytes.NewReader([]byte("invalid json")))
+	w := httptest.NewRecorder()
+	
+	daemon.handleHeartbeat(w, req)
+	
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400, got %d", w.Code)
+	}
+}
+
+func TestHandleHeartbeatNonExistentSession(t *testing.T) {
+	config := DefaultConfig()
+	daemon := NewDaemon(config)
+	
+	heartbeatData := map[string]interface{}{
+		"session_id": "non-existent",
+	}
+	body, _ := json.Marshal(heartbeatData)
+	
+	req := httptest.NewRequest("POST", "/heartbeat", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+	
+	daemon.handleHeartbeat(w, req)
+	
+	if w.Code != http.StatusNotFound {
+		t.Errorf("Expected status 404, got %d", w.Code)
+	}
+}
+
+func TestHandleEndInvalidJSON(t *testing.T) {
+	config := DefaultConfig()
+	daemon := NewDaemon(config)
+	
+	req := httptest.NewRequest("POST", "/end", bytes.NewReader([]byte("invalid json")))
+	w := httptest.NewRecorder()
+	
+	daemon.handleEnd(w, req)
+	
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400, got %d", w.Code)
+	}
+}
+
+func TestHandleEndNonExistentSession(t *testing.T) {
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		w.Write([]byte("session not found"))
+	}))
+	defer mockServer.Close()
+	
+	config := DefaultConfig()
+	config.ServerURL = mockServer.URL
+	daemon := NewDaemon(config)
+	
+	sessionID := "test-session"
+	daemon.mu.Lock()
+	daemon.sessions[sessionID] = &SessionBuffer{
+		SessionID: sessionID,
+	}
+	daemon.mu.Unlock()
+	
+	endData := map[string]interface{}{
+		"session_id": sessionID,
+	}
+	body, _ := json.Marshal(endData)
+	
+	req := httptest.NewRequest("POST", "/end", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+	
+	daemon.handleEnd(w, req)
+	
+	// The daemon always returns 200, even if server returns error
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+	
+	// Verify session was removed from daemon
+	daemon.mu.RLock()
+	_, exists := daemon.sessions[sessionID]
+	daemon.mu.RUnlock()
+	
+	if exists {
+		t.Error("Session should have been removed from daemon")
+	}
+}
+
+func TestHandleStateNoChange(t *testing.T) {
+	config := DefaultConfig()
+	daemon := NewDaemon(config)
+	
+	sessionID := "test-session-id"
+	daemon.mu.Lock()
+	daemon.sessions[sessionID] = &SessionBuffer{
+		SessionID:    sessionID,
+		StateUpdates: []map[string]interface{}{},
+		LastState:    map[string]interface{}{"key": "value"},
+	}
+	daemon.mu.Unlock()
+	
+	// Send same state (no change)
+	stateData := map[string]interface{}{
+		"session_id": sessionID,
+		"state":      map[string]interface{}{"key": "value"},
+	}
+	body, _ := json.Marshal(stateData)
+	
+	req := httptest.NewRequest("POST", "/state", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+	
+	daemon.handleState(w, req)
+	
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+	
+	// Verify no state update was added
+	daemon.mu.RLock()
+	buffer := daemon.sessions[sessionID]
+	daemon.mu.RUnlock()
+	
+	buffer.mu.Lock()
+	if len(buffer.StateUpdates) != 0 {
+		t.Errorf("Expected 0 state updates when state doesn't change, got %d", len(buffer.StateUpdates))
+	}
+	buffer.mu.Unlock()
+}
+
+func TestSendStateUpdateError(t *testing.T) {
+	config := DefaultConfig()
+	config.ServerURL = "http://invalid-host-that-does-not-exist-12345:99999"
+	daemon := NewDaemon(config)
+	
+	// This should log an error but not panic
+	daemon.sendStateUpdate("test-session", map[string]interface{}{"key": "value"})
+}
+
+func TestSendEventError(t *testing.T) {
+	config := DefaultConfig()
+	config.ServerURL = "http://invalid-host-that-does-not-exist-12345:99999"
+	daemon := NewDaemon(config)
+	
+	// This should log an error but not panic
+	daemon.sendEvent("test-session", EventData{Name: "event", Data: map[string]interface{}{}})
+}
+
+func TestSendMetricError(t *testing.T) {
+	config := DefaultConfig()
+	config.ServerURL = "http://invalid-host-that-does-not-exist-12345:99999"
+	daemon := NewDaemon(config)
+	
+	// This should log an error but not panic
+	daemon.sendMetric("test-session", MetricData{Name: "metric", Value: 1.0})
+}

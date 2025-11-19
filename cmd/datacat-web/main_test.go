@@ -1,6 +1,9 @@
 package main
 
 import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -322,5 +325,178 @@ func TestArrayContainsAll(t *testing.T) {
 	filterArray4 := []interface{}{"a", "b", "c", "d"}
 	if !arrayContainsAll(stateArray, filterArray4) {
 		t.Error("Expected state array to match exactly")
+	}
+}
+
+func TestHandleTimeseriesAPI(t *testing.T) {
+	// Create a mock HTTP server
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sessions := []*client.Session{
+			{
+				ID: "session1",
+				Metrics: []client.Metric{
+					{Name: "cpu", Value: 50.0, Timestamp: time.Now()},
+					{Name: "cpu", Value: 75.0, Timestamp: time.Now()},
+					{Name: "memory", Value: 80.0, Timestamp: time.Now()},
+				},
+			},
+			{
+				ID: "session2",
+				Metrics: []client.Metric{
+					{Name: "cpu", Value: 60.0, Timestamp: time.Now()},
+					{Name: "cpu", Value: 90.0, Timestamp: time.Now()},
+				},
+			},
+		}
+		json.NewEncoder(w).Encode(sessions)
+	}))
+	defer mockServer.Close()
+	
+	// Set up the global client
+	datacatClient = client.NewClient(mockServer.URL)
+	
+	// Test missing metric parameter
+	t.Run("MissingMetric", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/api/timeseries", nil)
+		w := httptest.NewRecorder()
+		
+		handleTimeseriesAPI(w, req)
+		
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("Expected status 400, got %d", w.Code)
+		}
+	})
+	
+	// Test with metric parameter (all aggregation)
+	t.Run("AllAggregation", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/api/timeseries?metric=cpu&aggregation=all", nil)
+		w := httptest.NewRecorder()
+		
+		handleTimeseriesAPI(w, req)
+		
+		if w.Code != http.StatusOK {
+			t.Errorf("Expected status 200, got %d", w.Code)
+		}
+		
+		var result TimeseriesData
+		json.NewDecoder(w.Body).Decode(&result)
+		
+		if result.MetricName != "cpu" {
+			t.Errorf("Expected metric name cpu, got %s", result.MetricName)
+		}
+		if len(result.Points) != 4 {
+			t.Errorf("Expected 4 points, got %d", len(result.Points))
+		}
+		if result.Peak != 90.0 {
+			t.Errorf("Expected peak 90.0, got %f", result.Peak)
+		}
+		if result.Min != 50.0 {
+			t.Errorf("Expected min 50.0, got %f", result.Min)
+		}
+	})
+	
+	// Test peak aggregation
+	t.Run("PeakAggregation", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/api/timeseries?metric=cpu&aggregation=peak", nil)
+		w := httptest.NewRecorder()
+		
+		handleTimeseriesAPI(w, req)
+		
+		if w.Code != http.StatusOK {
+			t.Errorf("Expected status 200, got %d", w.Code)
+		}
+		
+		var result TimeseriesData
+		json.NewDecoder(w.Body).Decode(&result)
+		
+		if len(result.Points) != 2 {
+			t.Errorf("Expected 2 points (one per session), got %d", len(result.Points))
+		}
+		if result.Peak != 90.0 {
+			t.Errorf("Expected peak 90.0, got %f", result.Peak)
+		}
+	})
+	
+	// Test average aggregation
+	t.Run("AverageAggregation", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/api/timeseries?metric=cpu&aggregation=average", nil)
+		w := httptest.NewRecorder()
+		
+		handleTimeseriesAPI(w, req)
+		
+		if w.Code != http.StatusOK {
+			t.Errorf("Expected status 200, got %d", w.Code)
+		}
+		
+		var result TimeseriesData
+		json.NewDecoder(w.Body).Decode(&result)
+		
+		if len(result.Points) != 2 {
+			t.Errorf("Expected 2 points, got %d", len(result.Points))
+		}
+		if result.AggregationType != "average" {
+			t.Errorf("Expected aggregation type average, got %s", result.AggregationType)
+		}
+	})
+	
+	// Test min aggregation
+	t.Run("MinAggregation", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/api/timeseries?metric=cpu&aggregation=min", nil)
+		w := httptest.NewRecorder()
+		
+		handleTimeseriesAPI(w, req)
+		
+		if w.Code != http.StatusOK {
+			t.Errorf("Expected status 200, got %d", w.Code)
+		}
+		
+		var result TimeseriesData
+		json.NewDecoder(w.Body).Decode(&result)
+		
+		if len(result.Points) != 2 {
+			t.Errorf("Expected 2 points, got %d", len(result.Points))
+		}
+	})
+	
+	// Test with non-existent metric
+	t.Run("NonExistentMetric", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/api/timeseries?metric=nonexistent", nil)
+		w := httptest.NewRecorder()
+		
+		handleTimeseriesAPI(w, req)
+		
+		if w.Code != http.StatusOK {
+			t.Errorf("Expected status 200, got %d", w.Code)
+		}
+		
+		var result TimeseriesData
+		json.NewDecoder(w.Body).Decode(&result)
+		
+		if len(result.Points) != 0 {
+			t.Errorf("Expected 0 points for non-existent metric, got %d", len(result.Points))
+		}
+		if result.Peak != 0 {
+			t.Errorf("Expected peak 0, got %f", result.Peak)
+		}
+	})
+}
+
+func TestHandleTimeseriesAPIError(t *testing.T) {
+	// Create a mock server that returns an error
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("error"))
+	}))
+	defer mockServer.Close()
+	
+	datacatClient = client.NewClient(mockServer.URL)
+	
+	req := httptest.NewRequest("GET", "/api/timeseries?metric=cpu", nil)
+	w := httptest.NewRecorder()
+	
+	handleTimeseriesAPI(w, req)
+	
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("Expected status 500, got %d", w.Code)
 	}
 }
