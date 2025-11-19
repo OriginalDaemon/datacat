@@ -1,0 +1,131 @@
+name: Tests
+
+on:
+  push:
+    branches: [ main, develop, copilot/** ]
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  contents: read
+
+jobs:
+  lint-and-format:
+    name: Python Linting and Formatting
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install black mypy
+    
+    - name: Check formatting with Black
+      run: |
+        black --check python/ examples/ tests/
+    
+    - name: Type check with mypy
+      run: |
+        mypy python/ --ignore-missing-imports
+
+  test-go:
+    name: Go Tests with Coverage
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.21'
+    
+    - name: Build datacat-server
+      run: cd cmd/datacat-server && go build -v
+    
+    - name: Build datacat-web
+      run: cd cmd/datacat-web && go build -v
+    
+    - name: Test with coverage
+      run: go test -v -coverprofile=coverage.out -covermode=atomic ./...
+    
+    - name: Upload Go coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        files: ./coverage.out
+        flags: go
+        name: go-coverage
+
+  test-python:
+    name: Python Integration Tests with Coverage
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.21'
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+    
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements-dev.txt
+        pip install -e python/
+    
+    - name: Build datacat-server
+      run: cd cmd/datacat-server && go build -o ../../datacat
+    
+    - name: Run integration tests with coverage
+      run: |
+        python -m pytest tests/test_integration.py -v --cov=python --cov-report=xml --cov-report=term
+    
+    - name: Upload Python coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        files: ./coverage.xml
+        flags: python
+        name: python-coverage
+
+  test-persistence:
+    name: Test Data Persistence
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.21'
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+    
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements-dev.txt
+        pip install -e python/
+    
+    - name: Build datacat-server
+      run: cd cmd/datacat-server && go build -o ../../datacat
+    
+    - name: Run persistence tests
+      run: |
+        python -m pytest tests/test_integration.py::TestDatacatPersistence -v

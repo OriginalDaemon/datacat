@@ -7,6 +7,14 @@
 *.dll
 *.so
 *.dylib
+datacat
+datacat-server
+datacat-web
+datacat-daemon
+cmd/datacat-server/datacat-server
+cmd/datacat-web/datacat-web
+cmd/datacat-daemon/datacat-daemon
+bin/
 
 # Test binary, built with `go test -c`
 *.test
@@ -27,6 +35,26 @@ go.work.sum
 # env file
 .env
 
+# Database and config
+datacat_db/
+badger_data/
+*.db
+daemon_data/
+config.json
+daemon_config.json
+!*.example.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+*.egg
+dist/
+build/
+
 # Editor/IDE
 # .idea/
 # .vscode/
+datacat-web-test

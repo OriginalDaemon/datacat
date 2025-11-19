@@ -1,0 +1,42 @@
+<table>
+    <thead>
+        <tr>
+            <th>Session ID</th>
+            <th>Created</th>
+            <th>Status</th>
+            <th>Events</th>
+            <th>Metrics</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {{range .}}
+        <tr>
+            <td>
+                <a href="/session/{{.ID}}" style="color: #667eea; text-decoration: none;">
+                    {{slice .ID 0 8}}...
+                </a>
+            </td>
+            <td>{{.CreatedAt.Format "2006-01-02 15:04:05"}}</td>
+            <td>
+                {{if .Active}}
+                    <span class="badge badge-active">Active</span>
+                {{else}}
+                    <span class="badge badge-inactive">Ended</span>
+                {{end}}
+            </td>
+            <td>{{len .Events}}</td>
+            <td>{{len .Metrics}}</td>
+            <td>
+                <a href="/session/{{.ID}}" class="btn btn-secondary">View</a>
+            </td>
+        </tr>
+        {{else}}
+        <tr>
+            <td colspan="6" style="text-align: center; padding: 40px; color: #999;">
+                No sessions found
+            </td>
+        </tr>
+        {{end}}
+    </tbody>
+</table>

@@ -1,0 +1,601 @@
+{{define "content"}}
+<div class="card">
+    <h2>Session: {{slice .Session.ID 0 16}}...</h2>
+    <p style="color: var(--text-secondary); margin-bottom: 20px; font-family: monospace; font-size: 12px;">Full ID: {{.Session.ID}}</p>
+    
+    <table style="margin-bottom: 20px;">
+        <tr>
+            <th style="width: 200px;">Created</th>
+            <td>{{.Session.CreatedAt.Format "2006-01-02 15:04:05"}}</td>
+        </tr>
+        <tr>
+            <th>Updated</th>
+            <td>{{.Session.UpdatedAt.Format "2006-01-02 15:04:05"}}</td>
+        </tr>
+        {{if .Session.EndedAt}}
+        <tr>
+            <th>Ended</th>
+            <td>{{.Session.EndedAt.Format "2006-01-02 15:04:05"}}</td>
+        </tr>
+        {{end}}
+        <tr>
+            <th>Status</th>
+            <td>
+                {{if .Session.Active}}
+                    <span class="badge badge-active">Active</span>
+                {{else}}
+                    <span class="badge badge-inactive">Ended</span>
+                {{end}}
+            </td>
+        </tr>
+        <tr>
+            <th>State Changes</th>
+            <td>{{len .Session.StateHistory}} updates recorded</td>
+        </tr>
+    </table>
+</div>
+
+<!-- Enhanced Timeline with Zoom -->
+<div class="card">
+    <h2>Interactive Session Timeline</h2>
+    <p style="margin-bottom: 20px; color: var(--text-secondary);">
+        Complete session lifecycle. Click and drag to zoom into a time range. Click points to see details.
+    </p>
+    
+    <!-- Legend and Controls -->
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 15px;">
+        <div style="display: flex; gap: 20px; font-size: 13px;">
+            <div style="display: flex; align-items: center; gap: 5px;">
+                <div style="width: 14px; height: 14px; border-radius: 50%; background: #667eea; border: 2px solid var(--bg-card); box-shadow: 0 1px 3px rgba(0,0,0,0.3);"></div>
+                <span>State Change</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 5px;">
+                <div style="width: 14px; height: 14px; border-radius: 50%; background: #48bb78; border: 2px solid var(--bg-card); box-shadow: 0 1px 3px rgba(0,0,0,0.3);"></div>
+                <span>Event</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 5px;">
+                <div style="width: 14px; height: 14px; border-radius: 50%; background: #f56565; border: 2px solid var(--bg-card); box-shadow: 0 1px 3px rgba(0,0,0,0.3);"></div>
+                <span>Exception</span>
+            </div>
+        </div>
+        <div style="display: flex; gap: 10px;">
+            <button id="zoom-out-btn" onclick="zoomOut()" class="btn btn-secondary" style="padding: 6px 15px; font-size: 13px; display: none;">Reset Zoom</button>
+            <span id="zoom-info" style="font-size: 13px; color: var(--text-secondary);"></span>
+        </div>
+    </div>
+    
+    <!-- Timeline Container -->
+    <div id="timeline-wrapper" style="position: relative; margin: 30px 0; min-height: 150px; user-select: none;">
+        <!-- Timeline line -->
+        <div id="timeline-line" style="position: absolute; top: 40px; left: 0; right: 0; height: 2px; background: var(--border-color);"></div>
+        
+        <!-- Selection overlay -->
+        <div id="selection-overlay" style="position: absolute; top: 0; bottom: 0; background: rgba(102, 126, 234, 0.2); border: 1px solid #667eea; display: none;"></div>
+        
+        <!-- Timeline points container -->
+        <div id="timeline-container" style="position: relative; height: 150px;"></div>
+    </div>
+    
+    <!-- Details display area -->
+    <div id="timeline-details" style="margin-top: 30px; display: none;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+            <h3 id="details-title" style="margin: 0;"></h3>
+            <button onclick="closeTimelineDetails()" class="btn btn-secondary" style="padding: 5px 15px; font-size: 13px;">Close</button>
+        </div>
+        <div id="details-content" style="background: var(--bg-hover); padding: 15px; border-radius: 4px; color: var(--text-primary);"></div>
+    </div>
+</div>
+
+<!-- Current State -->
+<div class="card">
+    <h2>Current State</h2>
+    <pre style="background: var(--bg-hover); padding: 15px; border-radius: 4px; overflow-x: auto; color: var(--text-primary);">{{.Session.State | printf "%#v"}}</pre>
+</div>
+
+<!-- Metrics Summary -->
+{{if .Session.Metrics}}
+<div class="card">
+    <h2>Metrics Summary</h2>
+    <p style="margin-bottom: 20px; color: var(--text-secondary);">Statistics and timeseries visualization for each metric. Click to expand/collapse charts.</p>
+    <div id="metrics-summary"></div>
+</div>
+
+<script>
+// Group metrics by name
+const metricsByName = {};
+{{range .Session.Metrics}}
+const metricName_{{.Name | replace "." "_"}} = "{{.Name}}";
+if (!metricsByName[metricName_{{.Name | replace "." "_"}}]) {
+    metricsByName[metricName_{{.Name | replace "." "_"}}] = [];
+}
+metricsByName[metricName_{{.Name | replace "." "_"}}].push({
+    timestamp: new Date("{{.Timestamp.Format "2006-01-02T15:04:05Z07:00"}}"),
+    value: {{.Value}},
+    tags: {{.Tags | printf "%#v"}}
+});
+{{end}}
+
+// Create expandable metric summaries
+const summaryContainer = document.getElementById('metrics-summary');
+let chartInstances = {}; // Store chart instances
+
+Object.keys(metricsByName).forEach(metricName => {
+    const metrics = metricsByName[metricName];
+    
+    // Calculate statistics
+    const values = metrics.map(m => m.value);
+    const peak = Math.max(...values);
+    const min = Math.min(...values);
+    const avg = values.reduce((a, b) => a + b, 0) / values.length;
+    
+    // Calculate standard deviation
+    const variance = values.reduce((sum, val) => sum + Math.pow(val - avg, 2), 0) / values.length;
+    const stdDev = Math.sqrt(variance);
+    
+    // Calculate mean (median)
+    const sortedValues = [...values].sort((a, b) => a - b);
+    const mid = Math.floor(sortedValues.length / 2);
+    const median = sortedValues.length % 2 === 0 
+        ? (sortedValues[mid - 1] + sortedValues[mid]) / 2 
+        : sortedValues[mid];
+    
+    const safeMetricName = metricName.replace(/\./g, '_');
+    
+    // Create container
+    const container = document.createElement('div');
+    container.style.marginBottom = '15px';
+    container.style.border = '1px solid var(--border-color)';
+    container.style.borderRadius = '6px';
+    container.style.overflow = 'hidden';
+    
+    container.innerHTML = `
+        <div style="background: var(--bg-hover); padding: 15px; cursor: pointer; display: flex; justify-content: space-between; align-items: center;" 
+             onclick="toggleMetric('${safeMetricName}')">
+            <div>
+                <h3 style="margin: 0 0 8px 0; font-size: 16px; color: var(--accent-primary);">${metricName}</h3>
+                <div style="font-size: 13px; color: var(--text-secondary); display: flex; gap: 20px; flex-wrap: wrap;">
+                    <span><strong>Average:</strong> ${avg.toFixed(2)}</span>
+                    <span><strong>Std Dev:</strong> ${stdDev.toFixed(2)}</span>
+                    <span><strong>Median:</strong> ${median.toFixed(2)}</span>
+                    <span><strong>Min:</strong> ${min.toFixed(2)}</span>
+                    <span><strong>Max:</strong> ${peak.toFixed(2)}</span>
+                    <span><strong>Points:</strong> ${values.length}</span>
+                </div>
+            </div>
+            <div id="arrow-${safeMetricName}" style="font-size: 20px; transition: transform 0.3s;">▼</div>
+        </div>
+        <div id="chart-container-${safeMetricName}" style="display: none; padding: 20px; background: var(--bg-card);">
+            <div style="height: 300px; position: relative;">
+                <canvas id="chart-${safeMetricName}"></canvas>
+            </div>
+        </div>
+    `;
+    summaryContainer.appendChild(container);
+});
+
+// Toggle metric chart visibility
+function toggleMetric(safeMetricName) {
+    const chartContainer = document.getElementById(`chart-container-${safeMetricName}`);
+    const arrow = document.getElementById(`arrow-${safeMetricName}`);
+    const isHidden = chartContainer.style.display === 'none';
+    
+    if (isHidden) {
+        chartContainer.style.display = 'block';
+        arrow.style.transform = 'rotate(180deg)';
+        
+        // Create chart if not already created
+        if (!chartInstances[safeMetricName]) {
+            const metrics = metricsByName[Object.keys(metricsByName).find(k => k.replace(/\./g, '_') === safeMetricName)];
+            const ctx = document.getElementById(`chart-${safeMetricName}`).getContext('2d');
+            
+            chartInstances[safeMetricName] = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: metrics.map(m => m.timestamp.toLocaleTimeString()),
+                    datasets: [{
+                        label: safeMetricName.replace(/_/g, '.'),
+                        data: metrics.map(m => m.value),
+                        borderColor: '#667eea',
+                        backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                        tension: 0.4,
+                        fill: true,
+                        pointRadius: 4,
+                        pointHoverRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: true,
+                            labels: {
+                                color: 'var(--text-primary)'
+                            }
+                        },
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            grid: {
+                                color: 'rgba(160, 174, 192, 0.1)'
+                            },
+                            ticks: {
+                                color: '#a0aec0'
+                            }
+                        },
+                        x: {
+                            grid: {
+                                color: 'rgba(160, 174, 192, 0.1)'
+                            },
+                            ticks: {
+                                color: '#a0aec0',
+                                maxRotation: 45,
+                                minRotation: 0
+                            }
+                        }
+                    }
+                }
+            });
+        }
+    } else {
+        chartContainer.style.display = 'none';
+        arrow.style.transform = 'rotate(0deg)';
+    }
+}
+</script>
+{{end}}
+
+<!-- Events -->
+{{if .Session.Events}}
+<div class="card">
+    <h2>Events ({{len .Session.Events}})</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Timestamp</th>
+                <th>Name</th>
+                <th>Data</th>
+            </tr>
+        </thead>
+        <tbody>
+            {{range .Session.Events}}
+            <tr>
+                <td style="font-family: monospace;">{{.Timestamp.Format "15:04:05"}}</td>
+                <td>{{.Name}}</td>
+                <td>{{.Data}}</td>
+            </tr>
+            {{end}}
+        </tbody>
+    </table>
+</div>
+{{end}}
+
+<!-- Metrics Data -->
+{{if .Session.Metrics}}
+<div class="card">
+    <h2>Metrics Data ({{len .Session.Metrics}})</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Timestamp</th>
+                <th>Name</th>
+                <th>Value</th>
+                <th>Tags</th>
+            </tr>
+        </thead>
+        <tbody>
+            {{range .Session.Metrics}}
+            <tr>
+                <td style="font-family: monospace;">{{.Timestamp.Format "15:04:05"}}</td>
+                <td>{{.Name}}</td>
+                <td>{{.Value}}</td>
+                <td>{{range .Tags}}{{.}} {{end}}</td>
+            </tr>
+            {{end}}
+        </tbody>
+    </table>
+</div>
+{{end}}
+
+<div style="margin: 20px 0;">
+    <a href="/" class="btn btn-secondary">Back to Dashboard</a>
+</div>
+
+<script>
+// Enhanced Timeline with Zoom Functionality
+const timelineItems = [];
+
+// Add state changes
+{{range $index, $snapshot := .Session.StateHistory}}
+timelineItems.push({
+    type: 'state',
+    timestamp: new Date("{{$snapshot.Timestamp.Format "2006-01-02T15:04:05Z07:00"}}"),
+    displayTime: "{{$snapshot.Timestamp.Format "15:04:05.000"}}",
+    index: {{$index}},
+    state: {{$snapshot.State | printf "%#v"}}
+});
+{{end}}
+
+// Add events
+{{range $event := .Session.Events}}
+timelineItems.push({
+    type: '{{if eq $event.Name "exception"}}exception{{else}}event{{end}}',
+    timestamp: new Date("{{$event.Timestamp.Format "2006-01-02T15:04:05Z07:00"}}"),
+    displayTime: "{{$event.Timestamp.Format "15:04:05.000"}}",
+    name: "{{$event.Name}}",
+    data: {{$event.Data | printf "%#v"}}
+});
+{{end}}
+
+// Sort by timestamp
+timelineItems.sort((a, b) => a.timestamp - b.timestamp);
+
+// Timeline state
+let zoomStart = null;
+let zoomEnd = null;
+let isDragging = false;
+let dragStartX = 0;
+
+// Calculate time range
+const getTimeRange = () => {
+    if (timelineItems.length === 0) return { start: new Date(), end: new Date() };
+    
+    if (zoomStart !== null && zoomEnd !== null) {
+        return { start: zoomStart, end: zoomEnd };
+    }
+    
+    return {
+        start: timelineItems[0].timestamp,
+        end: timelineItems[timelineItems.length - 1].timestamp
+    };
+};
+
+// Render timeline
+const renderTimeline = () => {
+    const container = document.getElementById('timeline-container');
+    container.innerHTML = '';
+    
+    if (timelineItems.length === 0) {
+        container.innerHTML = '<p style="color: var(--text-secondary);">No timeline data available</p>';
+        return;
+    }
+    
+    const timeRange = getTimeRange();
+    const totalDuration = timeRange.end - timeRange.start;
+    
+    if (totalDuration === 0) {
+        container.innerHTML = '<p style="color: var(--text-secondary);">All events occurred at the same time</p>';
+        return;
+    }
+    
+    const containerWidth = container.offsetWidth || 1000;
+    const dotWidth = 20; // Width of each dot in pixels
+    const bucketSize = (totalDuration / containerWidth) * dotWidth; // Time span per bucket
+    
+    // Group items into buckets
+    const buckets = {};
+    timelineItems.forEach(item => {
+        if (item.timestamp < timeRange.start || item.timestamp > timeRange.end) return;
+        
+        const bucketIndex = Math.floor((item.timestamp - timeRange.start) / bucketSize);
+        if (!buckets[bucketIndex]) {
+            buckets[bucketIndex] = [];
+        }
+        buckets[bucketIndex].push(item);
+    });
+    
+    // Render buckets
+    Object.keys(buckets).forEach(bucketIndex => {
+        const items = buckets[bucketIndex];
+        // Sort items in bucket by timestamp (oldest first = top)
+        items.sort((a, b) => a.timestamp - b.timestamp);
+        
+        const bucketTime = timeRange.start.getTime() + (bucketIndex * bucketSize);
+        const position = ((bucketTime - timeRange.start) / totalDuration) * 100;
+        
+        items.forEach((item, verticalIndex) => {
+            const point = document.createElement('div');
+            point.style.position = 'absolute';
+            point.style.left = position + '%';
+            point.style.top = (30 + verticalIndex * 25) + 'px';
+            point.style.width = '16px';
+            point.style.height = '16px';
+            point.style.borderRadius = '50%';
+            point.style.border = '2px solid var(--bg-card)';
+            point.style.boxShadow = '0 2px 4px rgba(0,0,0,0.3)';
+            point.style.cursor = 'pointer';
+            point.style.transition = 'transform 0.2s, box-shadow 0.2s';
+            point.style.zIndex = '10';
+            
+            // Color based on type
+            if (item.type === 'state') {
+                point.style.background = '#667eea';
+            } else if (item.type === 'exception') {
+                point.style.background = '#f56565';
+            } else {
+                point.style.background = '#48bb78';
+            }
+            
+            point.addEventListener('mouseenter', () => {
+                point.style.transform = 'scale(1.3)';
+                point.style.boxShadow = '0 4px 8px rgba(0,0,0,0.4)';
+            });
+            
+            point.addEventListener('mouseleave', () => {
+                point.style.transform = 'scale(1)';
+                point.style.boxShadow = '0 2px 4px rgba(0,0,0,0.3)';
+            });
+            
+            point.addEventListener('click', (e) => {
+                e.stopPropagation();
+                showTimelineDetails(item);
+            });
+            
+            // Time label (only for first item in bucket)
+            if (verticalIndex === 0) {
+                const label = document.createElement('div');
+                label.style.position = 'absolute';
+                label.style.left = position + '%';
+                label.style.top = '60px';
+                label.style.transform = 'translateX(-50%)';
+                label.style.fontSize = '11px';
+                label.style.color = 'var(--text-secondary)';
+                label.style.whiteSpace = 'nowrap';
+                label.textContent = item.displayTime;
+                container.appendChild(label);
+            }
+            
+            container.appendChild(point);
+        });
+    });
+    
+    // Update zoom info
+    const zoomInfo = document.getElementById('zoom-info');
+    if (zoomStart !== null && zoomEnd !== null) {
+        const rangeMs = zoomEnd - zoomStart;
+        const rangeSec = (rangeMs / 1000).toFixed(1);
+        zoomInfo.textContent = `Showing ${rangeSec}s range`;
+        document.getElementById('zoom-out-btn').style.display = 'inline-block';
+    } else {
+        zoomInfo.textContent = `Showing full timeline (${timelineItems.length} items)`;
+        document.getElementById('zoom-out-btn').style.display = 'none';
+    }
+};
+
+// Show timeline details
+const showTimelineDetails = (item) => {
+    const detailsDiv = document.getElementById('timeline-details');
+    const titleDiv = document.getElementById('details-title');
+    const contentDiv = document.getElementById('details-content');
+    
+    if (item.type === 'state') {
+        titleDiv.textContent = `State at ${item.displayTime}`;
+        contentDiv.innerHTML = `<pre style="margin: 0; color: var(--text-primary);">${JSON.stringify(item.state, null, 2)}</pre>`;
+    } else if (item.type === 'exception') {
+        titleDiv.textContent = `Exception: ${item.name} at ${item.displayTime}`;
+        
+        // Find state at this time
+        const stateAtTime = findStateAtTime(item.timestamp);
+        
+        contentDiv.innerHTML = `
+            <div style="margin-bottom: 15px;">
+                <strong>Exception Data:</strong>
+                <pre style="margin-top: 5px; color: var(--text-primary);">${JSON.stringify(item.data, null, 2)}</pre>
+            </div>
+            ${stateAtTime ? `
+            <div>
+                <strong>Application State at Time of Exception:</strong>
+                <pre style="margin-top: 5px; color: var(--text-primary);">${JSON.stringify(stateAtTime, null, 2)}</pre>
+            </div>
+            ` : ''}
+        `;
+    } else {
+        titleDiv.textContent = `Event: ${item.name} at ${item.displayTime}`;
+        
+        // Find state at this time
+        const stateAtTime = findStateAtTime(item.timestamp);
+        
+        contentDiv.innerHTML = `
+            <div style="margin-bottom: 15px;">
+                <strong>Event Data:</strong>
+                <pre style="margin-top: 5px; color: var(--text-primary);">${JSON.stringify(item.data, null, 2)}</pre>
+            </div>
+            ${stateAtTime ? `
+            <div>
+                <strong>Application State at Event Time:</strong>
+                <pre style="margin-top: 5px; color: var(--text-primary);">${JSON.stringify(stateAtTime, null, 2)}</pre>
+            </div>
+            ` : ''}
+        `;
+    }
+    
+    detailsDiv.style.display = 'block';
+    detailsDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+};
+
+// Find state at a given time
+const findStateAtTime = (timestamp) => {
+    const stateChanges = timelineItems.filter(item => item.type === 'state' && item.timestamp <= timestamp);
+    if (stateChanges.length === 0) return null;
+    return stateChanges[stateChanges.length - 1].state;
+};
+
+// Close timeline details
+const closeTimelineDetails = () => {
+    document.getElementById('timeline-details').style.display = 'none';
+};
+
+// Zoom out
+const zoomOut = () => {
+    zoomStart = null;
+    zoomEnd = null;
+    renderTimeline();
+};
+
+// Mouse events for selection
+const wrapper = document.getElementById('timeline-wrapper');
+const selectionOverlay = document.getElementById('selection-overlay');
+
+wrapper.addEventListener('mousedown', (e) => {
+    if (e.target === wrapper || e.target === document.getElementById('timeline-line')) {
+        isDragging = true;
+        dragStartX = e.offsetX;
+        selectionOverlay.style.left = dragStartX + 'px';
+        selectionOverlay.style.width = '0px';
+        selectionOverlay.style.display = 'block';
+    }
+});
+
+wrapper.addEventListener('mousemove', (e) => {
+    if (isDragging) {
+        const currentX = e.offsetX;
+        const left = Math.min(dragStartX, currentX);
+        const width = Math.abs(currentX - dragStartX);
+        selectionOverlay.style.left = left + 'px';
+        selectionOverlay.style.width = width + 'px';
+    }
+});
+
+wrapper.addEventListener('mouseup', (e) => {
+    if (isDragging) {
+        isDragging = false;
+        const currentX = e.offsetX;
+        const width = Math.abs(currentX - dragStartX);
+        
+        if (width > 20) { // Minimum selection width
+            const containerWidth = wrapper.offsetWidth;
+            const startPercent = Math.min(dragStartX, currentX) / containerWidth;
+            const endPercent = Math.max(dragStartX, currentX) / containerWidth;
+            
+            const timeRange = getTimeRange();
+            const totalDuration = timeRange.end - timeRange.start;
+            
+            zoomStart = new Date(timeRange.start.getTime() + (totalDuration * startPercent));
+            zoomEnd = new Date(timeRange.start.getTime() + (totalDuration * endPercent));
+            
+            renderTimeline();
+        }
+        
+        selectionOverlay.style.display = 'none';
+    }
+});
+
+wrapper.addEventListener('mouseleave', () => {
+    if (isDragging) {
+        isDragging = false;
+        selectionOverlay.style.display = 'none';
+    }
+});
+
+// Initial render
+renderTimeline();
+
+// Re-render on window resize
+window.addEventListener('resize', renderTimeline);
+</script>
+{{end}}
