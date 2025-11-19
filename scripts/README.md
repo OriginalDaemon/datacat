@@ -193,9 +193,11 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 
 ### Port Already in Use
 
-If port 8080 or 8081 is already in use, you'll need to:
+If port 9090 or 8080 is already in use, you'll need to:
 1. Stop the process using the port, or
-2. Modify the port in the respective `cmd/datacat-server/main.go` or `cmd/datacat-web/main.go` files
+2. Modify the port in the respective configuration or source files:
+   - Server: Edit `cmd/datacat-server/config.json` and change `server_port`
+   - Web UI: Edit `cmd/datacat-web/main.go` and change the `port` variable
 
 ### Python Dependencies Issues
 

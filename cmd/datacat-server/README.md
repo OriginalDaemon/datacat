@@ -25,7 +25,7 @@ Create a `config.json` file in the same directory as the server:
   "data_path": "./datacat_data",
   "retention_days": 365,
   "cleanup_interval_hours": 24,
-  "server_port": "8080"
+  "server_port": "9090"
 }
 ```
 
@@ -33,7 +33,7 @@ Create a `config.json` file in the same directory as the server:
 - `data_path` - Directory for BadgerDB data storage (default: `./datacat_data`)
 - `retention_days` - Number of days to keep session data (default: `365` = 1 year)
 - `cleanup_interval_hours` - Hours between automatic cleanup runs (default: `24`)
-- `server_port` - Port to run the server on (default: `8080`)
+- `server_port` - Port to run the server on (default: `9090`)
 
 **Note:** The cleanup routine runs automatically in the background and removes sessions older than `retention_days`.
 

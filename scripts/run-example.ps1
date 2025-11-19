@@ -23,7 +23,7 @@ Write-Host ""
 # Check if server is running
 Write-Host "Checking if datacat server is running..." -ForegroundColor Yellow
 try {
-    $response = Invoke-WebRequest -Uri "http://localhost:8080/api/sessions" -Method POST -UseBasicParsing -ErrorAction Stop
+    $response = Invoke-WebRequest -Uri "http://localhost:9090/api/sessions" -Method POST -UseBasicParsing -ErrorAction Stop
     Write-Host "Server is running!" -ForegroundColor Green
 } catch {
     Write-Host "Server is not running!" -ForegroundColor Red
