@@ -52,10 +52,11 @@ type Store struct {
 	mu       sync.RWMutex
 	sessions map[string]*Session
 	db       *badger.DB
+	config   *Config
 }
 
 // NewStore creates a new Store with BadgerDB
-func NewStore(dbPath string) (*Store, error) {
+func NewStore(dbPath string, config *Config) (*Store, error) {
 	opts := badger.DefaultOptions(dbPath)
 	opts.Logger = nil // Disable BadgerDB logs
 	
@@ -67,6 +68,7 @@ func NewStore(dbPath string) (*Store, error) {
 	store := &Store{
 		sessions: make(map[string]*Session),
 		db:       db,
+		config:   config,
 	}
 
 	// Load existing sessions from database
@@ -267,6 +269,57 @@ func (s *Store) EndSession(id string) error {
 	return nil
 }
 
+// CleanupOldSessions removes sessions older than retention period
+func (s *Store) CleanupOldSessions() (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	cutoff := time.Now().AddDate(0, 0, -s.config.RetentionDays)
+	removed := 0
+
+	// Find old sessions
+	var toDelete []string
+	for id, session := range s.sessions {
+		if session.CreatedAt.Before(cutoff) {
+			toDelete = append(toDelete, id)
+		}
+	}
+
+	// Delete from database and memory
+	for _, id := range toDelete {
+		err := s.db.Update(func(txn *badger.Txn) error {
+			return txn.Delete([]byte("session:" + id))
+		})
+		if err != nil {
+			log.Printf("Failed to delete session %s from database: %v", id, err)
+			continue
+		}
+		delete(s.sessions, id)
+		removed++
+	}
+
+	if removed > 0 {
+		log.Printf("Cleaned up %d sessions older than %d days", removed, s.config.RetentionDays)
+	}
+
+	return removed, nil
+}
+
+// StartCleanupRoutine starts background cleanup routine
+func (s *Store) StartCleanupRoutine() {
+	go func() {
+		ticker := time.NewTicker(s.config.CleanupInterval)
+		defer ticker.Stop()
+
+		for range ticker.C {
+			if _, err := s.CleanupOldSessions(); err != nil {
+				log.Printf("Cleanup error: %v", err)
+			}
+		}
+	}()
+}
+
+
 // AddEvent adds an event to a session
 func (s *Store) AddEvent(id string, name string, data map[string]interface{}) error {
 	s.mu.Lock()
@@ -319,19 +372,30 @@ func (s *Store) AddMetric(id string, name string, value float64, tags []string) 
 var store *Store
 
 func main() {
+	// Load configuration
+	config, err := LoadConfig("./config.json")
+	if err != nil {
+		log.Fatalf("Failed to load configuration: %v", err)
+	}
+	log.Printf("Configuration loaded: Data path=%s, Retention=%d days, Port=%s",
+		config.DataPath, config.RetentionDays, config.ServerPort)
+
 	// Initialize store with BadgerDB
-	var err error
-	store, err = NewStore("./datacat_db")
+	store, err = NewStore(config.DataPath, config)
 	if err != nil {
 		log.Fatalf("Failed to initialize store: %v", err)
 	}
 	defer store.Close()
 
+	// Start cleanup routine
+	store.StartCleanupRoutine()
+	log.Printf("Started cleanup routine (interval: %v)", config.CleanupInterval)
+
 	http.HandleFunc("/api/sessions", handleSessions)
 	http.HandleFunc("/api/sessions/", handleSessionOperations)
 	http.HandleFunc("/api/grafana/sessions", handleGrafanaData)
 
-	port := ":8080"
+	port := ":" + config.ServerPort
 	log.Printf("Starting datacat server on %s", port)
 	log.Fatal(http.ListenAndServe(port, nil))
 }

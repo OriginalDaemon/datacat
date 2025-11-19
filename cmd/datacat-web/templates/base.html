@@ -236,7 +236,58 @@
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
+
+        /* Light theme */
+        body.light-theme {
+            --bg-primary: #f7fafc;
+            --bg-secondary: #edf2f7;
+            --bg-card: #ffffff;
+            --bg-hover: #e2e8f0;
+            --text-primary: #2d3748;
+            --text-secondary: #4a5568;
+            --border-color: #cbd5e0;
+            --accent-primary: #667eea;
+            --accent-secondary: #764ba2;
+            --success-color: #38a169;
+            --error-color: #e53e3e;
+            --warning-color: #dd6b20;
+        }
+
+        /* Theme switcher button */
+        .theme-toggle {
+            background: rgba(255,255,255,0.1);
+            border: none;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.2s;
+            margin-left: 15px;
+        }
+
+        .theme-toggle:hover {
+            background: rgba(255,255,255,0.2);
+        }
     </style>
+    <script>
+        // Theme switcher logic
+        function initTheme() {
+            const savedTheme = localStorage.getItem('datacat-theme') || 'dark';
+            if (savedTheme === 'light') {
+                document.body.classList.add('light-theme');
+            }
+        }
+
+        function toggleTheme() {
+            document.body.classList.toggle('light-theme');
+            const currentTheme = document.body.classList.contains('light-theme') ? 'light' : 'dark';
+            localStorage.setItem('datacat-theme', currentTheme);
+        }
+
+        // Initialize theme on page load
+        document.addEventListener('DOMContentLoaded', initTheme);
+    </script>
 </head>
 <body>
     <header>
@@ -246,6 +297,7 @@
                 <a href="/">Home</a>
                 <a href="/metrics">Metrics</a>
                 <a href="http://localhost:8080/api/grafana/sessions" target="_blank">API</a>
+                <button class="theme-toggle" onclick="toggleTheme()">🌓 Toggle Theme</button>
             </nav>
         </div>
     </header>

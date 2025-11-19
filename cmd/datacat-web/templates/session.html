@@ -92,12 +92,12 @@
     <pre style="background: var(--bg-hover); padding: 15px; border-radius: 4px; overflow-x: auto; color: var(--text-primary);">{{.Session.State | printf "%#v"}}</pre>
 </div>
 
-<!-- Metrics Timeseries -->
+<!-- Metrics Summary -->
 {{if .Session.Metrics}}
 <div class="card">
-    <h2>Metrics Timeseries</h2>
-    <p style="margin-bottom: 20px; color: var(--text-secondary);">Visualize how metrics changed over time during this session.</p>
-    <div id="metrics-charts"></div>
+    <h2>Metrics Summary</h2>
+    <p style="margin-bottom: 20px; color: var(--text-secondary);">Statistics and timeseries visualization for each metric. Click to expand/collapse charts.</p>
+    <div id="metrics-summary"></div>
 </div>
 
 <script>
@@ -115,76 +115,138 @@ metricsByName[metricName_{{.Name | replace "." "_"}}].push({
 });
 {{end}}
 
-// Create a chart for each metric
-const chartsContainer = document.getElementById('metrics-charts');
+// Create expandable metric summaries
+const summaryContainer = document.getElementById('metrics-summary');
+let chartInstances = {}; // Store chart instances
+
 Object.keys(metricsByName).forEach(metricName => {
     const metrics = metricsByName[metricName];
     
-    // Calculate stats
+    // Calculate statistics
     const values = metrics.map(m => m.value);
     const peak = Math.max(...values);
-    const avg = values.reduce((a, b) => a + b, 0) / values.length;
     const min = Math.min(...values);
+    const avg = values.reduce((a, b) => a + b, 0) / values.length;
+    
+    // Calculate standard deviation
+    const variance = values.reduce((sum, val) => sum + Math.pow(val - avg, 2), 0) / values.length;
+    const stdDev = Math.sqrt(variance);
+    
+    // Calculate mean (median)
+    const sortedValues = [...values].sort((a, b) => a - b);
+    const mid = Math.floor(sortedValues.length / 2);
+    const median = sortedValues.length % 2 === 0 
+        ? (sortedValues[mid - 1] + sortedValues[mid]) / 2 
+        : sortedValues[mid];
+    
+    const safeMetricName = metricName.replace(/\./g, '_');
     
     // Create container
     const container = document.createElement('div');
-    container.style.marginBottom = '30px';
+    container.style.marginBottom = '15px';
+    container.style.border = '1px solid var(--border-color)';
+    container.style.borderRadius = '6px';
+    container.style.overflow = 'hidden';
+    
     container.innerHTML = `
-        <h3 style="margin-bottom: 10px; font-size: 16px;">${metricName}</h3>
-        <p style="font-size: 12px; color: var(--text-secondary); margin-bottom: 10px;">
-            Peak: ${peak.toFixed(2)} | Average: ${avg.toFixed(2)} | Min: ${min.toFixed(2)} | Points: ${values.length}
-        </p>
-        <div style="height: 300px; position: relative;">
-            <canvas id="chart-${metricName.replace(/\./g, '_')}"></canvas>
+        <div style="background: var(--bg-hover); padding: 15px; cursor: pointer; display: flex; justify-content: space-between; align-items: center;" 
+             onclick="toggleMetric('${safeMetricName}')">
+            <div>
+                <h3 style="margin: 0 0 8px 0; font-size: 16px; color: var(--accent-primary);">${metricName}</h3>
+                <div style="font-size: 13px; color: var(--text-secondary); display: flex; gap: 20px; flex-wrap: wrap;">
+                    <span><strong>Average:</strong> ${avg.toFixed(2)}</span>
+                    <span><strong>Std Dev:</strong> ${stdDev.toFixed(2)}</span>
+                    <span><strong>Median:</strong> ${median.toFixed(2)}</span>
+                    <span><strong>Min:</strong> ${min.toFixed(2)}</span>
+                    <span><strong>Max:</strong> ${peak.toFixed(2)}</span>
+                    <span><strong>Points:</strong> ${values.length}</span>
+                </div>
+            </div>
+            <div id="arrow-${safeMetricName}" style="font-size: 20px; transition: transform 0.3s;">▼</div>
+        </div>
+        <div id="chart-container-${safeMetricName}" style="display: none; padding: 20px; background: var(--bg-card);">
+            <div style="height: 300px; position: relative;">
+                <canvas id="chart-${safeMetricName}"></canvas>
+            </div>
         </div>
     `;
-    chartsContainer.appendChild(container);
-    
-    // Create chart
-    const ctx = document.getElementById(`chart-${metricName.replace(/\./g, '_')}`).getContext('2d');
-    new Chart(ctx, {
-        type: 'line',
-        data: {
-            labels: metrics.map(m => m.timestamp.toLocaleTimeString()),
-            datasets: [{
-                label: metricName,
-                data: metrics.map(m => m.value),
-                borderColor: '#667eea',
-                backgroundColor: 'rgba(102, 126, 234, 0.1)',
-                tension: 0.4,
-                fill: true
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: {
-                    display: false
-                }
-            },
-            scales: {
-                y: {
-                    beginAtZero: true,
-                    grid: {
-                        color: 'rgba(160, 174, 192, 0.1)'
-                    },
-                    ticks: {
-                        color: '#a0aec0'
-                    }
-                },
-                x: {
-                    grid: {
-                        color: 'rgba(160, 174, 192, 0.1)'
-                    },
-                    ticks: {
-                        color: '#a0aec0'
-                    }
-                }
-            }
-        }
-    });
+    summaryContainer.appendChild(container);
 });
+
+// Toggle metric chart visibility
+function toggleMetric(safeMetricName) {
+    const chartContainer = document.getElementById(`chart-container-${safeMetricName}`);
+    const arrow = document.getElementById(`arrow-${safeMetricName}`);
+    const isHidden = chartContainer.style.display === 'none';
+    
+    if (isHidden) {
+        chartContainer.style.display = 'block';
+        arrow.style.transform = 'rotate(180deg)';
+        
+        // Create chart if not already created
+        if (!chartInstances[safeMetricName]) {
+            const metrics = metricsByName[Object.keys(metricsByName).find(k => k.replace(/\./g, '_') === safeMetricName)];
+            const ctx = document.getElementById(`chart-${safeMetricName}`).getContext('2d');
+            
+            chartInstances[safeMetricName] = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: metrics.map(m => m.timestamp.toLocaleTimeString()),
+                    datasets: [{
+                        label: safeMetricName.replace(/_/g, '.'),
+                        data: metrics.map(m => m.value),
+                        borderColor: '#667eea',
+                        backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                        tension: 0.4,
+                        fill: true,
+                        pointRadius: 4,
+                        pointHoverRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: true,
+                            labels: {
+                                color: 'var(--text-primary)'
+                            }
+                        },
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            grid: {
+                                color: 'rgba(160, 174, 192, 0.1)'
+                            },
+                            ticks: {
+                                color: '#a0aec0'
+                            }
+                        },
+                        x: {
+                            grid: {
+                                color: 'rgba(160, 174, 192, 0.1)'
+                            },
+                            ticks: {
+                                color: '#a0aec0',
+                                maxRotation: 45,
+                                minRotation: 0
+                            }
+                        }
+                    }
+                }
+            });
+        }
+    } else {
+        chartContainer.style.display = 'none';
+        arrow.style.transform = 'rotate(0deg)';
+    }
+}
 </script>
 {{end}}
 
