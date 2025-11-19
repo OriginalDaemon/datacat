@@ -127,3 +127,33 @@ func TestSaveConfig(t *testing.T) {
 		t.Errorf("Expected ServerURL http://test.com:8080, got %s", loaded.ServerURL)
 	}
 }
+
+func TestLoadConfigInvalidJSON(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := tmpDir + "/invalid.json"
+	
+	// Create invalid JSON file
+	file, err := os.Create(configPath)
+	if err != nil {
+		t.Fatalf("Failed to create config file: %v", err)
+	}
+	file.WriteString("{invalid json")
+	file.Close()
+	
+	// Load config - should return default on error
+	loaded := LoadConfig(configPath)
+	
+	if loaded.DaemonPort != "8079" {
+		t.Error("Should return default config when JSON is invalid")
+	}
+}
+
+func TestSaveConfigInvalidPath(t *testing.T) {
+	config := DefaultConfig()
+	
+	// Try to save to invalid path
+	err := SaveConfig("/invalid/path/that/does/not/exist/config.json", config)
+	if err == nil {
+		t.Error("Expected error when saving to invalid path")
+	}
+}

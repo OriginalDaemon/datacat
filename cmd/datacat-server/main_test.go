@@ -815,3 +815,91 @@ func TestStartCleanupRoutine(t *testing.T) {
 	// Give it a moment to start
 	time.Sleep(100 * time.Millisecond)
 }
+
+func TestNewStoreError(t *testing.T) {
+	// Try to create store with invalid path
+	_, err := NewStore("/invalid/path/that/really/does/not/exist/anywhere", DefaultConfig())
+	if err == nil {
+		t.Error("Expected error when creating store with invalid path")
+	}
+}
+
+func TestCleanupOldSessionsEmptyStore(t *testing.T) {
+	tmpDir := t.TempDir()
+	config := DefaultConfig()
+	store, err := NewStore(tmpDir, config)
+	if err != nil {
+		t.Fatalf("NewStore failed: %v", err)
+	}
+	defer store.Close()
+	
+	// Cleanup with no sessions
+	removed, err := store.CleanupOldSessions()
+	if err != nil {
+		t.Fatalf("CleanupOldSessions failed: %v", err)
+	}
+	
+	if removed != 0 {
+		t.Errorf("Expected 0 sessions removed, got %d", removed)
+	}
+}
+
+func TestGetSessionNonExistent(t *testing.T) {
+	tmpDir := t.TempDir()
+	config := DefaultConfig()
+	store, err := NewStore(tmpDir, config)
+	if err != nil {
+		t.Fatalf("NewStore failed: %v", err)
+	}
+	defer store.Close()
+	
+	_, ok := store.GetSession("non-existent")
+	if ok {
+		t.Error("Expected false for non-existent session")
+	}
+}
+
+func TestSaveSessionToDBError(t *testing.T) {
+	tmpDir := t.TempDir()
+	config := DefaultConfig()
+	store, err := NewStore(tmpDir, config)
+	if err != nil {
+		t.Fatalf("NewStore failed: %v", err)
+	}
+	
+	// Close the database to cause errors
+	store.db.Close()
+	
+	session := &Session{
+		ID:        "test",
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		Active:    true,
+		State:     map[string]interface{}{},
+	}
+	
+	// This should fail because DB is closed
+	err = store.saveSessionToDB(session)
+	if err == nil {
+		t.Error("Expected error when saving to closed database")
+	}
+}
+
+func TestCloseStore(t *testing.T) {
+	tmpDir := t.TempDir()
+	config := DefaultConfig()
+	store, err := NewStore(tmpDir, config)
+	if err != nil {
+		t.Fatalf("NewStore failed: %v", err)
+	}
+	
+	// Close the store
+	err = store.Close()
+	if err != nil {
+		t.Errorf("Close should not fail: %v", err)
+	}
+	
+	// Closing again should not panic
+	err = store.Close()
+	// BadgerDB returns error when closing an already closed DB, which is expected
+}

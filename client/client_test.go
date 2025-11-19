@@ -633,3 +633,93 @@ func TestCreateSessionDaemonEmptyResponse(t *testing.T) {
 		t.Errorf("Expected empty session_id, got %s", sessionID)
 	}
 }
+
+func TestHeartbeatErrorResponse(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("error"))
+	}))
+	defer server.Close()
+	
+	daemonClient := &Client{
+		BaseURL:    server.URL,
+		HTTPClient: &http.Client{Timeout: 30 * time.Second},
+		UseDaemon:  true,
+	}
+	
+	err := daemonClient.Heartbeat("test-session")
+	if err == nil {
+		t.Error("Expected error for 500 response")
+	}
+}
+
+func TestUpdateStateInvalidRequest(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Simulate invalid request scenario
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+	
+	client := NewClient(server.URL)
+	
+	// Pass nil state - should still work
+	err := client.UpdateState("test-id", map[string]interface{}{})
+	if err != nil {
+		t.Errorf("UpdateState should handle empty state: %v", err)
+	}
+}
+
+func TestLogEventInvalidRequest(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+	
+	client := NewClient(server.URL)
+	
+	// Pass nil data
+	err := client.LogEvent("test-id", "event_name", map[string]interface{}{})
+	if err != nil {
+		t.Errorf("LogEvent should handle empty data: %v", err)
+	}
+}
+
+func TestLogMetricWithNilTags(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	}))
+	defer server.Close()
+	
+	client := NewClient(server.URL)
+	
+	// Pass nil tags
+	err := client.LogMetric("test-id", "metric", 1.0, nil)
+	if err != nil {
+		t.Errorf("LogMetric should handle nil tags: %v", err)
+	}
+}
+
+func TestLogMetricWithTags(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var data map[string]interface{}
+		json.NewDecoder(r.Body).Decode(&data)
+		
+		// Verify tags were passed
+		tags, ok := data["tags"].([]interface{})
+		if !ok || len(tags) != 2 {
+			t.Error("Expected tags to be passed correctly")
+		}
+		
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	}))
+	defer server.Close()
+	
+	client := NewClient(server.URL)
+	
+	err := client.LogMetric("test-id", "metric", 1.0, []string{"tag1", "tag2"})
+	if err != nil {
+		t.Errorf("LogMetric failed: %v", err)
+	}
+}

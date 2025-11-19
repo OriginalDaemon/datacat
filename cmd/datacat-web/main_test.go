@@ -655,3 +655,113 @@ func TestHandleTimeseriesAPIWithFilters(t *testing.T) {
 		t.Errorf("Expected 1 session matched, got %d", result.SessionsMatched)
 	}
 }
+
+func TestShouldIncludeSessionUnknownMode(t *testing.T) {
+	session := &client.Session{
+		State: map[string]interface{}{"status": "running"},
+	}
+	
+	// Test unknown filter mode (should return true)
+	if !shouldIncludeSession(session, "unknown_mode", "status", "running") {
+		t.Error("Expected session to be included with unknown filter mode")
+	}
+}
+
+func TestStateContainsAllEmptyFilter(t *testing.T) {
+	state := map[string]interface{}{
+		"key": "value",
+	}
+	
+	// Empty filter should match
+	if !stateContainsAll(state, map[string]interface{}{}) {
+		t.Error("Expected state to contain empty filter")
+	}
+}
+
+func TestHandleTimeseriesAPIEmptyMetrics(t *testing.T) {
+	// Create a mock server with sessions but no matching metrics
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sessions := []*client.Session{
+			{
+				ID: "session1",
+				Metrics: []client.Metric{
+					{Name: "memory", Value: 50.0, Timestamp: time.Now()},
+				},
+			},
+		}
+		json.NewEncoder(w).Encode(sessions)
+	}))
+	defer mockServer.Close()
+	
+	datacatClient = client.NewClient(mockServer.URL)
+	
+	// Request a metric that doesn't exist
+	req := httptest.NewRequest("GET", "/api/timeseries?metric=cpu", nil)
+	w := httptest.NewRecorder()
+	
+	handleTimeseriesAPI(w, req)
+	
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+	
+	var result TimeseriesData
+	json.NewDecoder(w.Body).Decode(&result)
+	
+	if len(result.Points) != 0 {
+		t.Errorf("Expected 0 points for non-existent metric, got %d", len(result.Points))
+	}
+	if result.Min != 0 {
+		t.Errorf("Expected min to be 0 when no metrics, got %f", result.Min)
+	}
+}
+
+func TestSortSessionsStatus(t *testing.T) {
+	sessions := []*client.Session{
+		{ID: "1", Active: false},
+		{ID: "2", Active: true},
+		{ID: "3", Active: true},
+	}
+	
+	sortSessions(sessions, "status", "asc")
+	
+	// Active sessions should come first when sorted asc (less returns true for active)
+	if !sessions[0].Active {
+		t.Error("Expected active sessions to be sorted first")
+	}
+}
+
+func TestFilterSessionsByStateInvalidJSON(t *testing.T) {
+	sessions := []*client.Session{
+		{ID: "1", State: map[string]interface{}{"status": "running"}},
+	}
+	
+	// Invalid JSON filter should return all sessions
+	filtered := filterSessionsByState(sessions, "{invalid json}")
+	
+	if len(filtered) != 1 {
+		t.Errorf("Expected all sessions to be returned for invalid JSON, got %d", len(filtered))
+	}
+}
+
+func TestArrayContainsAllDuplicates(t *testing.T) {
+	stateArray := []interface{}{"a", "b", "c"}
+	
+	// Filter with duplicates
+	filterArray := []interface{}{"a", "a"}
+	if !arrayContainsAll(stateArray, filterArray) {
+		t.Error("Expected state array to contain filter with duplicates")
+	}
+}
+
+func TestMatchesStateHistoryEmpty(t *testing.T) {
+	session := &client.Session{
+		State: map[string]interface{}{},
+	}
+	
+	// Empty filter should match empty state
+	filter := map[string]interface{}{}
+	if !matchesStateHistory(session, filter) {
+		t.Error("Expected empty state to match empty filter")
+	}
+}
