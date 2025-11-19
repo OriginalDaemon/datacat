@@ -22,9 +22,11 @@ var datacatClient *client.Client
 
 // PageData represents the data passed to HTML templates
 type PageData struct {
-	Title    string
-	Sessions []*client.Session
-	Session  *client.Session
+	Title         string
+	Sessions      []*client.Session
+	Session       *client.Session
+	ServerOffline bool
+	ErrorMessage  string
 }
 
 // TimeseriesPoint represents a single point in a time series
@@ -56,7 +58,7 @@ type SessionMetrics struct {
 
 func main() {
 	// Initialize datacat client
-	datacatClient = client.NewClient("http://localhost:8080")
+	datacatClient = client.NewClient("http://localhost:9090")
 
 	// Serve static files
 	http.Handle("/static/", http.FileServer(http.FS(content)))
@@ -67,8 +69,9 @@ func main() {
 	http.HandleFunc("/session/", handleSessionDetail)
 	http.HandleFunc("/api/timeseries", handleTimeseriesAPI)
 	http.HandleFunc("/metrics", handleMetrics)
+	http.HandleFunc("/api/server-status", handleServerStatus)
 
-	port := ":8081"
+	port := ":8080"
 	log.Printf("Starting datacat web UI on %s", port)
 	log.Fatal(http.ListenAndServe(port, nil))
 }
@@ -85,19 +88,21 @@ func handleIndex(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sessions, err := datacatClient.GetAllSessions()
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+	data := PageData{
+		Title: "Datacat Dashboard",
 	}
 
-	// Sort sessions by created_at descending
-	sort.Slice(sessions, func(i, j int) bool {
-		return sessions[i].CreatedAt.After(sessions[j].CreatedAt)
-	})
-
-	data := PageData{
-		Title:    "Datacat Dashboard",
-		Sessions: sessions,
+	if err != nil {
+		// Server is offline - render UI anyway but with warning
+		data.ServerOffline = true
+		data.ErrorMessage = "Cannot connect to datacat server. Please start the server."
+		data.Sessions = []*client.Session{}
+	} else {
+		// Sort sessions by created_at descending
+		sort.Slice(sessions, func(i, j int) bool {
+			return sessions[i].CreatedAt.After(sessions[j].CreatedAt)
+		})
+		data.Sessions = sessions
 	}
 
 	err = tmpl.Execute(w, data)
@@ -590,3 +595,24 @@ func arrayContainsAll(stateArray, filterArray []interface{}) bool {
 	}
 	return true
 }
+
+// handleServerStatus checks if the server is online and returns status
+func handleServerStatus(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html")
+	
+	// Try to get sessions to check if server is online
+	_, err := datacatClient.GetAllSessions()
+	
+	if err != nil {
+		// Server is offline
+		w.Write([]byte(`<div id="server-status" class="alert alert-danger" hx-get="/api/server-status" hx-trigger="every 5s" hx-swap="outerHTML">
+			<strong>⚠️ Server Offline:</strong> Cannot connect to datacat server at http://localhost:9090. Please start the server.
+		</div>`))
+	} else {
+		// Server is online
+		w.Write([]byte(`<div id="server-status" class="alert alert-success" hx-get="/api/server-status" hx-trigger="every 10s" hx-swap="outerHTML">
+			<strong>✓ Server Online:</strong> Connected to datacat server at http://localhost:9090
+		</div>`))
+	}
+}
+

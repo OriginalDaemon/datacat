@@ -10,7 +10,7 @@ go build -o datacat
 ./datacat
 ```
 
-The service will start on `http://localhost:8080`
+The service will start on `http://localhost:9090`
 
 ## Quick Python Example
 
@@ -49,18 +49,18 @@ session.end()
 
 ```bash
 # Create session
-curl -X POST http://localhost:8080/api/sessions
+curl -X POST http://localhost:9090/api/sessions
 
 # Update state
-curl -X POST http://localhost:8080/api/sessions/{id}/state \
+curl -X POST http://localhost:9090/api/sessions/{id}/state \
   -H "Content-Type: application/json" \
   -d '{"status":"running"}'
 
 # Get session
-curl http://localhost:8080/api/sessions/{id}
+curl http://localhost:9090/api/sessions/{id}
 
 # Get all sessions (Grafana)
-curl http://localhost:8080/api/grafana/sessions
+curl http://localhost:9090/api/data/sessions
 ```
 
 ## Run Examples

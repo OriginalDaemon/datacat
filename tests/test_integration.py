@@ -32,7 +32,7 @@ class TestDatacatIntegration(unittest.TestCase):
     def setUpClass(cls):
         """Start the datacat service before tests"""
         cls.service_process = None  # type: ignore
-        cls.base_url = "http://localhost:8080"
+        cls.base_url = "http://localhost:9090"
 
         # Build the service
         repo_root = os.path.join(os.path.dirname(__file__), "..")
@@ -208,7 +208,7 @@ class TestDatacatPersistence(unittest.TestCase):
 
     def setUp(self):
         """Set up test environment"""
-        self.base_url = "http://localhost:8080"
+        self.base_url = "http://localhost:9090"
         self.db_path = os.path.join(os.path.dirname(__file__), "..", "datacat_db")
 
     def tearDown(self):

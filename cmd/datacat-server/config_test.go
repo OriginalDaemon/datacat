@@ -22,8 +22,8 @@ func TestDefaultConfig(t *testing.T) {
 	if config.CleanupIntervalHours != 24 {
 		t.Errorf("Expected CleanupIntervalHours 24, got %d", config.CleanupIntervalHours)
 	}
-	if config.ServerPort != "8080" {
-		t.Errorf("Expected ServerPort 8080, got %s", config.ServerPort)
+	if config.ServerPort != "9090" {
+		t.Errorf("Expected ServerPort 9090, got %s", config.ServerPort)
 	}
 	if config.CleanupInterval != 24*time.Hour {
 		t.Errorf("Expected CleanupInterval 24h, got %v", config.CleanupInterval)

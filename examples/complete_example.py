@@ -29,7 +29,7 @@ def main():
 
     # 1. Create and start a session
     print("1. Creating session...")
-    session = create_session("http://localhost:8080")
+    session = create_session("http://localhost:9090")
     print("   Session ID:", session.session_id)
 
     # 2. Log session start event
@@ -169,10 +169,10 @@ def main():
     print("\nSession ID: {}".format(session.session_id))
     print("\nYou can now:")
     print(
-        "1. Query the Grafana endpoint: curl http://localhost:8080/api/grafana/sessions"
+        "1. Query the Grafana endpoint: curl http://localhost:9090/api/grafana/sessions"
     )
     print(
-        "2. Get this session: curl http://localhost:8080/api/sessions/{}".format(
+        "2. Get this session: curl http://localhost:9090/api/sessions/{}".format(
             session.session_id
         )
     )

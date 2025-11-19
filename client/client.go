@@ -458,7 +458,7 @@ func (c *Client) Heartbeat(sessionID string) error {
 
 // GetAllSessions retrieves all sessions
 func (c *Client) GetAllSessions() ([]*Session, error) {
-	resp, err := c.HTTPClient.Get(c.BaseURL + "/api/grafana/sessions")
+	resp, err := c.HTTPClient.Get(c.BaseURL + "/api/data/sessions")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get sessions: %w", err)
 	}

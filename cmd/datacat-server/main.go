@@ -390,7 +390,9 @@ func main() {
 
 	http.HandleFunc("/api/sessions", handleSessions)
 	http.HandleFunc("/api/sessions/", handleSessionOperations)
-	http.HandleFunc("/api/grafana/sessions", handleGrafanaData)
+	http.HandleFunc("/api/data/sessions", handleGetAllSessions)
+	// Legacy endpoint for backward compatibility
+	http.HandleFunc("/api/grafana/sessions", handleGetAllSessions)
 
 	port := ":" + config.ServerPort
 	log.Printf("Starting datacat server on %s", port)
@@ -516,8 +518,8 @@ func handleSessionOperations(w http.ResponseWriter, r *http.Request) {
 	http.Error(w, "Not found", http.StatusNotFound)
 }
 
-// handleGrafanaData handles GET /api/grafana/sessions to export all data in JSON format
-func handleGrafanaData(w http.ResponseWriter, r *http.Request) {
+// handleGetAllSessions handles GET /api/data/sessions to export all sessions in JSON format
+func handleGetAllSessions(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "GET" {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return

@@ -53,7 +53,7 @@ cd cmd/datacat-server
 go run main.go
 ```
 
-Server runs on `http://localhost:8080` with BadgerDB persistence.
+Server runs on `http://localhost:9090` with BadgerDB persistence.
 
 #### 2. Start the Web UI (Optional)
 
@@ -62,7 +62,7 @@ cd cmd/datacat-web
 go run main.go
 ```
 
-Dashboard available at `http://localhost:8081`
+Dashboard available at `http://localhost:8080`
 
 #### 3. Use a Client Library
 
@@ -139,7 +139,7 @@ Python 2.7+ and 3.x compatible client with advanced features.
 from datacat import create_session
 
 # Create session with local daemon (automatic batching and crash detection)
-session = create_session("http://localhost:8080", use_daemon=True)
+session = create_session("http://localhost:9090", use_daemon=True)
 
 # Nested state updates with deep merge
 session.update_state({
@@ -169,7 +169,7 @@ session.end()
 
 ```python
 # For simple use cases without batching/monitoring
-session = create_session("http://localhost:8080", use_daemon=False)
+session = create_session("http://localhost:9090", use_daemon=False)
 # ... same API as above
 ```
 
@@ -181,7 +181,7 @@ session = create_session("http://localhost:8080", use_daemon=False)
 import "github.com/OriginalDaemon/datacat/client"
 
 // Create client with local daemon
-c, err := client.NewClientWithDaemon("http://localhost:8080", "8079")
+c, err := client.NewClientWithDaemon("http://localhost:9090", "8079")
 if err != nil {
     log.Fatal(err)
 }
@@ -204,7 +204,7 @@ c.EndSession(sessionID)
 ```go
 import "github.com/OriginalDaemon/datacat/client"
 
-c := client.NewClient("http://localhost:8080")
+c := client.NewClient("http://localhost:9090")
 sessionID, err := c.CreateSession()
 if err != nil {
     log.Fatal(err)
@@ -227,7 +227,7 @@ The REST API provides the following endpoints:
 - `POST /api/sessions/{id}/events` - Log event
 - `POST /api/sessions/{id}/metrics` - Log metric
 - `POST /api/sessions/{id}/end` - End session
-- `GET /api/grafana/sessions` - Export all sessions (Grafana)
+- `GET /api/data/sessions` - Export all sessions (Grafana)
 
 ## ✨ Key Features
 

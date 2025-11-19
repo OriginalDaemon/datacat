@@ -83,7 +83,7 @@ Complete implementation of the datacat service with REST API, client libraries, 
 - `POST /api/sessions/{id}/metrics` - Log metric
 
 ### Data Export
-- `GET /api/grafana/sessions` - Get all sessions (JSON)
+- `GET /api/data/sessions` - Get all sessions (JSON)
 
 ## Key Features
 

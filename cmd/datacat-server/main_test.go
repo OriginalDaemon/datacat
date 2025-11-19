@@ -765,12 +765,12 @@ func TestHTTPHandlers(t *testing.T) {
 		}
 	})
 
-	// Test handleGrafanaData
-	t.Run("GrafanaData", func(t *testing.T) {
-		req := httptest.NewRequest("GET", "/api/grafana/sessions", nil)
+	// Test handleGetAllSessions
+	t.Run("GetAllSessions", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/api/data/sessions", nil)
 		w := httptest.NewRecorder()
 
-		handleGrafanaData(w, req)
+		handleGetAllSessions(w, req)
 
 		if w.Code != http.StatusOK {
 			t.Errorf("Expected status 200, got %d", w.Code)
@@ -784,15 +784,34 @@ func TestHTTPHandlers(t *testing.T) {
 		}
 	})
 
-	// Test handleGrafanaData with invalid method
-	t.Run("GrafanaDataInvalidMethod", func(t *testing.T) {
-		req := httptest.NewRequest("POST", "/api/grafana/sessions", nil)
+	// Test handleGetAllSessions with invalid method
+	t.Run("GetAllSessionsInvalidMethod", func(t *testing.T) {
+		req := httptest.NewRequest("POST", "/api/data/sessions", nil)
 		w := httptest.NewRecorder()
 
-		handleGrafanaData(w, req)
+		handleGetAllSessions(w, req)
 
 		if w.Code != http.StatusMethodNotAllowed {
 			t.Errorf("Expected status 405, got %d", w.Code)
+		}
+	})
+
+	// Test legacy Grafana endpoint still works
+	t.Run("LegacyGrafanaEndpoint", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/api/grafana/sessions", nil)
+		w := httptest.NewRecorder()
+
+		handleGetAllSessions(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("Expected status 200, got %d", w.Code)
+		}
+
+		var sessions []*Session
+		json.NewDecoder(w.Body).Decode(&sessions)
+
+		if len(sessions) == 0 {
+			t.Error("Expected at least one session")
 		}
 	})
 }

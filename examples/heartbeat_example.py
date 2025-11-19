@@ -21,7 +21,7 @@ def simulate_healthy_application():
     """Simulate a healthy application that sends regular heartbeats"""
     print("=== Simulating Healthy Application ===")
 
-    session = create_session("http://localhost:8080")
+    session = create_session("http://localhost:9090")
     print("Session ID:", session.session_id)
 
     # Start heartbeat monitor with 10 second timeout for demo purposes
@@ -51,7 +51,7 @@ def simulate_hanging_application():
     """Simulate an application that hangs (stops sending heartbeats)"""
     print("=== Simulating Hanging Application ===")
 
-    session = create_session("http://localhost:8080")
+    session = create_session("http://localhost:9090")
     print("Session ID:", session.session_id)
 
     # Start heartbeat monitor with 10 second timeout for demo purposes
@@ -101,7 +101,7 @@ def simulate_recovering_application():
     """Simulate an application that hangs but then recovers"""
     print("=== Simulating Application with Recovery ===")
 
-    session = create_session("http://localhost:8080")
+    session = create_session("http://localhost:9090")
     print("Session ID:", session.session_id)
 
     # Start heartbeat monitor with 10 second timeout for demo purposes

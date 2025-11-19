@@ -47,6 +47,6 @@ Final session state:
 
 ## View Results
 
-- **Web UI**: http://localhost:8081 (if datacat-web is running)
-- **API**: http://localhost:8080/api/sessions/<session_id>
-- **Grafana**: Use the `/api/grafana/sessions` endpoint
+- **Web UI**: http://localhost:8080 (if datacat-web is running)
+- **API**: http://localhost:9090/api/sessions/<session_id>
+- **Grafana**: Use the `/api/data/sessions` endpoint

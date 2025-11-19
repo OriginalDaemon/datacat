@@ -269,6 +269,31 @@
         .theme-toggle:hover {
             background: rgba(255,255,255,0.2);
         }
+
+        /* Alert styles */
+        .alert {
+            padding: 12px 20px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            border-left: 4px solid;
+        }
+
+        .alert-danger {
+            background: rgba(245, 101, 101, 0.1);
+            border-left-color: var(--error-color);
+            color: var(--text-primary);
+        }
+
+        .alert-success {
+            background: rgba(72, 187, 120, 0.1);
+            border-left-color: var(--success-color);
+            color: var(--text-primary);
+        }
+
+        .alert strong {
+            margin-right: 8px;
+        }
     </style>
     <script>
         // Theme switcher logic
@@ -296,13 +321,18 @@
             <nav>
                 <a href="/">Home</a>
                 <a href="/metrics">Metrics</a>
-                <a href="http://localhost:8080/api/grafana/sessions" target="_blank">API</a>
+                <a href="http://localhost:9090/api/sessions" target="_blank">API</a>
                 <button class="theme-toggle" onclick="toggleTheme()">🌓 Toggle Theme</button>
             </nav>
         </div>
     </header>
 
     <div class="container">
+        <!-- Server status indicator (HTMX live updates) -->
+        <div id="server-status" hx-get="/api/server-status" hx-trigger="load" hx-swap="outerHTML">
+            <div class="alert alert-info">Checking server status...</div>
+        </div>
+        
         {{template "content" .}}
     </div>
 </body>

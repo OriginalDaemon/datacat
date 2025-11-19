@@ -66,7 +66,7 @@ go build -o datacat-server
 - `POST /api/sessions/{id}/events` - Log event
 - `POST /api/sessions/{id}/metrics` - Log metric
 - `POST /api/sessions/{id}/end` - End session
-- `GET /api/grafana/sessions` - Export all sessions for Grafana
+- `GET /api/data/sessions` - Export all sessions for Grafana
 
 ## Data Management
 

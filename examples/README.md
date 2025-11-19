@@ -4,7 +4,7 @@ This directory contains example applications demonstrating various features of d
 
 ## Python Examples
 
-All Python examples assume the datacat-server is running on `http://localhost:8080`.
+All Python examples assume the datacat-server is running on `http://localhost:9090`.
 
 ### [basic_example.py](basic_example.py)
 
@@ -81,7 +81,7 @@ cd cmd/datacat-web
 go run main.go
 ```
 
-Open `http://localhost:8081` to see sessions in the web UI.
+Open `http://localhost:8080` to see sessions in the web UI.
 
 ### 3. Run Examples
 
@@ -103,6 +103,6 @@ All examples will:
 4. Show confirmation when complete
 
 You can view the logged data:
-- Via the web UI at `http://localhost:8081`
-- By querying the API at `http://localhost:8080/api/sessions/{session_id}`
-- Through Grafana using the `/api/grafana/sessions` endpoint
+- Via the web UI at `http://localhost:8080`
+- By querying the API at `http://localhost:9090/api/sessions/{session_id}`
+- Through Grafana using the `/api/data/sessions` endpoint
