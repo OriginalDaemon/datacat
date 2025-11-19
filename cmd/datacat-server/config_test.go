@@ -9,7 +9,7 @@ import (
 
 func TestDefaultConfig(t *testing.T) {
 	config := DefaultConfig()
-	
+
 	if config == nil {
 		t.Fatal("DefaultConfig returned nil")
 	}
@@ -33,7 +33,7 @@ func TestDefaultConfig(t *testing.T) {
 func TestLoadConfig(t *testing.T) {
 	tmpDir := t.TempDir()
 	configPath := tmpDir + "/config.json"
-	
+
 	// Test loading non-existent config (should create default)
 	config := LoadConfig(configPath)
 	if config == nil {
@@ -42,7 +42,7 @@ func TestLoadConfig(t *testing.T) {
 	if config.DataPath != "./datacat_data" {
 		t.Error("Should return default config when file doesn't exist")
 	}
-	
+
 	// Verify config file was created
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
 		t.Error("Config file should have been created")
@@ -52,7 +52,7 @@ func TestLoadConfig(t *testing.T) {
 func TestLoadConfigExisting(t *testing.T) {
 	tmpDir := t.TempDir()
 	configPath := tmpDir + "/config.json"
-	
+
 	// Create a custom config file
 	customConfig := &Config{
 		DataPath:             "/custom/path",
@@ -60,17 +60,17 @@ func TestLoadConfigExisting(t *testing.T) {
 		CleanupIntervalHours: 12,
 		ServerPort:           "9090",
 	}
-	
+
 	file, err := os.Create(configPath)
 	if err != nil {
 		t.Fatalf("Failed to create config file: %v", err)
 	}
 	json.NewEncoder(file).Encode(customConfig)
 	file.Close()
-	
+
 	// Load config
 	loaded := LoadConfig(configPath)
-	
+
 	if loaded.DataPath != "/custom/path" {
 		t.Errorf("Expected DataPath /custom/path, got %s", loaded.DataPath)
 	}
@@ -91,7 +91,7 @@ func TestLoadConfigExisting(t *testing.T) {
 func TestSaveConfig(t *testing.T) {
 	tmpDir := t.TempDir()
 	configPath := tmpDir + "/config.json"
-	
+
 	config := &Config{
 		DataPath:             "/test/path",
 		RetentionDays:        100,
@@ -99,24 +99,24 @@ func TestSaveConfig(t *testing.T) {
 		ServerPort:           "7070",
 		CleanupInterval:      6 * time.Hour,
 	}
-	
+
 	SaveConfig(configPath, config)
-	
+
 	// Verify file was created
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
 		t.Fatal("Config file was not created")
 	}
-	
+
 	// Load and verify
 	file, err := os.Open(configPath)
 	if err != nil {
 		t.Fatalf("Failed to open config file: %v", err)
 	}
 	defer file.Close()
-	
+
 	var loaded Config
 	json.NewDecoder(file).Decode(&loaded)
-	
+
 	if loaded.DataPath != "/test/path" {
 		t.Errorf("Expected DataPath /test/path, got %s", loaded.DataPath)
 	}
@@ -128,7 +128,7 @@ func TestSaveConfig(t *testing.T) {
 func TestLoadConfigInvalidJSON(t *testing.T) {
 	tmpDir := t.TempDir()
 	configPath := tmpDir + "/invalid.json"
-	
+
 	// Create invalid JSON file
 	file, err := os.Create(configPath)
 	if err != nil {
@@ -136,10 +136,10 @@ func TestLoadConfigInvalidJSON(t *testing.T) {
 	}
 	file.WriteString("{invalid json")
 	file.Close()
-	
+
 	// Load config - should return default on error
 	loaded := LoadConfig(configPath)
-	
+
 	if loaded.DataPath != "./datacat_data" {
 		t.Error("Should return default config when JSON is invalid")
 	}
@@ -147,7 +147,7 @@ func TestLoadConfigInvalidJSON(t *testing.T) {
 
 func TestSaveConfigInvalidPath(t *testing.T) {
 	config := DefaultConfig()
-	
+
 	// Try to save to invalid path
 	err := SaveConfig("/invalid/path/that/does/not/exist/config.json", config)
 	if err == nil {

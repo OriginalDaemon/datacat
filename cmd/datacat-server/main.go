@@ -59,7 +59,7 @@ type Store struct {
 func NewStore(dbPath string, config *Config) (*Store, error) {
 	opts := badger.DefaultOptions(dbPath)
 	opts.Logger = nil // Disable BadgerDB logs
-	
+
 	db, err := badger.Open(opts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %v", err)
@@ -152,10 +152,10 @@ func (s *Store) CreateSession() *Session {
 	}
 
 	s.sessions[session.ID] = session
-	
+
 	// Save to database asynchronously
 	go s.saveSessionToDB(session)
-	
+
 	return session
 }
 
@@ -234,17 +234,17 @@ func (s *Store) UpdateState(id string, state map[string]interface{}) error {
 	// Deep merge the new state into the existing state
 	deepMerge(session.State, state)
 	session.UpdatedAt = time.Now()
-	
+
 	// Create a snapshot of the current state
 	snapshot := StateSnapshot{
 		Timestamp: time.Now(),
 		State:     deepCopyState(session.State),
 	}
 	session.StateHistory = append(session.StateHistory, snapshot)
-	
+
 	// Save to database asynchronously
 	go s.saveSessionToDB(session)
-	
+
 	return nil
 }
 
@@ -262,10 +262,10 @@ func (s *Store) EndSession(id string) error {
 	session.EndedAt = &now
 	session.Active = false
 	session.UpdatedAt = now
-	
+
 	// Save to database asynchronously
 	go s.saveSessionToDB(session)
-	
+
 	return nil
 }
 
@@ -319,7 +319,6 @@ func (s *Store) StartCleanupRoutine() {
 	}()
 }
 
-
 // AddEvent adds an event to a session
 func (s *Store) AddEvent(id string, name string, data map[string]interface{}) error {
 	s.mu.Lock()
@@ -337,10 +336,10 @@ func (s *Store) AddEvent(id string, name string, data map[string]interface{}) er
 	}
 	session.Events = append(session.Events, event)
 	session.UpdatedAt = time.Now()
-	
+
 	// Save to database asynchronously
 	go s.saveSessionToDB(session)
-	
+
 	return nil
 }
 
@@ -362,10 +361,10 @@ func (s *Store) AddMetric(id string, name string, value float64, tags []string) 
 	}
 	session.Metrics = append(session.Metrics, metric)
 	session.UpdatedAt = time.Now()
-	
+
 	// Save to database asynchronously
 	go s.saveSessionToDB(session)
-	
+
 	return nil
 }
 
@@ -415,7 +414,7 @@ func handleSessionOperations(w http.ResponseWriter, r *http.Request) {
 	// Extract session ID from path
 	path := r.URL.Path
 	pathParts := strings.TrimPrefix(path, "/api/sessions/")
-	
+
 	// Split to get session ID and operation
 	parts := strings.SplitN(pathParts, "/", 2)
 	sessionID := parts[0]

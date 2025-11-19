@@ -9,11 +9,11 @@ import (
 
 // Config holds server configuration
 type Config struct {
-	DataPath              string `json:"data_path"`
-	RetentionDays         int    `json:"retention_days"`
-	CleanupIntervalHours  int    `json:"cleanup_interval_hours"`
-	ServerPort            string `json:"server_port"`
-	CleanupInterval       time.Duration `json:"-"` // Derived field, not serialized
+	DataPath             string        `json:"data_path"`
+	RetentionDays        int           `json:"retention_days"`
+	CleanupIntervalHours int           `json:"cleanup_interval_hours"`
+	ServerPort           string        `json:"server_port"`
+	CleanupInterval      time.Duration `json:"-"` // Derived field, not serialized
 }
 
 // DefaultConfig returns default configuration

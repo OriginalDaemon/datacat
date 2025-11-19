@@ -12,13 +12,13 @@ import (
 func TestNewStore(t *testing.T) {
 	tmpDir := t.TempDir()
 	config := DefaultConfig()
-	
+
 	store, err := NewStore(tmpDir, config)
 	if err != nil {
 		t.Fatalf("NewStore failed: %v", err)
 	}
 	defer store.Close()
-	
+
 	if store == nil {
 		t.Fatal("NewStore returned nil")
 	}
@@ -38,7 +38,7 @@ func TestCreateSession(t *testing.T) {
 		t.Fatalf("NewStore failed: %v", err)
 	}
 	defer store.Close()
-	
+
 	session := store.CreateSession()
 	if session == nil {
 		t.Fatal("CreateSession returned nil")
@@ -52,7 +52,7 @@ func TestCreateSession(t *testing.T) {
 	if session.State == nil {
 		t.Error("Session state is nil")
 	}
-	
+
 	// Verify session is in store
 	retrieved, ok := store.GetSession(session.ID)
 	if !ok {
@@ -71,9 +71,9 @@ func TestGetSession(t *testing.T) {
 		t.Fatalf("NewStore failed: %v", err)
 	}
 	defer store.Close()
-	
+
 	session := store.CreateSession()
-	
+
 	// Get existing session
 	retrieved, ok := store.GetSession(session.ID)
 	if !ok {
@@ -82,7 +82,7 @@ func TestGetSession(t *testing.T) {
 	if retrieved.ID != session.ID {
 		t.Errorf("Expected ID %s, got %s", session.ID, retrieved.ID)
 	}
-	
+
 	// Try to get non-existent session
 	_, ok = store.GetSession("non-existent")
 	if ok {
@@ -98,16 +98,16 @@ func TestGetAllSessions(t *testing.T) {
 		t.Fatalf("NewStore failed: %v", err)
 	}
 	defer store.Close()
-	
+
 	// Create multiple sessions
 	session1 := store.CreateSession()
 	session2 := store.CreateSession()
-	
+
 	sessions := store.GetAllSessions()
 	if len(sessions) != 2 {
 		t.Errorf("Expected 2 sessions, got %d", len(sessions))
 	}
-	
+
 	// Verify both sessions are present
 	found1, found2 := false, false
 	for _, s := range sessions {
@@ -131,19 +131,19 @@ func TestUpdateState(t *testing.T) {
 		t.Fatalf("NewStore failed: %v", err)
 	}
 	defer store.Close()
-	
+
 	session := store.CreateSession()
-	
+
 	newState := map[string]interface{}{
 		"key1": "value1",
 		"key2": 123,
 	}
-	
+
 	err = store.UpdateState(session.ID, newState)
 	if err != nil {
 		t.Fatalf("UpdateState failed: %v", err)
 	}
-	
+
 	// Verify state was updated
 	retrieved, _ := store.GetSession(session.ID)
 	if retrieved.State["key1"] != "value1" {
@@ -153,7 +153,7 @@ func TestUpdateState(t *testing.T) {
 	if retrieved.State["key2"] != 123 {
 		t.Errorf("Expected key2 to be 123, got %v (type %T)", retrieved.State["key2"], retrieved.State["key2"])
 	}
-	
+
 	// Check state history
 	if len(retrieved.StateHistory) == 0 {
 		t.Error("State history should not be empty")
@@ -168,18 +168,18 @@ func TestAddEvent(t *testing.T) {
 		t.Fatalf("NewStore failed: %v", err)
 	}
 	defer store.Close()
-	
+
 	session := store.CreateSession()
-	
+
 	eventData := map[string]interface{}{
 		"message": "test event",
 	}
-	
+
 	err = store.AddEvent(session.ID, "test_event", eventData)
 	if err != nil {
 		t.Fatalf("AddEvent failed: %v", err)
 	}
-	
+
 	// Verify event was logged
 	retrieved, _ := store.GetSession(session.ID)
 	if len(retrieved.Events) != 1 {
@@ -198,14 +198,14 @@ func TestAddMetric(t *testing.T) {
 		t.Fatalf("NewStore failed: %v", err)
 	}
 	defer store.Close()
-	
+
 	session := store.CreateSession()
-	
+
 	err = store.AddMetric(session.ID, "cpu_usage", 75.5, []string{"tag1", "tag2"})
 	if err != nil {
 		t.Fatalf("AddMetric failed: %v", err)
 	}
-	
+
 	// Verify metric was logged
 	retrieved, _ := store.GetSession(session.ID)
 	if len(retrieved.Metrics) != 1 {
@@ -227,14 +227,14 @@ func TestEndSession(t *testing.T) {
 		t.Fatalf("NewStore failed: %v", err)
 	}
 	defer store.Close()
-	
+
 	session := store.CreateSession()
-	
+
 	err = store.EndSession(session.ID)
 	if err != nil {
 		t.Fatalf("EndSession failed: %v", err)
 	}
-	
+
 	// Verify session was ended
 	retrieved, _ := store.GetSession(session.ID)
 	if retrieved.Active {
@@ -253,7 +253,7 @@ func TestDeepMerge(t *testing.T) {
 			"b2": "value_b2",
 		},
 	}
-	
+
 	src := map[string]interface{}{
 		"b": map[string]interface{}{
 			"b2": "new_value_b2",
@@ -261,16 +261,16 @@ func TestDeepMerge(t *testing.T) {
 		},
 		"c": "value_c",
 	}
-	
+
 	deepMerge(dst, src)
-	
+
 	if dst["a"] != "value_a" {
 		t.Error("Expected a to remain unchanged")
 	}
 	if dst["c"] != "value_c" {
 		t.Error("Expected c to be added")
 	}
-	
+
 	b := dst["b"].(map[string]interface{})
 	if b["b1"] != "value_b1" {
 		t.Error("Expected b.b1 to remain unchanged")
@@ -288,15 +288,15 @@ func TestDeepMergeNonMap(t *testing.T) {
 		"a": "value_a",
 		"b": "value_b",
 	}
-	
+
 	src := map[string]interface{}{
 		"b": map[string]interface{}{
 			"nested": "value",
 		},
 	}
-	
+
 	deepMerge(dst, src)
-	
+
 	// When src value is a map and dst value is not, src should replace dst
 	if _, ok := dst["b"].(map[string]interface{}); !ok {
 		t.Error("Expected b to be replaced with map")
@@ -310,13 +310,13 @@ func TestDeepCopyState(t *testing.T) {
 			"b1": "nested",
 		},
 	}
-	
+
 	copied := deepCopyState(original)
-	
+
 	// Modify copy
 	copied["a"] = "modified"
 	copied["b"].(map[string]interface{})["b1"] = "modified_nested"
-	
+
 	// Original should remain unchanged
 	if original["a"] != "value" {
 		t.Error("Original should not be modified")
@@ -334,13 +334,13 @@ func TestDeepCopyStateWithSlices(t *testing.T) {
 			map[string]interface{}{"key": "value2"},
 		},
 	}
-	
+
 	copied := deepCopyState(original)
-	
+
 	// Modify copy
 	copied["items"].([]interface{})[0] = "modified"
 	copied["nested"].([]interface{})[0].(map[string]interface{})["key"] = "modified"
-	
+
 	// Original should remain unchanged
 	if original["items"].([]interface{})[0] != "a" {
 		t.Error("Original array should not be modified")
@@ -359,7 +359,7 @@ func TestCleanupOldSessions(t *testing.T) {
 		t.Fatalf("NewStore failed: %v", err)
 	}
 	defer store.Close()
-	
+
 	// Create an old session
 	oldSession := store.CreateSession()
 	oldTime := time.Now().AddDate(0, 0, -2)
@@ -369,26 +369,26 @@ func TestCleanupOldSessions(t *testing.T) {
 	oldSession.UpdatedAt = oldTime
 	oldSession.Active = false
 	store.mu.Unlock()
-	
+
 	// Create a recent session
 	recentSession := store.CreateSession()
-	
+
 	// Run cleanup
 	removed, err := store.CleanupOldSessions()
 	if err != nil {
 		t.Fatalf("CleanupOldSessions failed: %v", err)
 	}
-	
+
 	if removed != 1 {
 		t.Errorf("Expected 1 session to be removed, got %d", removed)
 	}
-	
+
 	// Check that old session is removed
 	_, ok := store.GetSession(oldSession.ID)
 	if ok {
 		t.Error("Old session should have been removed")
 	}
-	
+
 	// Check that recent session still exists
 	_, ok = store.GetSession(recentSession.ID)
 	if !ok {
@@ -399,32 +399,32 @@ func TestCleanupOldSessions(t *testing.T) {
 func TestPersistence(t *testing.T) {
 	tmpDir := t.TempDir()
 	config := DefaultConfig()
-	
+
 	// Create store and session
 	store1, err := NewStore(tmpDir, config)
 	if err != nil {
 		t.Fatalf("NewStore failed: %v", err)
 	}
-	
+
 	session := store1.CreateSession()
 	sessionID := session.ID
-	
+
 	// Update state
 	store1.UpdateState(sessionID, map[string]interface{}{"key": "value"})
-	
+
 	// Wait for async save
 	time.Sleep(200 * time.Millisecond)
-	
+
 	// Close store
 	store1.Close()
-	
+
 	// Reopen store
 	store2, err := NewStore(tmpDir, config)
 	if err != nil {
 		t.Fatalf("Failed to reopen store: %v", err)
 	}
 	defer store2.Close()
-	
+
 	// Verify session persisted
 	retrieved, ok := store2.GetSession(sessionID)
 	if !ok {
@@ -446,7 +446,7 @@ func TestAddEventErrors(t *testing.T) {
 		t.Fatalf("NewStore failed: %v", err)
 	}
 	defer store.Close()
-	
+
 	// Try to add event to non-existent session
 	err = store.AddEvent("non-existent", "test", map[string]interface{}{})
 	if err == nil {
@@ -462,7 +462,7 @@ func TestAddMetricErrors(t *testing.T) {
 		t.Fatalf("NewStore failed: %v", err)
 	}
 	defer store.Close()
-	
+
 	// Try to add metric to non-existent session
 	err = store.AddMetric("non-existent", "test", 0.0, nil)
 	if err == nil {
@@ -478,7 +478,7 @@ func TestUpdateStateErrors(t *testing.T) {
 		t.Fatalf("NewStore failed: %v", err)
 	}
 	defer store.Close()
-	
+
 	// Try to update state of non-existent session
 	err = store.UpdateState("non-existent", map[string]interface{}{})
 	if err == nil {
@@ -494,7 +494,7 @@ func TestEndSessionErrors(t *testing.T) {
 		t.Fatalf("NewStore failed: %v", err)
 	}
 	defer store.Close()
-	
+
 	// Try to end non-existent session
 	err = store.EndSession("non-existent")
 	if err == nil {
@@ -511,115 +511,115 @@ func TestHTTPHandlers(t *testing.T) {
 		t.Fatalf("NewStore failed: %v", err)
 	}
 	defer store.Close()
-	
+
 	// Test handleSessions POST - create session
 	t.Run("CreateSession", func(t *testing.T) {
 		req := httptest.NewRequest("POST", "/api/sessions", nil)
 		w := httptest.NewRecorder()
-		
+
 		handleSessions(w, req)
-		
+
 		if w.Code != http.StatusOK {
 			t.Errorf("Expected status 200, got %d", w.Code)
 		}
-		
+
 		var response map[string]string
 		json.NewDecoder(w.Body).Decode(&response)
-		
+
 		if response["session_id"] == "" {
 			t.Error("Expected session_id in response")
 		}
 	})
-	
+
 	// Test handleSessions with invalid method
 	t.Run("CreateSessionInvalidMethod", func(t *testing.T) {
 		req := httptest.NewRequest("GET", "/api/sessions", nil)
 		w := httptest.NewRecorder()
-		
+
 		handleSessions(w, req)
-		
+
 		if w.Code != http.StatusMethodNotAllowed {
 			t.Errorf("Expected status 405, got %d", w.Code)
 		}
 	})
-	
+
 	// Create a session for subsequent tests
 	session := store.CreateSession()
 	sessionID := session.ID
-	
+
 	// Test handleSessionOperations GET - get session
 	t.Run("GetSession", func(t *testing.T) {
 		req := httptest.NewRequest("GET", "/api/sessions/"+sessionID, nil)
 		w := httptest.NewRecorder()
-		
+
 		handleSessionOperations(w, req)
-		
+
 		if w.Code != http.StatusOK {
 			t.Errorf("Expected status 200, got %d", w.Code)
 		}
-		
+
 		var retrieved Session
 		json.NewDecoder(w.Body).Decode(&retrieved)
-		
+
 		if retrieved.ID != sessionID {
 			t.Errorf("Expected session ID %s, got %s", sessionID, retrieved.ID)
 		}
 	})
-	
+
 	// Test get non-existent session
 	t.Run("GetNonExistentSession", func(t *testing.T) {
 		req := httptest.NewRequest("GET", "/api/sessions/non-existent", nil)
 		w := httptest.NewRecorder()
-		
+
 		handleSessionOperations(w, req)
-		
+
 		if w.Code != http.StatusNotFound {
 			t.Errorf("Expected status 404, got %d", w.Code)
 		}
 	})
-	
+
 	// Test update state
 	t.Run("UpdateState", func(t *testing.T) {
 		stateData := map[string]interface{}{"key": "value"}
 		body, _ := json.Marshal(stateData)
-		
+
 		req := httptest.NewRequest("POST", "/api/sessions/"+sessionID+"/state", bytes.NewReader(body))
 		w := httptest.NewRecorder()
-		
+
 		handleSessionOperations(w, req)
-		
+
 		if w.Code != http.StatusOK {
 			t.Errorf("Expected status 200, got %d", w.Code)
 		}
 	})
-	
+
 	// Test update state with invalid JSON
 	t.Run("UpdateStateInvalidJSON", func(t *testing.T) {
 		req := httptest.NewRequest("POST", "/api/sessions/"+sessionID+"/state", bytes.NewReader([]byte("invalid")))
 		w := httptest.NewRecorder()
-		
+
 		handleSessionOperations(w, req)
-		
+
 		if w.Code != http.StatusBadRequest {
 			t.Errorf("Expected status 400, got %d", w.Code)
 		}
 	})
-	
+
 	// Test update state for non-existent session
 	t.Run("UpdateStateNonExistent", func(t *testing.T) {
 		stateData := map[string]interface{}{"key": "value"}
 		body, _ := json.Marshal(stateData)
-		
+
 		req := httptest.NewRequest("POST", "/api/sessions/non-existent/state", bytes.NewReader(body))
 		w := httptest.NewRecorder()
-		
+
 		handleSessionOperations(w, req)
-		
+
 		if w.Code != http.StatusNotFound {
 			t.Errorf("Expected status 404, got %d", w.Code)
 		}
 	})
-	
+
 	// Test add event
 	t.Run("AddEvent", func(t *testing.T) {
 		eventData := map[string]interface{}{
@@ -627,29 +627,29 @@ func TestHTTPHandlers(t *testing.T) {
 			"data": map[string]interface{}{"msg": "hello"},
 		}
 		body, _ := json.Marshal(eventData)
-		
+
 		req := httptest.NewRequest("POST", "/api/sessions/"+sessionID+"/events", bytes.NewReader(body))
 		w := httptest.NewRecorder()
-		
+
 		handleSessionOperations(w, req)
-		
+
 		if w.Code != http.StatusOK {
 			t.Errorf("Expected status 200, got %d", w.Code)
 		}
 	})
-	
+
 	// Test add event with invalid JSON
 	t.Run("AddEventInvalidJSON", func(t *testing.T) {
 		req := httptest.NewRequest("POST", "/api/sessions/"+sessionID+"/events", bytes.NewReader([]byte("invalid")))
 		w := httptest.NewRecorder()
-		
+
 		handleSessionOperations(w, req)
-		
+
 		if w.Code != http.StatusBadRequest {
 			t.Errorf("Expected status 400, got %d", w.Code)
 		}
 	})
-	
+
 	// Test add event for non-existent session
 	t.Run("AddEventNonExistent", func(t *testing.T) {
 		eventData := map[string]interface{}{
@@ -657,17 +657,17 @@ func TestHTTPHandlers(t *testing.T) {
 			"data": map[string]interface{}{},
 		}
 		body, _ := json.Marshal(eventData)
-		
+
 		req := httptest.NewRequest("POST", "/api/sessions/non-existent/events", bytes.NewReader(body))
 		w := httptest.NewRecorder()
-		
+
 		handleSessionOperations(w, req)
-		
+
 		if w.Code != http.StatusNotFound {
 			t.Errorf("Expected status 404, got %d", w.Code)
 		}
 	})
-	
+
 	// Test add metric
 	t.Run("AddMetric", func(t *testing.T) {
 		metricData := map[string]interface{}{
@@ -676,29 +676,29 @@ func TestHTTPHandlers(t *testing.T) {
 			"tags":  []string{"tag1"},
 		}
 		body, _ := json.Marshal(metricData)
-		
+
 		req := httptest.NewRequest("POST", "/api/sessions/"+sessionID+"/metrics", bytes.NewReader(body))
 		w := httptest.NewRecorder()
-		
+
 		handleSessionOperations(w, req)
-		
+
 		if w.Code != http.StatusOK {
 			t.Errorf("Expected status 200, got %d", w.Code)
 		}
 	})
-	
+
 	// Test add metric with invalid JSON
 	t.Run("AddMetricInvalidJSON", func(t *testing.T) {
 		req := httptest.NewRequest("POST", "/api/sessions/"+sessionID+"/metrics", bytes.NewReader([]byte("invalid")))
 		w := httptest.NewRecorder()
-		
+
 		handleSessionOperations(w, req)
-		
+
 		if w.Code != http.StatusBadRequest {
 			t.Errorf("Expected status 400, got %d", w.Code)
 		}
 	})
-	
+
 	// Test add metric for non-existent session
 	t.Run("AddMetricNonExistent", func(t *testing.T) {
 		metricData := map[string]interface{}{
@@ -706,91 +706,91 @@ func TestHTTPHandlers(t *testing.T) {
 			"value": 1.0,
 		}
 		body, _ := json.Marshal(metricData)
-		
+
 		req := httptest.NewRequest("POST", "/api/sessions/non-existent/metrics", bytes.NewReader(body))
 		w := httptest.NewRecorder()
-		
+
 		handleSessionOperations(w, req)
-		
+
 		if w.Code != http.StatusNotFound {
 			t.Errorf("Expected status 404, got %d", w.Code)
 		}
 	})
-	
+
 	// Test end session
 	t.Run("EndSession", func(t *testing.T) {
 		req := httptest.NewRequest("POST", "/api/sessions/"+sessionID+"/end", nil)
 		w := httptest.NewRecorder()
-		
+
 		handleSessionOperations(w, req)
-		
+
 		if w.Code != http.StatusOK {
 			t.Errorf("Expected status 200, got %d", w.Code)
 		}
 	})
-	
+
 	// Test end non-existent session
 	t.Run("EndNonExistentSession", func(t *testing.T) {
 		req := httptest.NewRequest("POST", "/api/sessions/non-existent/end", nil)
 		w := httptest.NewRecorder()
-		
+
 		handleSessionOperations(w, req)
-		
+
 		if w.Code != http.StatusNotFound {
 			t.Errorf("Expected status 404, got %d", w.Code)
 		}
 	})
-	
+
 	// Test invalid operation
 	t.Run("InvalidOperation", func(t *testing.T) {
 		req := httptest.NewRequest("POST", "/api/sessions/"+sessionID+"/invalid", nil)
 		w := httptest.NewRecorder()
-		
+
 		handleSessionOperations(w, req)
-		
+
 		if w.Code != http.StatusNotFound {
 			t.Errorf("Expected status 404, got %d", w.Code)
 		}
 	})
-	
+
 	// Test missing session ID
 	t.Run("MissingSessionID", func(t *testing.T) {
 		req := httptest.NewRequest("GET", "/api/sessions//state", nil)
 		w := httptest.NewRecorder()
-		
+
 		handleSessionOperations(w, req)
-		
+
 		if w.Code != http.StatusBadRequest {
 			t.Errorf("Expected status 400, got %d", w.Code)
 		}
 	})
-	
+
 	// Test handleGrafanaData
 	t.Run("GrafanaData", func(t *testing.T) {
 		req := httptest.NewRequest("GET", "/api/grafana/sessions", nil)
 		w := httptest.NewRecorder()
-		
+
 		handleGrafanaData(w, req)
-		
+
 		if w.Code != http.StatusOK {
 			t.Errorf("Expected status 200, got %d", w.Code)
 		}
-		
+
 		var sessions []*Session
 		json.NewDecoder(w.Body).Decode(&sessions)
-		
+
 		if len(sessions) == 0 {
 			t.Error("Expected at least one session")
 		}
 	})
-	
+
 	// Test handleGrafanaData with invalid method
 	t.Run("GrafanaDataInvalidMethod", func(t *testing.T) {
 		req := httptest.NewRequest("POST", "/api/grafana/sessions", nil)
 		w := httptest.NewRecorder()
-		
+
 		handleGrafanaData(w, req)
-		
+
 		if w.Code != http.StatusMethodNotAllowed {
 			t.Errorf("Expected status 405, got %d", w.Code)
 		}
@@ -807,11 +807,11 @@ func TestStartCleanupRoutine(t *testing.T) {
 		t.Fatalf("NewStore failed: %v", err)
 	}
 	defer store.Close()
-	
+
 	// Start cleanup routine (it will run once since interval is 0)
 	// We can't easily test the goroutine, but we can test that it doesn't panic
 	go store.StartCleanupRoutine()
-	
+
 	// Give it a moment to start
 	time.Sleep(100 * time.Millisecond)
 }
@@ -832,13 +832,13 @@ func TestCleanupOldSessionsEmptyStore(t *testing.T) {
 		t.Fatalf("NewStore failed: %v", err)
 	}
 	defer store.Close()
-	
+
 	// Cleanup with no sessions
 	removed, err := store.CleanupOldSessions()
 	if err != nil {
 		t.Fatalf("CleanupOldSessions failed: %v", err)
 	}
-	
+
 	if removed != 0 {
 		t.Errorf("Expected 0 sessions removed, got %d", removed)
 	}
@@ -852,7 +852,7 @@ func TestGetSessionNonExistent(t *testing.T) {
 		t.Fatalf("NewStore failed: %v", err)
 	}
 	defer store.Close()
-	
+
 	_, ok := store.GetSession("non-existent")
 	if ok {
 		t.Error("Expected false for non-existent session")
@@ -866,10 +866,10 @@ func TestSaveSessionToDBError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewStore failed: %v", err)
 	}
-	
+
 	// Close the database to cause errors
 	store.db.Close()
-	
+
 	session := &Session{
 		ID:        "test",
 		CreatedAt: time.Now(),
@@ -877,7 +877,7 @@ func TestSaveSessionToDBError(t *testing.T) {
 		Active:    true,
 		State:     map[string]interface{}{},
 	}
-	
+
 	// This should fail because DB is closed
 	err = store.saveSessionToDB(session)
 	if err == nil {
@@ -892,13 +892,13 @@ func TestCloseStore(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewStore failed: %v", err)
 	}
-	
+
 	// Close the store
 	err = store.Close()
 	if err != nil {
 		t.Errorf("Close should not fail: %v", err)
 	}
-	
+
 	// Closing again should not panic
 	err = store.Close()
 	// BadgerDB returns error when closing an already closed DB, which is expected

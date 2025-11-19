@@ -33,13 +33,13 @@ type TimeseriesPoint struct {
 }
 
 type TimeseriesData struct {
-	MetricName       string            `json:"metric_name"`
-	Points           []TimeseriesPoint `json:"points"`
-	Peak             float64           `json:"peak"`
-	Average          float64           `json:"average"`
-	Min              float64           `json:"min"`
-	SessionsMatched  int               `json:"sessions_matched"`
-	AggregationType  string            `json:"aggregation_type"`
+	MetricName      string            `json:"metric_name"`
+	Points          []TimeseriesPoint `json:"points"`
+	Peak            float64           `json:"peak"`
+	Average         float64           `json:"average"`
+	Min             float64           `json:"min"`
+	SessionsMatched int               `json:"sessions_matched"`
+	AggregationType string            `json:"aggregation_type"`
 }
 
 type SessionMetrics struct {
@@ -261,7 +261,7 @@ func handleTimeseriesAPI(w http.ResponseWriter, r *http.Request) {
 	// Collect metrics based on aggregation mode
 	var points []TimeseriesPoint
 	var sessionMetricsMap = make(map[string]*SessionMetrics)
-	
+
 	for _, session := range filteredSessions {
 		sessionMetrics := &SessionMetrics{
 			SessionID: session.ID,
@@ -309,7 +309,7 @@ func handleTimeseriesAPI(w http.ResponseWriter, r *http.Request) {
 				Value:     sessionMetrics.Peak,
 				SessionID: sessionMetrics.SessionID,
 			})
-			
+
 			if sessionMetrics.Peak > overallPeak {
 				overallPeak = sessionMetrics.Peak
 			}
@@ -328,7 +328,7 @@ func handleTimeseriesAPI(w http.ResponseWriter, r *http.Request) {
 				Value:     sessionMetrics.Average,
 				SessionID: sessionMetrics.SessionID,
 			})
-			
+
 			if sessionMetrics.Average > overallPeak {
 				overallPeak = sessionMetrics.Average
 			}
@@ -347,7 +347,7 @@ func handleTimeseriesAPI(w http.ResponseWriter, r *http.Request) {
 				Value:     sessionMetrics.Min,
 				SessionID: sessionMetrics.SessionID,
 			})
-			
+
 			if sessionMetrics.Min > overallPeak {
 				overallPeak = sessionMetrics.Min
 			}
@@ -493,7 +493,7 @@ func sortSessions(sessions []*client.Session, sortBy, sortOrder string) {
 		default:
 			less = sessions[i].CreatedAt.Before(sessions[j].CreatedAt)
 		}
-		
+
 		if sortOrder == "desc" {
 			return !less
 		}
