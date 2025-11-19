@@ -21,9 +21,7 @@ coverage:
 flags:
   go:
     paths:
-      - "*.go"
-      - "client/*.go"
-      - "web/*.go"
+      - "**/*.go"
     carryforward: true
   python:
     paths:
