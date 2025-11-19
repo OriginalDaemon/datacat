@@ -120,6 +120,7 @@ class TestHeartbeatMonitor(unittest.TestCase):
     def setUp(self):
         """Set up test components"""
         self.mock_client = Mock(spec=DatacatClient)
+        self.mock_client.use_daemon = False
         self.session_id = "test-session-123"
 
     def test_monitor_initialization(self):
@@ -345,6 +346,7 @@ class TestSessionHeartbeatIntegration(unittest.TestCase):
     def setUp(self):
         """Set up test components"""
         self.mock_client = Mock(spec=DatacatClient)
+        self.mock_client.use_daemon = False
         self.session_id = "test-session-456"
         self.session = Session(self.mock_client, self.session_id)
 
@@ -436,8 +438,10 @@ class TestCreateSessionFactory(unittest.TestCase):
         # Create session
         session = create_session("http://test.example.com:8080")
 
-        # Verify client was created with correct URL
-        mock_client_class.assert_called_once_with("http://test.example.com:8080")
+        # Verify client was created with correct URL and default parameters
+        mock_client_class.assert_called_once_with(
+            "http://test.example.com:8080", use_daemon=True, daemon_port="8079"
+        )
 
         # Verify session was registered
         mock_client.register_session.assert_called_once()
@@ -489,6 +493,7 @@ class TestEdgeCases(unittest.TestCase):
     def test_monitor_recovery_logging_exception_handling(self):
         """Test that recovery logging exception is silently handled"""
         mock_client = Mock(spec=DatacatClient)
+        mock_client.use_daemon = False
 
         # Make log_event fail only during recovery logging
         call_count = [0]

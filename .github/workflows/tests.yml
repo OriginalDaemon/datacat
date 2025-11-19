@@ -65,7 +65,7 @@ jobs:
         token: ${{ secrets.CODECOV_TOKEN }}
 
   test-python:
-    name: Python Integration Tests with Coverage
+    name: Python Tests with Coverage
     runs-on: ubuntu-latest
     
     steps:
@@ -90,9 +90,9 @@ jobs:
     - name: Build datacat-server
       run: cd cmd/datacat-server && go build -o ../../datacat
     
-    - name: Run integration tests with coverage
+    - name: Run tests with coverage
       run: |
-        python -m pytest tests/test_integration.py -v --cov=python --cov-report=xml --cov-report=term
+        python -m pytest tests/ -v --cov=python --cov-report=xml --cov-report=term
     
     - name: Upload Python coverage to Codecov
       uses: codecov/codecov-action@v5

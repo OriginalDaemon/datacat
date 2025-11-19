@@ -89,7 +89,7 @@ class TestProgramWorkflow(unittest.TestCase):
         5. Exception logging
         6. Metrics collection
         """
-        session = create_session(self.base_url)
+        session = create_session(self.base_url, use_daemon=False)
 
         # === STARTUP PHASE ===
         # 1. Log startup event
@@ -278,7 +278,7 @@ class TestProgramWorkflow(unittest.TestCase):
         Test that state history creates a proper timeline that can be
         used to reconstruct application state at any point in time.
         """
-        session = create_session(self.base_url)
+        session = create_session(self.base_url, use_daemon=False)
 
         # Create a series of state updates
         updates = [
