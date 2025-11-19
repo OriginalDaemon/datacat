@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sessions - Datacat</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
+        th { background-color: #667eea; color: white; }
+        .badge { padding: 4px 8px; border-radius: 4px; font-size: 12px; }
+        .badge-active { background-color: #48bb78; color: white; }
+        .badge-inactive { background-color: #718096; color: white; }
+        .btn { padding: 6px 12px; text-decoration: none; border-radius: 4px; display: inline-block; }
+        .btn-secondary { background-color: #667eea; color: white; }
+        .pagination { margin: 20px 0; }
+        .pagination a { padding: 8px 12px; margin: 0 4px; text-decoration: none; border: 1px solid #ddd; }
+        .pagination a.active { background-color: #667eea; color: white; }
+    </style>
+</head>
+<body>
+    <h1>Sessions</h1>
+    
+    <div class="info">
+        <p>Total Sessions: {{.TotalCount}}</p>
+        <p>Page {{.CurrentPage}} of {{.TotalPages}}</p>
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Session ID</th>
+                <th>Created</th>
+                <th>Status</th>
+                <th>Events</th>
+                <th>Metrics</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {{range .Sessions}}
+            <tr>
+                <td>
+                    <a href="/session/{{.ID}}" style="color: #667eea; text-decoration: none;">
+                        {{slice .ID 0 8}}...
+                    </a>
+                </td>
+                <td>{{.CreatedAt.Format "2006-01-02 15:04:05"}}</td>
+                <td>
+                    {{if .Active}}
+                        <span class="badge badge-active">Active</span>
+                    {{else}}
+                        <span class="badge badge-inactive">Ended</span>
+                    {{end}}
+                </td>
+                <td>{{len .Events}}</td>
+                <td>{{len .Metrics}}</td>
+                <td>
+                    <a href="/session/{{.ID}}" class="btn btn-secondary">View</a>
+                </td>
+            </tr>
+            {{else}}
+            <tr>
+                <td colspan="6" style="text-align: center; padding: 40px; color: #999;">
+                    No sessions found
+                </td>
+            </tr>
+            {{end}}
+        </tbody>
+    </table>
+
+    <div class="pagination">
+        {{if .HasPrev}}
+            <a href="/sessions?page={{sub .CurrentPage 1}}&sort={{.SortBy}}&order={{.SortOrder}}">Previous</a>
+        {{end}}
+        
+        <span>Page {{.CurrentPage}} of {{.TotalPages}}</span>
+        
+        {{if .HasNext}}
+            <a href="/sessions?page={{add .CurrentPage 1}}&sort={{.SortBy}}&order={{.SortOrder}}">Next</a>
+        {{end}}
+    </div>
+</body>
+</html>

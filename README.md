@@ -239,7 +239,7 @@ The REST API provides the following endpoints:
 - **📈 Advanced Metrics Visualization** - Filter, aggregate, and chart metrics
 - **🔍 State History Queries** - Find sessions that ever had specific state values
 - **🚨 Exception Logging** - Capture full tracebacks with context
-- **✅ Production Ready** - 80% test coverage, security scanned
+- **✅ Production Ready** - 85%+ test coverage, security scanned
 
 ## 🎯 Use Cases
 
@@ -288,7 +288,7 @@ We welcome contributions! Please ensure your PR meets the following requirements
 - ✅ **Python code** must pass mypy type checking
 - ✅ **Go code** must build successfully
 - ✅ **All tests** must pass
-- ✅ **Code coverage** must be at least 80%
+- ✅ **Code coverage** must be at least 85%
 
 ### Before Submitting a PR
 
@@ -312,7 +312,7 @@ pytest tests/ -v --cov=python --cov-report=term
 
 The `main` branch is protected with the following requirements:
 - All status checks must pass (linting, formatting, tests)
-- Code coverage must be at least 80%
+- Code coverage must be at least 85%
 - At least one approval required
 
 See [Branch Protection Rules](.github/BRANCH_PROTECTION.md) for detailed information.

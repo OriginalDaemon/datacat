@@ -765,3 +765,243 @@ func TestMatchesStateHistoryEmpty(t *testing.T) {
 		t.Error("Expected empty state to match empty filter")
 	}
 }
+
+// Tests for HTTP handlers
+
+func TestHandleIndex(t *testing.T) {
+	// Create a mock server for GetAllSessions
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sessions := []*client.Session{
+			{
+				ID:        "session1",
+				Active:    true,
+				CreatedAt: time.Now().Add(-1 * time.Hour),
+				UpdatedAt: time.Now(),
+				State:     map[string]interface{}{"status": "running"},
+			},
+			{
+				ID:        "session2",
+				Active:    false,
+				CreatedAt: time.Now().Add(-2 * time.Hour),
+				UpdatedAt: time.Now().Add(-1 * time.Hour),
+				State:     map[string]interface{}{"status": "completed"},
+			},
+		}
+		json.NewEncoder(w).Encode(sessions)
+	}))
+	defer mockServer.Close()
+
+	datacatClient = client.NewClient(mockServer.URL)
+
+	req := httptest.NewRequest("GET", "/", nil)
+	w := httptest.NewRecorder()
+
+	handleIndex(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+
+	// Check that response contains HTML
+	body := w.Body.String()
+	if len(body) == 0 {
+		t.Error("Expected non-empty response body")
+	}
+}
+
+func TestHandleIndexError(t *testing.T) {
+	// Create a mock server that returns an error
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("error"))
+	}))
+	defer mockServer.Close()
+
+	datacatClient = client.NewClient(mockServer.URL)
+
+	req := httptest.NewRequest("GET", "/", nil)
+	w := httptest.NewRecorder()
+
+	handleIndex(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("Expected status 500, got %d", w.Code)
+	}
+}
+
+func TestHandleSessions(t *testing.T) {
+	// Create a mock server for GetAllSessions
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sessions := []*client.Session{
+			{
+				ID:        "session1",
+				Active:    true,
+				CreatedAt: time.Now().Add(-1 * time.Hour),
+				UpdatedAt: time.Now(),
+				State:     map[string]interface{}{"env": "prod"},
+				Events:    []client.Event{{Name: "test"}},
+				Metrics:   []client.Metric{{Name: "cpu", Value: 50.0}},
+			},
+			{
+				ID:        "session2",
+				Active:    false,
+				CreatedAt: time.Now().Add(-2 * time.Hour),
+				UpdatedAt: time.Now().Add(-1 * time.Hour),
+				State:     map[string]interface{}{"env": "dev"},
+				Events:    []client.Event{},
+				Metrics:   []client.Metric{},
+			},
+		}
+		json.NewEncoder(w).Encode(sessions)
+	}))
+	defer mockServer.Close()
+
+	datacatClient = client.NewClient(mockServer.URL)
+
+	// Test basic request
+	req := httptest.NewRequest("GET", "/sessions", nil)
+	w := httptest.NewRecorder()
+
+	handleSessions(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+
+	// Test with pagination
+	req2 := httptest.NewRequest("GET", "/sessions?page=1&sort=created_at&order=asc", nil)
+	w2 := httptest.NewRecorder()
+
+	handleSessions(w2, req2)
+
+	if w2.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w2.Code)
+	}
+
+	// Test with state filter
+	req3 := httptest.NewRequest("GET", "/sessions?state_filter={\"env\":\"prod\"}", nil)
+	w3 := httptest.NewRecorder()
+
+	handleSessions(w3, req3)
+
+	if w3.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w3.Code)
+	}
+}
+
+func TestHandleSessionsError(t *testing.T) {
+	// Create a mock server that returns an error
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("error"))
+	}))
+	defer mockServer.Close()
+
+	datacatClient = client.NewClient(mockServer.URL)
+
+	req := httptest.NewRequest("GET", "/sessions", nil)
+	w := httptest.NewRecorder()
+
+	handleSessions(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("Expected status 500, got %d", w.Code)
+	}
+}
+
+func TestHandleSessionDetail(t *testing.T) {
+	// Create a mock server for GetSession
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		session := &client.Session{
+			ID:        "session1",
+			Active:    true,
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+			State:     map[string]interface{}{"status": "running"},
+			Events:    []client.Event{{Name: "test_event"}},
+			Metrics:   []client.Metric{{Name: "cpu", Value: 50.0}},
+		}
+		json.NewEncoder(w).Encode(session)
+	}))
+	defer mockServer.Close()
+
+	datacatClient = client.NewClient(mockServer.URL)
+
+	req := httptest.NewRequest("GET", "/session/session1", nil)
+	w := httptest.NewRecorder()
+
+	handleSessionDetail(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestHandleSessionDetailNotFound(t *testing.T) {
+	// Create a mock server that returns 404
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		w.Write([]byte("not found"))
+	}))
+	defer mockServer.Close()
+
+	datacatClient = client.NewClient(mockServer.URL)
+
+	req := httptest.NewRequest("GET", "/session/nonexistent", nil)
+	w := httptest.NewRecorder()
+
+	handleSessionDetail(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("Expected status 404, got %d", w.Code)
+	}
+}
+
+func TestHandleMetrics(t *testing.T) {
+	req := httptest.NewRequest("GET", "/metrics", nil)
+	w := httptest.NewRecorder()
+
+	handleMetrics(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+
+	// Check that response contains HTML
+	body := w.Body.String()
+	if len(body) == 0 {
+		t.Error("Expected non-empty response body")
+	}
+}
+
+func TestStateContainsAllNonMapFilterValue(t *testing.T) {
+	state := map[string]interface{}{
+		"number": 42,
+		"string": "hello",
+		"bool":   true,
+	}
+
+	// Test number comparison
+	filter1 := map[string]interface{}{"number": 42}
+	if !stateContainsAll(state, filter1) {
+		t.Error("Expected state to contain number filter")
+	}
+
+	// Test string comparison
+	filter2 := map[string]interface{}{"string": "hello"}
+	if !stateContainsAll(state, filter2) {
+		t.Error("Expected state to contain string filter")
+	}
+
+	// Test bool comparison
+	filter3 := map[string]interface{}{"bool": true}
+	if !stateContainsAll(state, filter3) {
+		t.Error("Expected state to contain bool filter")
+	}
+
+	// Test mismatch
+	filter4 := map[string]interface{}{"number": 43}
+	if stateContainsAll(state, filter4) {
+		t.Error("Expected state not to contain mismatched number filter")
+	}
+}
