@@ -886,27 +886,52 @@ func (d *Daemon) handleGetSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Always fetch from server to get complete session data including events and metrics
+	// Try to fetch from server first to get complete session data including events and metrics
 	resp, err := http.Get(d.config.ServerURL + "/api/sessions/" + sessionID)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("Session not found: %v", err), http.StatusNotFound)
-		return
-	}
-	defer resp.Body.Close()
+	if err == nil {
+		defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
+		if resp.StatusCode == http.StatusOK {
+			// Forward the response from server
+			w.Header().Set("Content-Type", "application/json")
+			var sessionData map[string]interface{}
+			if err := json.NewDecoder(resp.Body).Decode(&sessionData); err != nil {
+				http.Error(w, "Failed to decode session data", http.StatusInternalServerError)
+				return
+			}
+			json.NewEncoder(w).Encode(sessionData)
+			return
+		}
+	}
+
+	// Server unavailable or session not found on server - fall back to local buffer
+	d.mu.RLock()
+	buffer, exists := d.sessions[sessionID]
+	d.mu.RUnlock()
+
+	if !exists {
 		http.Error(w, "Session not found", http.StatusNotFound)
 		return
 	}
 
-	// Forward the response from server
-	w.Header().Set("Content-Type", "application/json")
-	var sessionData map[string]interface{}
-	if err := json.NewDecoder(resp.Body).Decode(&sessionData); err != nil {
-		http.Error(w, "Failed to decode session data", http.StatusInternalServerError)
-		return
+	// Build response from local buffer
+	buffer.mu.Lock()
+	response := map[string]interface{}{
+		"id":         buffer.SessionID,
+		"created_at": buffer.CreatedAt.Format(time.RFC3339),
+		"updated_at": time.Now().Format(time.RFC3339),
+		"active":     buffer.Active,
+		"state":      buffer.LastState,
+		"events":     []interface{}{},  // Empty arrays for consistency
+		"metrics":    []interface{}{},
 	}
-	json.NewEncoder(w).Encode(sessionData)
+	if buffer.EndedAt != nil {
+		response["ended_at"] = buffer.EndedAt.Format(time.RFC3339)
+	}
+	buffer.mu.Unlock()
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
 }
 
 // handleGetSessions handles requests to get all sessions
