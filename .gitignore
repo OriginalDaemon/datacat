@@ -17,6 +17,7 @@ cmd/datacat-daemon/datacat-daemon
 cmd/datacat-server/main
 cmd/datacat-web/main
 cmd/datacat-daemon/main
+examples/go-client-example/go-client-example
 bin/
 
 # Test binary, built with `go test -c`

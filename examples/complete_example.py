@@ -68,17 +68,19 @@ def main():
     time.sleep(1)
     session.heartbeat()
 
-    # Open some windows
-    for i in range(3):
+    # Open some windows (randomize the number)
+    num_windows = random.randint(2, 4)
+    for i in range(num_windows):
         window_name = "Window {}".format(i + 1)
         print("   Opening {}...".format(window_name))
 
-        # Update state with new window
+        # Update state with new window (randomized memory usage)
         current_windows = ["Window {}".format(j + 1) for j in range(i + 1)]
+        memory_usage = round(50.0 + (i + 1) * random.uniform(20.0, 30.0), 1)
         session.update_state(
             {
                 "windows": {"open": current_windows, "active": window_name},
-                "resources": {"memory_mb": 50.0 + (i + 1) * 25.0},
+                "resources": {"memory_mb": memory_usage},
             }
         )
 
@@ -87,7 +89,7 @@ def main():
 
         # Log metric
         session.log_metric("window_count", i + 1)
-        session.log_metric("memory_mb", 50.0 + (i + 1) * 25.0)
+        session.log_metric("memory_mb", memory_usage)
 
         time.sleep(0.5)
         session.heartbeat()
@@ -97,8 +99,9 @@ def main():
     session.update_state({"application": {"status": "running"}})
     session.log_event("application_ready")
 
-    # Simulate work cycles
-    for cycle in range(5):
+    # Simulate work cycles (randomize number of cycles)
+    num_cycles = random.randint(3, 7)
+    for cycle in range(num_cycles):
         print("   Work cycle {}...".format(cycle + 1))
 
         # Update metrics
@@ -116,6 +119,26 @@ def main():
         session.update_state(
             {"resources": {"cpu_percent": cpu_usage, "memory_mb": memory_usage}}
         )
+
+        # Simulate occasional errors during work cycles
+        if random.random() < 0.3:  # 30% chance of error per cycle
+            try:
+                error_types = [
+                    ("cache", "Cache miss ratio exceeded threshold"),
+                    ("timeout", "Background task timeout"),
+                    ("resource", "Memory allocation warning"),
+                ]
+                error_type, error_msg = random.choice(error_types)
+                raise RuntimeError(error_msg)
+            except RuntimeError as e:
+                print("   ⚠ Error in cycle {}: {}".format(cycle + 1, str(e)))
+                session.log_exception(
+                    extra_data={
+                        "cycle": cycle + 1,
+                        "error_category": error_type,
+                        "severity": "warning",
+                    }
+                )
 
         time.sleep(1)
         session.heartbeat()
@@ -143,6 +166,10 @@ def main():
     print("   Current theme:", details["state"]["settings"]["theme"])
     print("   Total events logged:", len(details["events"]))
     print("   Total metrics logged:", len(details["metrics"]))
+
+    # Count errors
+    error_count = sum(1 for event in details["events"] if event["name"] == "exception")
+    print("   Total errors logged:", error_count)
 
     # 10. Shutdown
     print("\n10. Shutting down application...")
