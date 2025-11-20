@@ -23,4 +23,10 @@ if (-not (Test-Path $webBin)) {
     exit 1
 }
 
-& $webBin
+# Change to repository root before running for consistency
+Push-Location $repoRoot
+try {
+    & $webBin
+} finally {
+    Pop-Location
+}

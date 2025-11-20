@@ -1975,3 +1975,264 @@ if !strings.Contains(body, "session1") {
 t.Error("Expected response to contain session ID")
 }
 }
+
+func TestCalculateStats(t *testing.T) {
+	// Test with normal values
+	values := []float64{1.0, 2.0, 3.0, 4.0, 5.0}
+	avg, max, min, median, stdDev := calculateStats(values)
+	
+	if avg != 3.0 {
+		t.Errorf("Expected avg=3.0, got %f", avg)
+	}
+	if max != 5.0 {
+		t.Errorf("Expected max=5.0, got %f", max)
+	}
+	if min != 1.0 {
+		t.Errorf("Expected min=1.0, got %f", min)
+	}
+	if median != 3.0 {
+		t.Errorf("Expected median=3.0, got %f", median)
+	}
+	// Standard deviation should be approximately 1.414
+	if stdDev < 1.4 || stdDev > 1.5 {
+		t.Errorf("Expected stdDev around 1.414, got %f", stdDev)
+	}
+	
+	// Test with even number of values
+	values = []float64{1.0, 2.0, 3.0, 4.0}
+	_, _, _, median, _ = calculateStats(values)
+	if median != 2.5 {
+		t.Errorf("Expected median=2.5, got %f", median)
+	}
+	
+	// Test with empty slice
+	values = []float64{}
+	avg, max, min, median, stdDev = calculateStats(values)
+	if avg != 0 || max != 0 || min != 0 || median != 0 || stdDev != 0 {
+		t.Error("Expected all zeros for empty slice")
+	}
+	
+	// Test with single value
+	values = []float64{42.0}
+	avg, max, min, median, stdDev = calculateStats(values)
+	if avg != 42.0 || max != 42.0 || min != 42.0 || median != 42.0 || stdDev != 0 {
+		t.Error("Expected all values to be 42.0 for single value slice")
+	}
+}
+
+func TestHandleSessionsWithTimeRange(t *testing.T) {
+	// Create a mock HTTP server
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sessions := []*client.Session{
+			{
+				ID:        "session1",
+				CreatedAt: time.Now().Add(-1 * time.Hour),
+				UpdatedAt: time.Now().Add(-1 * time.Hour),
+				Active:    true,
+				State:     map[string]interface{}{"product": "test"},
+				Metrics: []client.Metric{
+					{Name: "cpu_usage", Value: 50.0, Timestamp: time.Now().Add(-1 * time.Hour)},
+				},
+			},
+			{
+				ID:        "session2",
+				CreatedAt: time.Now().Add(-10 * 24 * time.Hour), // 10 days ago
+				UpdatedAt: time.Now().Add(-10 * 24 * time.Hour),
+				Active:    false,
+				State:     map[string]interface{}{"product": "test"},
+				Metrics: []client.Metric{
+					{Name: "cpu_usage", Value: 75.0, Timestamp: time.Now().Add(-10 * 24 * time.Hour)},
+				},
+			},
+			{
+				ID:        "session3",
+				CreatedAt: time.Now().Add(-30 * 24 * time.Hour), // 30 days ago
+				UpdatedAt: time.Now().Add(-30 * 24 * time.Hour),
+				Active:    false,
+				State:     map[string]interface{}{"product": "test"},
+			},
+		}
+		json.NewEncoder(w).Encode(sessions)
+	}))
+	defer mockServer.Close()
+	
+	datacatClient = client.NewClient(mockServer.URL)
+	
+	// Test with 2 week filter (default) - should include sessions 1 and 2
+	req := httptest.NewRequest("GET", "/sessions?time_range=2w", nil)
+	w := httptest.NewRecorder()
+	handleSessions(w, req)
+	
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+	
+	body := w.Body.String()
+	if !strings.Contains(body, "session1") {
+		t.Error("Expected session1 in 2 week range")
+	}
+	if !strings.Contains(body, "session2") {
+		t.Error("Expected session2 in 2 week range")
+	}
+	if strings.Contains(body, "session3") {
+		t.Error("Did not expect session3 in 2 week range")
+	}
+	
+	// Test with all time filter
+	req = httptest.NewRequest("GET", "/sessions?time_range=all", nil)
+	w = httptest.NewRecorder()
+	handleSessions(w, req)
+	
+	body = w.Body.String()
+	if !strings.Contains(body, "session1") || !strings.Contains(body, "session2") || !strings.Contains(body, "session3") {
+		t.Error("Expected all sessions with 'all' time range")
+	}
+}
+
+func TestHandleSessionsMetrics(t *testing.T) {
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sessions := []*client.Session{
+			{
+				ID:        "session1",
+				CreatedAt: time.Now().Add(-1 * time.Hour),
+				UpdatedAt: time.Now().Add(-1 * time.Hour),
+				Active:    true,
+				State:     map[string]interface{}{"product": "test"},
+				Metrics: []client.Metric{
+					{Name: "cpu_usage", Value: 50.0, Timestamp: time.Now()},
+					{Name: "memory_usage", Value: 100.0, Timestamp: time.Now()},
+				},
+			},
+			{
+				ID:        "session2",
+				CreatedAt: time.Now().Add(-2 * time.Hour),
+				UpdatedAt: time.Now().Add(-2 * time.Hour),
+				Active:    false,
+				State:     map[string]interface{}{"product": "test"},
+				Metrics: []client.Metric{
+					{Name: "cpu_usage", Value: 75.0, Timestamp: time.Now()},
+				},
+			},
+		}
+		json.NewEncoder(w).Encode(sessions)
+	}))
+	defer mockServer.Close()
+	
+	datacatClient = client.NewClient(mockServer.URL)
+	
+	req := httptest.NewRequest("GET", "/api/sessions-metrics", nil)
+	w := httptest.NewRecorder()
+	handleSessionsMetrics(w, req)
+	
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+	
+	body := w.Body.String()
+	if !strings.Contains(body, "cpu_usage") {
+		t.Error("Expected cpu_usage metric in response")
+	}
+	if !strings.Contains(body, "memory_usage") {
+		t.Error("Expected memory_usage metric in response")
+	}
+	if !strings.Contains(body, "metric-card") {
+		t.Error("Expected metric-card class in response")
+	}
+}
+
+func TestHandleMetricData(t *testing.T) {
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sessions := []*client.Session{
+			{
+				ID:        "session1",
+				CreatedAt: time.Now().Add(-1 * time.Hour),
+				UpdatedAt: time.Now().Add(-1 * time.Hour),
+				Active:    true,
+				State:     map[string]interface{}{"product": "test"},
+				Metrics: []client.Metric{
+					{Name: "cpu_usage", Value: 50.0, Timestamp: time.Now()},
+					{Name: "cpu_usage", Value: 60.0, Timestamp: time.Now().Add(1 * time.Minute)},
+					{Name: "cpu_usage", Value: 70.0, Timestamp: time.Now().Add(2 * time.Minute)},
+				},
+			},
+			{
+				ID:        "session2",
+				CreatedAt: time.Now().Add(-2 * time.Hour),
+				UpdatedAt: time.Now().Add(-2 * time.Hour),
+				Active:    false,
+				State:     map[string]interface{}{"product": "test"},
+				Metrics: []client.Metric{
+					{Name: "cpu_usage", Value: 30.0, Timestamp: time.Now()},
+					{Name: "cpu_usage", Value: 40.0, Timestamp: time.Now().Add(1 * time.Minute)},
+				},
+			},
+		}
+		json.NewEncoder(w).Encode(sessions)
+	}))
+	defer mockServer.Close()
+	
+	datacatClient = client.NewClient(mockServer.URL)
+	
+	// Use "all" time range to avoid filtering out test data
+	req := httptest.NewRequest("GET", "/api/metric-data/cpu_usage?time_range=all", nil)
+	w := httptest.NewRecorder()
+	handleMetricData(w, req)
+	
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+	
+	body := w.Body.String()
+	t.Logf("Response body: %s", body)
+	if !strings.Contains(body, "chart-") {
+		t.Error("Expected chart canvas in response")
+	}
+	if !strings.Contains(body, "Average") {
+		t.Error("Expected Average stat in response")
+	}
+	if !strings.Contains(body, "Maximum") {
+		t.Error("Expected Maximum stat in response")
+	}
+	if !strings.Contains(body, "Minimum") {
+		t.Error("Expected Minimum stat in response")
+	}
+	if !strings.Contains(body, "Median") {
+		t.Error("Expected Median stat in response")
+	}
+	if !strings.Contains(body, "Std Dev") {
+		t.Error("Expected Std Dev stat in response")
+	}
+}
+
+func TestHandleMetricDataNoData(t *testing.T) {
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sessions := []*client.Session{
+			{
+				ID:        "session1",
+				CreatedAt: time.Now().Add(-1 * time.Hour),
+				UpdatedAt: time.Now().Add(-1 * time.Hour),
+				Active:    true,
+				State:     map[string]interface{}{"product": "test"},
+				Metrics:   []client.Metric{},
+			},
+		}
+		json.NewEncoder(w).Encode(sessions)
+	}))
+	defer mockServer.Close()
+	
+	datacatClient = client.NewClient(mockServer.URL)
+	
+	req := httptest.NewRequest("GET", "/api/metric-data/nonexistent_metric", nil)
+	w := httptest.NewRecorder()
+	handleMetricData(w, req)
+	
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+	
+	body := w.Body.String()
+	if !strings.Contains(body, "No data found") {
+		t.Error("Expected 'No data found' message")
+	}
+}
+
