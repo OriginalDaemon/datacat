@@ -26,36 +26,38 @@
     <h2>Session: {{slice .Session.ID 0 16}}...</h2>
     <p style="color: var(--text-secondary); margin-bottom: 20px; font-family: monospace; font-size: 12px;">Full ID: {{.Session.ID}}</p>
     
-    <table style="margin-bottom: 20px;">
-        <tr>
-            <th style="width: 200px;">Created</th>
-            <td>{{.Session.CreatedAt.Format "2006-01-02 15:04:05"}}</td>
-        </tr>
-        <tr>
-            <th>Updated</th>
-            <td>{{.Session.UpdatedAt.Format "2006-01-02 15:04:05"}}</td>
-        </tr>
-        {{if .Session.EndedAt}}
-        <tr>
-            <th>Ended</th>
-            <td>{{.Session.EndedAt.Format "2006-01-02 15:04:05"}}</td>
-        </tr>
-        {{end}}
-        <tr>
-            <th>Status</th>
-            <td>
-                {{if .Session.Active}}
-                    <span class="badge badge-active">Active</span>
-                {{else}}
-                    <span class="badge badge-inactive">Ended</span>
-                {{end}}
-            </td>
-        </tr>
-        <tr>
-            <th>State Changes</th>
-            <td>{{len .Session.StateHistory}} updates recorded</td>
-        </tr>
-    </table>
+    <div id="session-info" hx-get="/api/session-info/{{.Session.ID}}" hx-trigger="load" hx-swap="outerHTML">
+        <table style="margin-bottom: 20px;">
+            <tr>
+                <th style="width: 200px;">Created</th>
+                <td>{{.Session.CreatedAt.Format "2006-01-02 15:04:05"}}</td>
+            </tr>
+            <tr>
+                <th>Updated</th>
+                <td>{{.Session.UpdatedAt.Format "2006-01-02 15:04:05"}}</td>
+            </tr>
+            {{if .Session.EndedAt}}
+            <tr>
+                <th>Ended</th>
+                <td>{{.Session.EndedAt.Format "2006-01-02 15:04:05"}}</td>
+            </tr>
+            {{end}}
+            <tr>
+                <th>Status</th>
+                <td>
+                    {{if .Session.Active}}
+                        <span class="badge badge-active">Active</span>
+                    {{else}}
+                        <span class="badge badge-inactive">Ended</span>
+                    {{end}}
+                </td>
+            </tr>
+            <tr>
+                <th>State Changes</th>
+                <td>{{len .Session.StateHistory}} updates recorded</td>
+            </tr>
+        </table>
+    </div>
 </div>
 
 <!-- Enhanced Timeline with Zoom -->
