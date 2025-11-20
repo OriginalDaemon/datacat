@@ -1118,6 +1118,30 @@
                     highlightAdded: addedKeys,
                     highlightModified: modifiedKeys
                 });
+
+                // Synchronize scrolling between left and right panels
+                const oldContainer = document.querySelector('#timeline-state-old .json-viewer-container');
+                const newContainer = document.querySelector('#timeline-state-new .json-viewer-container');
+
+                if (oldContainer && newContainer) {
+                    let isSyncing = false;
+
+                    oldContainer.addEventListener('scroll', function() {
+                        if (!isSyncing) {
+                            isSyncing = true;
+                            newContainer.scrollTop = oldContainer.scrollTop;
+                            requestAnimationFrame(() => isSyncing = false);
+                        }
+                    });
+
+                    newContainer.addEventListener('scroll', function() {
+                        if (!isSyncing) {
+                            isSyncing = true;
+                            oldContainer.scrollTop = newContainer.scrollTop;
+                            requestAnimationFrame(() => isSyncing = false);
+                        }
+                    });
+                }
                 let changesHtml = '';
 
                 if (Object.keys(diff.added).length > 0) {
