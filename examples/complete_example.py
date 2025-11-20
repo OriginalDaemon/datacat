@@ -197,9 +197,7 @@ def main():
     print("=" * 60)
     print("\nSession ID: {}".format(session.session_id))
     print("\nYou can now:")
-    print(
-        "1. Query the Grafana endpoint: curl http://localhost:9090/api/grafana/sessions"
-    )
+    print("1. Query the data endpoint: curl http://localhost:9090/api/data/sessions")
     print(
         "2. Get this session: curl http://localhost:9090/api/sessions/{}".format(
             session.session_id
