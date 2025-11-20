@@ -1,343 +1,359 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>{{.Title}} - Datacat</title>
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8"></script>
-    <link rel="stylesheet" href="/static/json-viewer.css">
+    <link rel="stylesheet" href="/static/json-viewer.css" />
     <script src="/static/json-viewer.js"></script>
     <style>
-        :root {
-            --bg-primary: #1a202c;
-            --bg-secondary: #2d3748;
-            --bg-card: #2d3748;
-            --bg-hover: #4a5568;
-            --text-primary: #e2e8f0;
-            --text-secondary: #a0aec0;
-            --border-color: #4a5568;
-            --accent-primary: #667eea;
-            --accent-secondary: #764ba2;
-            --success-color: #48bb78;
-            --error-color: #f56565;
-            --warning-color: #ed8936;
-        }
+      :root {
+        --bg-primary: #1a202c;
+        --bg-secondary: #2d3748;
+        --bg-card: #2d3748;
+        --bg-hover: #4a5568;
+        --text-primary: #e2e8f0;
+        --text-secondary: #a0aec0;
+        --border-color: #4a5568;
+        --accent-primary: #667eea;
+        --accent-secondary: #764ba2;
+        --success-color: #48bb78;
+        --error-color: #f56565;
+        --warning-color: #ed8936;
+      }
 
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
 
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            background: var(--bg-primary);
-            color: var(--text-primary);
-            transition: background 0.3s, color 0.3s;
-        }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          Oxygen, Ubuntu, Cantarell, sans-serif;
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        transition: background 0.3s, color 0.3s;
+      }
 
-        .container {
-            max-width: 1400px;
-            margin: 0 auto;
-            padding: 20px;
-        }
+      .container {
+        max-width: 1400px;
+        margin: 0 auto;
+        padding: 20px;
+      }
 
-        header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 20px 0;
-            margin-bottom: 30px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }
+      header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 20px 0;
+        margin-bottom: 30px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+      }
 
-        header .container {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
+      header .container {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
 
-        h1 {
-            font-size: 28px;
-            font-weight: 600;
-        }
+      h1 {
+        font-size: 28px;
+        font-weight: 600;
+      }
 
-        nav a {
-            color: white;
-            text-decoration: none;
-            margin-left: 25px;
-            padding: 8px 16px;
-            border-radius: 4px;
-            transition: background 0.2s;
-        }
+      nav a {
+        color: white;
+        text-decoration: none;
+        margin-left: 25px;
+        padding: 8px 16px;
+        border-radius: 4px;
+        transition: background 0.2s;
+      }
 
-        nav a:hover {
-            background: rgba(255,255,255,0.2);
-        }
+      nav a:hover {
+        background: rgba(255, 255, 255, 0.2);
+      }
 
-        .card {
-            background: var(--bg-card);
-            border-radius: 8px;
-            padding: 20px;
-            margin-bottom: 20px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-            border: 1px solid var(--border-color);
-        }
+      .card {
+        background: var(--bg-card);
+        border-radius: 8px;
+        padding: 20px;
+        margin-bottom: 20px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+        border: 1px solid var(--border-color);
+      }
 
-        .card h2 {
-            margin-bottom: 15px;
-            color: var(--accent-primary);
-            font-size: 22px;
-        }
+      .card h2 {
+        margin-bottom: 15px;
+        color: var(--accent-primary);
+        font-size: 22px;
+      }
 
-        table {
-            width: 100%;
-            border-collapse: collapse;
-        }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
 
-        th, td {
-            padding: 12px;
-            text-align: left;
-            border-bottom: 1px solid var(--border-color);
-        }
+      th,
+      td {
+        padding: 12px;
+        text-align: left;
+        border-bottom: 1px solid var(--border-color);
+      }
 
-        th {
-            background: var(--bg-hover);
-            font-weight: 600;
-            color: var(--text-primary);
-        }
+      th {
+        background: var(--bg-hover);
+        font-weight: 600;
+        color: var(--text-primary);
+      }
 
-        tr:hover {
-            background: var(--bg-hover);
-        }
+      tr:hover {
+        background: var(--bg-hover);
+      }
 
-        .badge {
-            display: inline-block;
-            padding: 4px 12px;
-            border-radius: 12px;
-            font-size: 12px;
-            font-weight: 600;
-        }
+      .badge {
+        display: inline-block;
+        padding: 4px 12px;
+        border-radius: 12px;
+        font-size: 12px;
+        font-weight: 600;
+      }
 
-        .badge-active {
-            background: #d4edda;
-            color: #155724;
-        }
+      .badge-active {
+        background: #d4edda;
+        color: #155724;
+      }
 
-        .badge-inactive {
-            background: #f8d7da;
-            color: #721c24;
-        }
+      .badge-inactive {
+        background: #f8d7da;
+        color: #721c24;
+      }
 
-        .btn {
-            display: inline-block;
-            padding: 10px 20px;
-            background: #667eea;
-            color: white;
-            text-decoration: none;
-            border-radius: 4px;
-            border: none;
-            cursor: pointer;
-            font-size: 14px;
-            transition: background 0.2s;
-        }
+      .btn {
+        display: inline-block;
+        padding: 10px 20px;
+        background: #667eea;
+        color: white;
+        text-decoration: none;
+        border-radius: 4px;
+        border: none;
+        cursor: pointer;
+        font-size: 14px;
+        transition: background 0.2s;
+      }
 
-        .btn:hover {
-            background: #5568d3;
-        }
+      .btn:hover {
+        background: #5568d3;
+      }
 
-        .btn-secondary {
-            background: #6c757d;
-        }
+      .btn-secondary {
+        background: #6c757d;
+      }
 
-        .btn-secondary:hover {
-            background: #5a6268;
-        }
+      .btn-secondary:hover {
+        background: #5a6268;
+      }
 
-        .chart-container {
-            position: relative;
-            height: 400px;
-            margin: 20px 0;
-        }
+      .chart-container {
+        position: relative;
+        height: 400px;
+        margin: 20px 0;
+      }
 
-        .filter-form {
-            display: flex;
-            gap: 15px;
-            margin-bottom: 20px;
-            flex-wrap: wrap;
-            align-items: end;
-        }
+      .filter-form {
+        display: flex;
+        gap: 15px;
+        margin-bottom: 20px;
+        flex-wrap: wrap;
+        align-items: end;
+      }
 
-        .form-group {
-            display: flex;
-            flex-direction: column;
-            min-width: 200px;
-        }
+      .form-group {
+        display: flex;
+        flex-direction: column;
+        min-width: 200px;
+      }
 
-        .form-group label {
-            margin-bottom: 5px;
-            font-weight: 500;
-            color: var(--text-secondary);
-        }
+      .form-group label {
+        margin-bottom: 5px;
+        font-weight: 500;
+        color: var(--text-secondary);
+      }
 
-        .form-group input,
-        .form-group select {
-            padding: 8px 12px;
-            border: 1px solid var(--border-color);
-            border-radius: 4px;
-            font-size: 14px;
-            background: var(--bg-secondary);
-            color: var(--text-primary);
-        }
+      .form-group input,
+      .form-group select {
+        padding: 8px 12px;
+        border: 1px solid var(--border-color);
+        border-radius: 4px;
+        font-size: 14px;
+        background: var(--bg-secondary);
+        color: var(--text-primary);
+      }
 
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 15px;
-            margin-bottom: 20px;
-        }
+      .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 15px;
+        margin-bottom: 20px;
+      }
 
-        .stat-card {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        }
+      .stat-card {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+      }
 
-        .stat-card h3 {
-            font-size: 14px;
-            opacity: 0.9;
-            margin-bottom: 8px;
-        }
+      .stat-card h3 {
+        font-size: 14px;
+        opacity: 0.9;
+        margin-bottom: 8px;
+      }
 
-        .stat-card .value {
-            font-size: 32px;
-            font-weight: 700;
-        }
+      .stat-card .value {
+        font-size: 32px;
+        font-weight: 700;
+      }
 
-        .htmx-indicator {
-            display: none;
-        }
+      .htmx-indicator {
+        display: none;
+      }
 
-        .htmx-request .htmx-indicator {
-            display: inline;
-        }
+      .htmx-request .htmx-indicator {
+        display: inline;
+      }
 
-        .spinner {
-            border: 2px solid #f3f3f3;
-            border-top: 2px solid #667eea;
-            border-radius: 50%;
-            width: 20px;
-            height: 20px;
-            animation: spin 1s linear infinite;
-            display: inline-block;
-        }
+      .spinner {
+        border: 2px solid #f3f3f3;
+        border-top: 2px solid #667eea;
+        border-radius: 50%;
+        width: 20px;
+        height: 20px;
+        animation: spin 1s linear infinite;
+        display: inline-block;
+      }
 
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
+      @keyframes spin {
+        0% {
+          transform: rotate(0deg);
         }
+        100% {
+          transform: rotate(360deg);
+        }
+      }
 
-        /* Light theme */
-        body.light-theme {
-            --bg-primary: #f7fafc;
-            --bg-secondary: #edf2f7;
-            --bg-card: #ffffff;
-            --bg-hover: #e2e8f0;
-            --text-primary: #2d3748;
-            --text-secondary: #4a5568;
-            --border-color: #cbd5e0;
-            --accent-primary: #667eea;
-            --accent-secondary: #764ba2;
-            --success-color: #38a169;
-            --error-color: #e53e3e;
-            --warning-color: #dd6b20;
-        }
+      /* Light theme */
+      body.light-theme {
+        --bg-primary: #f7fafc;
+        --bg-secondary: #edf2f7;
+        --bg-card: #ffffff;
+        --bg-hover: #e2e8f0;
+        --text-primary: #2d3748;
+        --text-secondary: #4a5568;
+        --border-color: #cbd5e0;
+        --accent-primary: #667eea;
+        --accent-secondary: #764ba2;
+        --success-color: #38a169;
+        --error-color: #e53e3e;
+        --warning-color: #dd6b20;
+      }
 
-        /* Theme switcher button */
-        .theme-toggle {
-            background: rgba(255,255,255,0.1);
-            border: none;
-            color: white;
-            padding: 8px 16px;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 14px;
-            transition: background 0.2s;
-            margin-left: 15px;
-        }
+      /* Theme switcher button */
+      .theme-toggle {
+        background: rgba(255, 255, 255, 0.1);
+        border: none;
+        color: white;
+        padding: 8px 16px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 14px;
+        transition: background 0.2s;
+        margin-left: 15px;
+      }
 
-        .theme-toggle:hover {
-            background: rgba(255,255,255,0.2);
-        }
+      .theme-toggle:hover {
+        background: rgba(255, 255, 255, 0.2);
+      }
 
-        /* Alert styles */
-        .alert {
-            padding: 12px 20px;
-            border-radius: 4px;
-            margin-bottom: 20px;
-            font-size: 14px;
-            border-left: 4px solid;
-        }
+      /* Alert styles */
+      .alert {
+        padding: 12px 20px;
+        border-radius: 4px;
+        margin-bottom: 20px;
+        font-size: 14px;
+        border-left: 4px solid;
+      }
 
-        .alert-danger {
-            background: rgba(245, 101, 101, 0.1);
-            border-left-color: var(--error-color);
-            color: var(--text-primary);
-        }
+      .alert-danger {
+        background: rgba(245, 101, 101, 0.1);
+        border-left-color: var(--error-color);
+        color: var(--text-primary);
+      }
 
-        .alert-success {
-            background: rgba(72, 187, 120, 0.1);
-            border-left-color: var(--success-color);
-            color: var(--text-primary);
-        }
+      .alert-success {
+        background: rgba(72, 187, 120, 0.1);
+        border-left-color: var(--success-color);
+        color: var(--text-primary);
+      }
 
-        .alert strong {
-            margin-right: 8px;
-        }
+      .alert strong {
+        margin-right: 8px;
+      }
     </style>
     <script>
-        // Theme switcher logic
-        function initTheme() {
-            const savedTheme = localStorage.getItem('datacat-theme') || 'dark';
-            if (savedTheme === 'light') {
-                document.body.classList.add('light-theme');
-            }
+      // Theme switcher logic
+      function initTheme() {
+        const savedTheme = localStorage.getItem("datacat-theme") || "dark";
+        if (savedTheme === "light") {
+          document.body.classList.add("light-theme");
         }
+      }
 
-        function toggleTheme() {
-            document.body.classList.toggle('light-theme');
-            const currentTheme = document.body.classList.contains('light-theme') ? 'light' : 'dark';
-            localStorage.setItem('datacat-theme', currentTheme);
-        }
+      function toggleTheme() {
+        document.body.classList.toggle("light-theme");
+        const currentTheme = document.body.classList.contains("light-theme")
+          ? "light"
+          : "dark";
+        localStorage.setItem("datacat-theme", currentTheme);
+      }
 
-        // Initialize theme on page load
-        document.addEventListener('DOMContentLoaded', initTheme);
+      // Initialize theme on page load
+      document.addEventListener("DOMContentLoaded", initTheme);
     </script>
-</head>
-<body>
+  </head>
+  <body>
     <header>
-        <div class="container">
-            <h1>📊 Datacat Dashboard</h1>
-            <nav>
-                <a href="/">Home</a>
-                <a href="/metrics">Metrics</a>
-                <a href="http://localhost:9090/api/sessions" target="_blank">API</a>
-                <button class="theme-toggle" onclick="toggleTheme()">🌓 Toggle Theme</button>
-            </nav>
-        </div>
+      <div class="container">
+        <h1>📊 Datacat Dashboard</h1>
+        <nav>
+          <a href="/">Home</a>
+          <a href="/metrics">Metrics</a>
+          <a href="http://localhost:9090/api/sessions" target="_blank">API</a>
+          <button class="theme-toggle" onclick="toggleTheme()">
+            🌓 Toggle Theme
+          </button>
+        </nav>
+      </div>
     </header>
 
     <div class="container">
-        <!-- Server status indicator (HTMX live updates) -->
-        <div id="server-status" hx-get="/api/server-status" hx-trigger="load" hx-swap="outerHTML">
-            <div class="alert alert-info">Checking server status...</div>
-        </div>
-        
-        {{template "content" .}}
+      <!-- Server status indicator (HTMX live updates) -->
+      <div
+        id="server-status"
+        hx-get="/api/server-status"
+        hx-trigger="load"
+        hx-swap="outerHTML"
+      >
+        <div class="alert alert-info">Checking server status...</div>
+      </div>
+
+      {{template "content" .}}
     </div>
-</body>
+  </body>
 </html>
