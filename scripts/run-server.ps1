@@ -22,4 +22,10 @@ if (-not (Test-Path $serverBin)) {
     exit 1
 }
 
-& $serverBin
+# Change to repository root before running to ensure data is stored there
+Push-Location $repoRoot
+try {
+    & $serverBin
+} finally {
+    Pop-Location
+}

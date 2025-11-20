@@ -212,4 +212,3 @@ Suggested enhancements:
 4. Time-series data aggregation
 5. Export to other formats (CSV, Prometheus)
 6. Clustering for high availability
-7. Grafana plugin for native integration

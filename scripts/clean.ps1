@@ -13,10 +13,22 @@ if (Test-Path "bin") {
     Remove-Item -Recurse -Force bin
 }
 
-# Remove BadgerDB data directory
+# Remove BadgerDB data directory (legacy name)
 if (Test-Path "badger_data") {
     Write-Host "  Removing badger_data/" -ForegroundColor Gray
     Remove-Item -Recurse -Force badger_data
+}
+
+# Remove datacat data directory (current name)
+if (Test-Path "datacat_data") {
+    Write-Host "  Removing datacat_data/" -ForegroundColor Gray
+    Remove-Item -Recurse -Force datacat_data
+}
+
+# Remove config file
+if (Test-Path "config.json") {
+    Write-Host "  Removing config.json" -ForegroundColor Gray
+    Remove-Item -Force config.json
 }
 
 # Remove coverage files

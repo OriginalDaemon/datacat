@@ -10,7 +10,7 @@ The main REST API server for datacat. This service provides endpoints for sessio
 - **BadgerDB persistence** (data survives restarts)
 - **Configurable data retention** (default: 1 year)
 - **Automatic cleanup** of old sessions
-- Grafana JSON export endpoint
+- JSON export endpoint for external tools
 
 ## Configuration
 
@@ -66,11 +66,52 @@ go build -o datacat-server
 - `POST /api/sessions/{id}/events` - Log event
 - `POST /api/sessions/{id}/metrics` - Log metric
 - `POST /api/sessions/{id}/end` - End session
-- `GET /api/data/sessions` - Export all sessions for Grafana
+- `GET /api/data/sessions` - Export all sessions
 
 ## Data Management
 
-### Manual Cleanup
+### Data Storage Location
+
+All session data is stored in a **BadgerDB database** at the location specified by `data_path` in `config.json` (default: `./datacat_data`).
+
+The data directory contains:
+- Session data (state, events, metrics)
+- BadgerDB internal files (MANIFEST, LOCK, .vlog, .mem files)
+
+**Important:** The server must be stopped before manually modifying the data directory to prevent database corruption.
+
+### Deleting All Data
+
+To completely delete all session data and reset the server:
+
+```bash
+# 1. Stop the server (Ctrl+C or kill the process)
+
+# 2. Delete the data directory
+rm -rf ./datacat_data
+
+# 3. Optionally delete the config to reset to defaults
+rm config.json
+
+# 4. Restart the server - it will create a fresh database
+go run main.go config.go
+```
+
+**Windows PowerShell:**
+```powershell
+# 1. Stop the server (Ctrl+C)
+
+# 2. Delete the data directory
+Remove-Item -Recurse -Force ./datacat_data
+
+# 3. Optionally delete the config
+Remove-Item config.json
+
+# 4. Restart the server
+go run main.go config.go
+```
+
+### Manual Cleanup of Old Sessions
 
 While automatic cleanup runs based on `cleanup_interval_hours`, you can also trigger cleanup by restarting the server or implementing a manual cleanup endpoint if needed.
 
