@@ -144,14 +144,14 @@ function formatDateTimeLocal(date) {
 // Initialize time range based on current data
 function initializeTimeRangeFromData(data) {
     if (!data || !data.points || data.points.length === 0) return;
-    
+
     const timestamps = data.points.map(p => new Date(p.timestamp));
     const minTime = new Date(Math.min(...timestamps));
     const maxTime = new Date(Math.max(...timestamps));
-    
+
     globalTimeRangeStart = minTime;
     globalTimeRangeEnd = maxTime;
-    
+
     document.getElementById('time-range-start').value = formatDateTimeLocal(minTime);
     document.getElementById('time-range-end').value = formatDateTimeLocal(maxTime);
     updateTimeRangeInfo();
@@ -171,22 +171,22 @@ function updateTimeRangeInfo() {
 function applyTimeRange() {
     const startInput = document.getElementById('time-range-start').value;
     const endInput = document.getElementById('time-range-end').value;
-    
+
     if (!startInput || !endInput) {
         alert('Please select both start and end times');
         return;
     }
-    
+
     globalTimeRangeStart = new Date(startInput);
     globalTimeRangeEnd = new Date(endInput);
-    
+
     if (globalTimeRangeStart >= globalTimeRangeEnd) {
         alert('Start time must be before end time');
         return;
     }
-    
+
     updateTimeRangeInfo();
-    
+
     // Re-render chart with filtered data
     if (allDataPoints) {
         renderChartWithTimeRange(allDataPoints);
@@ -211,7 +211,7 @@ function renderChartWithTimeRange(data) {
                    (!globalTimeRangeEnd || timestamp <= globalTimeRangeEnd);
         })
     };
-    
+
     // Recalculate stats for filtered data
     if (filteredData.points.length > 0) {
         const values = filteredData.points.map(p => p.value);
@@ -219,7 +219,7 @@ function renderChartWithTimeRange(data) {
         filteredData.min = Math.min(...values);
         filteredData.average = values.reduce((a, b) => a + b, 0) / values.length;
     }
-    
+
     renderChart(filteredData);
     updateStats(filteredData);
 }
@@ -228,7 +228,7 @@ function toggleFilterInputs() {
     const filterMode = document.getElementById('filter_mode').value;
     const pathGroup = document.getElementById('filter_path_group');
     const valueGroup = document.getElementById('filter_value_group');
-    
+
     if (filterMode === 'none') {
         pathGroup.style.display = 'none';
         valueGroup.style.display = 'none';
@@ -268,40 +268,40 @@ function loadExample3() {
 
 document.getElementById('metrics-form').addEventListener('submit', async function(e) {
     e.preventDefault();
-    
+
     const metricName = document.getElementById('metric_name').value;
     const aggregation = document.getElementById('aggregation').value;
     const filterMode = document.getElementById('filter_mode').value;
     const filterPath = document.getElementById('filter_path').value;
     const filterValue = document.getElementById('filter_value').value;
-    
+
     if (!metricName) {
         alert('Please select a metric name');
         return;
     }
-    
+
     // Build query params
     const params = new URLSearchParams({
         metric: metricName,
         aggregation: aggregation,
         filter_mode: filterMode
     });
-    
+
     if (filterMode !== 'none' && filterPath) {
         params.append('filter_path', filterPath);
         params.append('filter_value', filterValue);
     }
-    
+
     try {
         const response = await fetch(`/api/timeseries?${params}`);
         const data = await response.json();
-        
+
         // Store the data globally
         allDataPoints = data;
-        
+
         // Initialize time range from data
         initializeTimeRangeFromData(data);
-        
+
         renderChart(data);
         updateStats(data);
     } catch (error) {
@@ -313,7 +313,7 @@ document.getElementById('metrics-form').addEventListener('submit', async functio
 function updateStats(data) {
     const container = document.getElementById('stats-container');
     container.style.display = 'grid';
-    
+
     document.getElementById('stat-sessions').textContent = data.sessions_matched || 0;
     document.getElementById('stat-peak').textContent = data.peak ? data.peak.toFixed(2) : '0';
     document.getElementById('stat-average').textContent = data.average ? data.average.toFixed(2) : '0';
@@ -322,23 +322,23 @@ function updateStats(data) {
 
 function renderChart(data) {
     const ctx = document.getElementById('metricsChart').getContext('2d');
-    
+
     if (chart) {
         chart.destroy();
     }
-    
+
     // Calculate time range from all data points
     let minTime = null;
     let maxTime = null;
-    
+
     if (data.points.length > 0) {
         minTime = new Date(Math.min(...data.points.map(p => new Date(p.timestamp).getTime())));
         maxTime = new Date(Math.max(...data.points.map(p => new Date(p.timestamp).getTime())));
     }
-    
+
     // Calculate point radius based on data density
     const pointRadius = data.points.length > 100 ? 2 : (data.points.length > 50 ? 3 : 4);
-    
+
     chart = new Chart(ctx, {
         type: 'line',
         data: {
@@ -406,14 +406,14 @@ function renderChart(data) {
                             const xScale = chart.scales.x;
                             const newStart = new Date(xScale.min);
                             const newEnd = new Date(xScale.max);
-                            
+
                             globalTimeRangeStart = newStart;
                             globalTimeRangeEnd = newEnd;
-                            
+
                             document.getElementById('time-range-start').value = formatDateTimeLocal(newStart);
                             document.getElementById('time-range-end').value = formatDateTimeLocal(newEnd);
                             updateTimeRangeInfo();
-                            
+
                             renderChartWithTimeRange(allDataPoints);
                         }
                     }
