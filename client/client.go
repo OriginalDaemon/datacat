@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"runtime"
 	"time"
 )
 
@@ -35,11 +36,18 @@ func NewDaemonManager(daemonPort, serverURL, daemonBinary string) *DaemonManager
 
 // findDaemonBinary finds the daemon binary in common locations
 func findDaemonBinary() string {
+	// Determine binary name based on platform
+	binaryName := "datacat-daemon"
+	if runtime.GOOS == "windows" {
+		binaryName = "datacat-daemon.exe"
+	}
+	
 	// Check common locations
 	possiblePaths := []string{
-		"datacat-daemon",                      // In PATH
-		"./datacat-daemon",                    // Current directory
-		"./cmd/datacat-daemon/datacat-daemon", // Development
+		binaryName,                                       // In PATH
+		"./" + binaryName,                                // Current directory
+		"./cmd/datacat-daemon/" + binaryName,             // Development
+		"./bin/" + binaryName,                            // Built binaries
 	}
 
 	for _, path := range possiblePaths {
@@ -51,7 +59,7 @@ func findDaemonBinary() string {
 		}
 	}
 
-	return "datacat-daemon" // Default and let it fail if not found
+	return binaryName // Default and let it fail if not found
 }
 
 // Start starts the daemon subprocess
@@ -230,7 +238,15 @@ func (c *Client) CreateSession() (string, error) {
 
 // GetSession retrieves a session by ID
 func (c *Client) GetSession(sessionID string) (*Session, error) {
-	resp, err := c.HTTPClient.Get(c.BaseURL + "/api/sessions/" + sessionID)
+	var url string
+	
+	if c.UseDaemon {
+		url = c.BaseURL + "/session?session_id=" + sessionID
+	} else {
+		url = c.BaseURL + "/api/sessions/" + sessionID
+	}
+	
+	resp, err := c.HTTPClient.Get(url)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get session: %w", err)
 	}
@@ -458,7 +474,15 @@ func (c *Client) Heartbeat(sessionID string) error {
 
 // GetAllSessions retrieves all sessions
 func (c *Client) GetAllSessions() ([]*Session, error) {
-	resp, err := c.HTTPClient.Get(c.BaseURL + "/api/data/sessions")
+	var url string
+	
+	if c.UseDaemon {
+		url = c.BaseURL + "/sessions"
+	} else {
+		url = c.BaseURL + "/api/data/sessions"
+	}
+	
+	resp, err := c.HTTPClient.Get(url)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get sessions: %w", err)
 	}

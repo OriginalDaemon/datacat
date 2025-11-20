@@ -51,17 +51,29 @@ class DaemonManager(object):
 
     def _find_daemon_binary(self):
         """Find the daemon binary in common locations"""
+        # Determine binary name based on platform
+        binary_name = (
+            "datacat-daemon.exe" if sys.platform == "win32" else "datacat-daemon"
+        )
+
         # Check common locations
         possible_paths = [
-            "datacat-daemon",  # In PATH
-            "./datacat-daemon",  # Current directory
-            "./cmd/datacat-daemon/datacat-daemon",  # Development
+            binary_name,  # In PATH
+            "./" + binary_name,  # Current directory
+            "./cmd/datacat-daemon/" + binary_name,  # Development
             os.path.join(
                 os.path.dirname(__file__),
                 "..",
                 "cmd",
                 "datacat-daemon",
-                "datacat-daemon",
+                binary_name,
+            ),
+            "./bin/" + binary_name,  # Built binaries
+            os.path.join(
+                os.path.dirname(__file__),
+                "..",
+                "bin",
+                binary_name,
             ),
         ]
 
@@ -70,7 +82,7 @@ class DaemonManager(object):
                 return path
 
         # Return default and let it fail if not found
-        return "datacat-daemon"
+        return binary_name
 
     def _is_in_path(self, binary):
         """Check if binary exists in PATH"""
@@ -244,7 +256,10 @@ class DatacatClient(object):
         Raises:
             Exception: If the request fails
         """
-        url = "{0}/api/sessions/{1}".format(self.base_url, session_id)
+        if self.use_daemon:
+            url = "{0}/session?session_id={1}".format(self.base_url, session_id)
+        else:
+            url = "{0}/api/sessions/{1}".format(self.base_url, session_id)
         return self._make_request(url, method="GET")
 
     def update_state(self, session_id, state):
@@ -388,7 +403,10 @@ class DatacatClient(object):
         Raises:
             Exception: If the request fails
         """
-        url = "{0}/api/data/sessions".format(self.base_url)
+        if self.use_daemon:
+            url = "{0}/sessions".format(self.base_url)
+        else:
+            url = "{0}/api/data/sessions".format(self.base_url)
         return self._make_request(url, method="GET")
 
 
