@@ -33,7 +33,7 @@ This will:
 .\scripts\run-server.ps1
 ```
 
-The server will be available at `http://localhost:9090`
+This will build the server binary (if not already built) and start it. The server will be available at `http://localhost:9090`
 
 ### Start the Web UI Dashboard
 
@@ -41,7 +41,7 @@ The server will be available at `http://localhost:9090`
 .\scripts\run-web.ps1
 ```
 
-The web UI will be available at `http://localhost:8080`
+This will build the web UI binary (if not already built) and start it. The web UI will be available at `http://localhost:8080`
 
 **Note:** The web UI requires the server to be running at `http://localhost:9090`
 
@@ -51,7 +51,7 @@ The web UI will be available at `http://localhost:8080`
 .\scripts\run-both.ps1
 ```
 
-This starts both the server and web UI in parallel. Press Ctrl+C to stop both services.
+This will build both binaries (if not already built) and start both the server and web UI in parallel. Press Ctrl+C to stop both services.
 
 ## Running Tests
 
@@ -106,6 +106,7 @@ This automatically formats all Python code with Black.
 Binaries will be output to the `bin/` directory:
 - `bin/datacat-server.exe` - REST API server
 - `bin/datacat-web.exe` - Web UI dashboard
+- `bin/datacat-daemon.exe` - Local batching daemon
 - `bin/go-client-example.exe` - Go client example
 
 Custom output directory:
@@ -113,6 +114,8 @@ Custom output directory:
 ```powershell
 .\scripts\build.ps1 -Output "custom/path"
 ```
+
+**Note:** The build script is automatically run by `run-server.ps1`, `run-web.ps1`, and `run-both.ps1` to ensure binaries are up to date before running.
 
 ## Running Examples
 
@@ -141,7 +144,7 @@ Custom output directory:
 .\scripts\run-example.ps1 -Example go-client
 ```
 
-**Note:** The server must be running before executing examples.
+**Note:** The server must be running before executing examples. Examples use the daemon mode by default, which requires the `datacat-daemon.exe` binary to be built. The build script handles this automatically.
 
 ## Cleanup
 
@@ -175,24 +178,24 @@ This removes all of the above plus:
    .\scripts\setup.ps1
    ```
 
-2. **Start services:**
+2. **Build binaries (optional - run scripts do this automatically):**
+   ```powershell
+   .\scripts\build.ps1
+   ```
+
+3. **Start services:**
    ```powershell
    .\scripts\run-both.ps1
    ```
 
-3. **In another terminal, run an example:**
+4. **In another terminal, run an example:**
    ```powershell
    .\scripts\run-example.ps1 -Example complete
    ```
 
-4. **Run tests:**
+5. **Run tests:**
    ```powershell
    .\scripts\test-all.ps1 -Coverage
-   ```
-
-5. **Build binaries for distribution:**
-   ```powershell
-   .\scripts\build.ps1
    ```
 
 ## Troubleshooting
@@ -235,15 +238,15 @@ Alternatively, you can manually reinstall dependencies in the virtual environmen
 | Script | Description |
 |--------|-------------|
 | `setup.ps1` | Setup development environment |
-| `run-server.ps1` | Start REST API server |
-| `run-web.ps1` | Start web UI dashboard |
-| `run-both.ps1` | Start both services in parallel |
+| `build.ps1` | Build all Go binaries |
+| `run-server.ps1` | Build and start REST API server |
+| `run-web.ps1` | Build and start web UI dashboard |
+| `run-both.ps1` | Build and start both services in parallel |
 | `run-example.ps1` | Run example applications |
 | `test-all.ps1` | Run all tests (Go + Python) |
 | `test-python.ps1` | Run Python integration tests |
 | `lint.ps1` | Check code quality (Black + mypy) |
 | `format.ps1` | Format Python code with Black |
-| `build.ps1` | Build all Go binaries |
 | `clean.ps1` | Remove build artifacts |
 
 ## Contributing
