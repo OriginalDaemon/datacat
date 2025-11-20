@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"html/template"
 	"log"
+	"math"
 	"net/http"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -106,6 +108,8 @@ func main() {
 	http.HandleFunc("/api/stats-cards", handleStatsCards)
 	http.HandleFunc("/api/sessions-table", handleSessionsTable)
 	http.HandleFunc("/api/session-info/", handleSessionInfo)
+	http.HandleFunc("/api/sessions-metrics", handleSessionsMetrics)
+	http.HandleFunc("/api/metric-data/", handleMetricData)
 
 	port := ":8080"
 	log.Printf("Starting datacat web UI on %s", port)
@@ -224,6 +228,9 @@ func handleSessions(w http.ResponseWriter, r *http.Request) {
 	stateKey := r.URL.Query().Get("state_key")
 	stateValue := r.URL.Query().Get("state_value")
 	eventName := r.URL.Query().Get("event_name")
+	timeRange := r.URL.Query().Get("time_range")
+	startTimeStr := r.URL.Query().Get("start_time")
+	endTimeStr := r.URL.Query().Get("end_time")
 
 	if sortBy == "" {
 		sortBy = "created_at"
@@ -231,11 +238,49 @@ func handleSessions(w http.ResponseWriter, r *http.Request) {
 	if sortOrder == "" {
 		sortOrder = "desc"
 	}
+	if timeRange == "" {
+		timeRange = "2w"
+	}
 
 	// Get page number
 	if p := r.URL.Query().Get("page"); p != "" {
 		if parsed, err := strconv.Atoi(p); err == nil && parsed > 0 {
 			page = parsed
+		}
+	}
+
+	// Calculate time range boundaries
+	var startTime, endTime time.Time
+	now := time.Now()
+	
+	switch timeRange {
+	case "1d":
+		startTime = now.Add(-24 * time.Hour)
+		endTime = now
+	case "1w":
+		startTime = now.Add(-7 * 24 * time.Hour)
+		endTime = now
+	case "2w":
+		startTime = now.Add(-14 * 24 * time.Hour)
+		endTime = now
+	case "1m":
+		startTime = now.AddDate(0, -1, 0)
+		endTime = now
+	case "3m":
+		startTime = now.AddDate(0, -3, 0)
+		endTime = now
+	case "all":
+		// No time filter
+	case "custom":
+		if startTimeStr != "" {
+			if t, err := time.Parse("2006-01-02T15:04", startTimeStr); err == nil {
+				startTime = t
+			}
+		}
+		if endTimeStr != "" {
+			if t, err := time.Parse("2006-01-02T15:04", endTimeStr); err == nil {
+				endTime = t
+			}
 		}
 	}
 
@@ -248,6 +293,13 @@ func handleSessions(w http.ResponseWriter, r *http.Request) {
 	// Apply filters
 	var filteredSessions []*client.Session
 	for _, session := range sessions {
+		// Apply time range filter
+		if timeRange != "all" && !startTime.IsZero() {
+			if session.CreatedAt.Before(startTime) || session.CreatedAt.After(endTime) {
+				continue
+			}
+		}
+		
 		if !matchesFilters(session, product, version, statusFilter, stateKey, stateValue, eventName) {
 			continue
 		}
@@ -281,43 +333,100 @@ func handleSessions(w http.ResponseWriter, r *http.Request) {
 	uniqueProducts := extractUniqueProducts(sessions)
 	uniqueVersions := extractUniqueVersions(sessions, product)
 
+	// Format time range for display
+	var timeRangeDisplay string
+	switch timeRange {
+	case "1d":
+		timeRangeDisplay = "Last 24 Hours"
+	case "1w":
+		timeRangeDisplay = "Last Week"
+	case "2w":
+		timeRangeDisplay = "Last 2 Weeks"
+	case "1m":
+		timeRangeDisplay = "Last Month"
+	case "3m":
+		timeRangeDisplay = "Last 3 Months"
+	case "all":
+		timeRangeDisplay = "All Time"
+	case "custom":
+		if !startTime.IsZero() && !endTime.IsZero() {
+			timeRangeDisplay = fmt.Sprintf("%s to %s", startTime.Format("2006-01-02"), endTime.Format("2006-01-02"))
+		}
+	}
+
+	// Build query string for HTMX requests
+	queryParams := url.Values{}
+	queryParams.Add("time_range", timeRange)
+	if timeRange == "custom" {
+		queryParams.Add("start_time", startTimeStr)
+		queryParams.Add("end_time", endTimeStr)
+	}
+	if product != "" {
+		queryParams.Add("product", product)
+	}
+	if version != "" {
+		queryParams.Add("version", version)
+	}
+	if statusFilter != "" {
+		queryParams.Add("status", statusFilter)
+	}
+	if stateKey != "" {
+		queryParams.Add("state_key", stateKey)
+	}
+	if stateValue != "" {
+		queryParams.Add("state_value", stateValue)
+	}
+	if eventName != "" {
+		queryParams.Add("event_name", eventName)
+	}
+
 	// Prepare pagination data
 	type SessionsData struct {
-		Sessions       []*client.Session
-		CurrentPage    int
-		TotalPages     int
-		TotalCount     int
-		SortBy         string
-		SortOrder      string
-		Product        string
-		Version        string
-		StatusFilter   string
-		StateKey       string
-		StateValue     string
-		EventName      string
-		HasPrev        bool
-		HasNext        bool
-		Products       []string
-		Versions       []string
+		Sessions         []*client.Session
+		CurrentPage      int
+		TotalPages       int
+		TotalCount       int
+		SortBy           string
+		SortOrder        string
+		Product          string
+		Version          string
+		StatusFilter     string
+		StateKey         string
+		StateValue       string
+		EventName        string
+		TimeRange        string
+		StartTime        string
+		EndTime          string
+		TimeRangeDisplay string
+		HasPrev          bool
+		HasNext          bool
+		Products         []string
+		Versions         []string
+		QueryString      string
 	}
 
 	data := SessionsData{
-		Sessions:       paginatedSessions,
-		CurrentPage:    page,
-		TotalPages:     totalPages,
-		TotalCount:     totalSessions,
-		SortBy:         sortBy,
-		SortOrder:      sortOrder,
-		Product:        product,
-		Version:        version,
-		StatusFilter:   statusFilter,
-		StateKey:       stateKey,
-		StateValue:     stateValue,
-		EventName:      eventName,
-		HasPrev:        page > 1,
-		HasNext:        page < totalPages,
-		Products:       uniqueProducts,
-		Versions:       uniqueVersions,
+		Sessions:         paginatedSessions,
+		CurrentPage:      page,
+		TotalPages:       totalPages,
+		TotalCount:       totalSessions,
+		SortBy:           sortBy,
+		SortOrder:        sortOrder,
+		Product:          product,
+		Version:          version,
+		StatusFilter:     statusFilter,
+		StateKey:         stateKey,
+		StateValue:       stateValue,
+		EventName:        eventName,
+		TimeRange:        timeRange,
+		StartTime:        startTimeStr,
+		EndTime:          endTimeStr,
+		TimeRangeDisplay: timeRangeDisplay,
+		HasPrev:          page > 1,
+		HasNext:          page < totalPages,
+		Products:         uniqueProducts,
+		Versions:         uniqueVersions,
+		QueryString:      queryParams.Encode(),
 	}
 
 	funcMap := template.FuncMap{
@@ -1045,6 +1154,418 @@ func handleSessionsTable(w http.ResponseWriter, r *http.Request) {
 	</div>`)
 	
 	w.Write([]byte(html.String()))
+}
+
+// handleSessionsMetrics returns the list of unique metrics for filtered sessions
+func handleSessionsMetrics(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html")
+	
+	// Parse same filters as handleSessions
+	product := r.URL.Query().Get("product")
+	version := r.URL.Query().Get("version")
+	statusFilter := r.URL.Query().Get("status")
+	stateKey := r.URL.Query().Get("state_key")
+	stateValue := r.URL.Query().Get("state_value")
+	eventName := r.URL.Query().Get("event_name")
+	timeRange := r.URL.Query().Get("time_range")
+	startTimeStr := r.URL.Query().Get("start_time")
+	endTimeStr := r.URL.Query().Get("end_time")
+	
+	// Calculate time range boundaries
+	var startTime, endTime time.Time
+	now := time.Now()
+	
+	if timeRange == "" {
+		timeRange = "2w"
+	}
+	
+	switch timeRange {
+	case "1d":
+		startTime = now.Add(-24 * time.Hour)
+		endTime = now
+	case "1w":
+		startTime = now.Add(-7 * 24 * time.Hour)
+		endTime = now
+	case "2w":
+		startTime = now.Add(-14 * 24 * time.Hour)
+		endTime = now
+	case "1m":
+		startTime = now.AddDate(0, -1, 0)
+		endTime = now
+	case "3m":
+		startTime = now.AddDate(0, -3, 0)
+		endTime = now
+	case "all":
+		// No time filter
+	case "custom":
+		if startTimeStr != "" {
+			if t, err := time.Parse("2006-01-02T15:04", startTimeStr); err == nil {
+				startTime = t
+			}
+		}
+		if endTimeStr != "" {
+			if t, err := time.Parse("2006-01-02T15:04", endTimeStr); err == nil {
+				endTime = t
+			}
+		}
+	}
+	
+	sessions, err := datacatClient.GetAllSessions()
+	if err != nil {
+		w.Write([]byte(`<p style="color: var(--error-color);">Error loading sessions</p>`))
+		return
+	}
+	
+	// Apply filters
+	var filteredSessions []*client.Session
+	for _, session := range sessions {
+		// Apply time range filter
+		if timeRange != "all" && !startTime.IsZero() {
+			if session.CreatedAt.Before(startTime) || session.CreatedAt.After(endTime) {
+				continue
+			}
+		}
+		
+		if !matchesFilters(session, product, version, statusFilter, stateKey, stateValue, eventName) {
+			continue
+		}
+		filteredSessions = append(filteredSessions, session)
+	}
+	
+	// Extract unique metric names
+	metricNames := make(map[string]bool)
+	for _, session := range filteredSessions {
+		for _, metric := range session.Metrics {
+			metricNames[metric.Name] = true
+		}
+	}
+	
+	// Sort metric names
+	var sortedMetrics []string
+	for name := range metricNames {
+		sortedMetrics = append(sortedMetrics, name)
+	}
+	sort.Strings(sortedMetrics)
+	
+	// Build query string
+	queryParams := url.Values{}
+	queryParams.Add("time_range", timeRange)
+	if timeRange == "custom" {
+		queryParams.Add("start_time", startTimeStr)
+		queryParams.Add("end_time", endTimeStr)
+	}
+	if product != "" {
+		queryParams.Add("product", product)
+	}
+	if version != "" {
+		queryParams.Add("version", version)
+	}
+	if statusFilter != "" {
+		queryParams.Add("status", statusFilter)
+	}
+	if stateKey != "" {
+		queryParams.Add("state_key", stateKey)
+	}
+	if stateValue != "" {
+		queryParams.Add("state_value", stateValue)
+	}
+	if eventName != "" {
+		queryParams.Add("event_name", eventName)
+	}
+	queryString := queryParams.Encode()
+	
+	if len(sortedMetrics) == 0 {
+		w.Write([]byte(`<p style="text-align: center; padding: 20px; color: var(--text-secondary);">No metrics found in filtered sessions</p>`))
+		return
+	}
+	
+	// Build HTML for metric cards
+	var html strings.Builder
+	for _, metricName := range sortedMetrics {
+		html.WriteString(fmt.Sprintf(`
+		<div class="metric-card">
+			<div class="collapsible-header" onclick="toggleMetric('%s')">
+				<h4 style="margin: 0; color: var(--text-primary);">%s</h4>
+				<span class="collapse-icon collapsed" id="metric-%s-icon">▼</span>
+			</div>
+			<div class="collapsible-content collapsed" id="metric-%s-content" 
+				 hx-get="/api/metric-data/%s?%s" 
+				 hx-trigger="loadMetric" 
+				 hx-swap="innerHTML">
+				<p style="text-align: center; padding: 20px; color: var(--text-secondary);">Click to expand and load data...</p>
+			</div>
+		</div>
+		`, metricName, metricName, metricName, metricName, url.PathEscape(metricName), queryString))
+	}
+	
+	w.Write([]byte(html.String()))
+}
+
+// handleMetricData returns the timeseries data and chart for a specific metric
+func handleMetricData(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html")
+	
+	// Extract metric name from URL path
+	metricName := strings.TrimPrefix(r.URL.Path, "/api/metric-data/")
+	metricName, _ = url.PathUnescape(metricName)
+	
+	// Parse same filters as handleSessions
+	product := r.URL.Query().Get("product")
+	version := r.URL.Query().Get("version")
+	statusFilter := r.URL.Query().Get("status")
+	stateKey := r.URL.Query().Get("state_key")
+	stateValue := r.URL.Query().Get("state_value")
+	eventName := r.URL.Query().Get("event_name")
+	timeRange := r.URL.Query().Get("time_range")
+	startTimeStr := r.URL.Query().Get("start_time")
+	endTimeStr := r.URL.Query().Get("end_time")
+	
+	// Calculate time range boundaries
+	var startTime, endTime time.Time
+	now := time.Now()
+	
+	if timeRange == "" {
+		timeRange = "2w"
+	}
+	
+	switch timeRange {
+	case "1d":
+		startTime = now.Add(-24 * time.Hour)
+		endTime = now
+	case "1w":
+		startTime = now.Add(-7 * 24 * time.Hour)
+		endTime = now
+	case "2w":
+		startTime = now.Add(-14 * 24 * time.Hour)
+		endTime = now
+	case "1m":
+		startTime = now.AddDate(0, -1, 0)
+		endTime = now
+	case "3m":
+		startTime = now.AddDate(0, -3, 0)
+		endTime = now
+	case "all":
+		// No time filter
+	case "custom":
+		if startTimeStr != "" {
+			if t, err := time.Parse("2006-01-02T15:04", startTimeStr); err == nil {
+				startTime = t
+			}
+		}
+		if endTimeStr != "" {
+			if t, err := time.Parse("2006-01-02T15:04", endTimeStr); err == nil {
+				endTime = t
+			}
+		}
+	}
+	
+	sessions, err := datacatClient.GetAllSessions()
+	if err != nil {
+		w.Write([]byte(`<p style="color: var(--error-color);">Error loading sessions</p>`))
+		return
+	}
+	
+	// Apply filters
+	var filteredSessions []*client.Session
+	for _, session := range sessions {
+		// Apply time range filter
+		if timeRange != "all" && !startTime.IsZero() {
+			if session.CreatedAt.Before(startTime) || session.CreatedAt.After(endTime) {
+				continue
+			}
+		}
+		
+		if !matchesFilters(session, product, version, statusFilter, stateKey, stateValue, eventName) {
+			continue
+		}
+		filteredSessions = append(filteredSessions, session)
+	}
+	
+	// Collect all metric values
+	var allValues []float64
+	var points []TimeseriesPoint
+	
+	for _, session := range filteredSessions {
+		for _, metric := range session.Metrics {
+			if metric.Name == metricName {
+				// Apply time range filter to metric timestamp
+				if timeRange != "all" && !startTime.IsZero() {
+					if metric.Timestamp.Before(startTime) || metric.Timestamp.After(endTime) {
+						continue
+					}
+				}
+				
+				allValues = append(allValues, metric.Value)
+				points = append(points, TimeseriesPoint{
+					Timestamp: metric.Timestamp,
+					Value:     metric.Value,
+					SessionID: session.ID,
+				})
+			}
+		}
+	}
+	
+	// Sort points by timestamp
+	sort.Slice(points, func(i, j int) bool {
+		return points[i].Timestamp.Before(points[j].Timestamp)
+	})
+	
+	if len(allValues) == 0 {
+		w.Write([]byte(`<p style="text-align: center; padding: 20px; color: var(--text-secondary);">No data found for this metric</p>`))
+		return
+	}
+	
+	// Calculate statistics
+	avg, max, min, median, stdDev := calculateStats(allValues)
+	
+	// Generate unique chart ID
+	chartID := fmt.Sprintf("chart-%s-%d", metricName, time.Now().UnixNano())
+	
+	// Build HTML with chart and stats
+	var html strings.Builder
+	html.WriteString(fmt.Sprintf(`
+		<div class="chart-container">
+			<canvas id="%s"></canvas>
+		</div>
+		<div class="stats-row">
+			<div class="stat-item">
+				<div class="stat-label">Average</div>
+				<div class="stat-value">%.2f</div>
+			</div>
+			<div class="stat-item">
+				<div class="stat-label">Maximum</div>
+				<div class="stat-value">%.2f</div>
+			</div>
+			<div class="stat-item">
+				<div class="stat-label">Minimum</div>
+				<div class="stat-value">%.2f</div>
+			</div>
+			<div class="stat-item">
+				<div class="stat-label">Median</div>
+				<div class="stat-value">%.2f</div>
+			</div>
+			<div class="stat-item">
+				<div class="stat-label">Std Dev</div>
+				<div class="stat-value">%.2f</div>
+			</div>
+		</div>
+		<script>
+		(function() {
+			const ctx = document.getElementById('%s').getContext('2d');
+			const data = %s;
+			
+			new Chart(ctx, {
+				type: 'line',
+				data: {
+					labels: data.map(p => new Date(p.timestamp).toLocaleString()),
+					datasets: [{
+						label: '%s',
+						data: data.map(p => p.value),
+						borderColor: 'rgb(102, 126, 234)',
+						backgroundColor: 'rgba(102, 126, 234, 0.1)',
+						tension: 0.1,
+						fill: true,
+						pointRadius: 2,
+						pointHoverRadius: 4
+					}]
+				},
+				options: {
+					responsive: true,
+					maintainAspectRatio: false,
+					plugins: {
+						legend: {
+							display: false
+						},
+						tooltip: {
+							callbacks: {
+								afterLabel: function(context) {
+									const point = data[context.dataIndex];
+									return 'Session: ' + point.session_id.substring(0, 8) + '...';
+								}
+							}
+						}
+					},
+					scales: {
+						y: {
+							beginAtZero: true,
+							title: {
+								display: true,
+								text: 'Value'
+							}
+						},
+						x: {
+							title: {
+								display: true,
+								text: 'Time'
+							},
+							ticks: {
+								maxRotation: 45,
+								minRotation: 45
+							}
+						}
+					}
+				}
+			});
+		})();
+		</script>
+	`, chartID, avg, max, min, median, stdDev, chartID, toJSON(points), metricName))
+	
+	w.Write([]byte(html.String()))
+}
+
+// calculateStats calculates statistical measures for a slice of values
+func calculateStats(values []float64) (avg, max, min, median, stdDev float64) {
+	if len(values) == 0 {
+		return 0, 0, 0, 0, 0
+	}
+	
+	// Average and sum for std dev
+	var sum float64
+	max = values[0]
+	min = values[0]
+	
+	for _, v := range values {
+		sum += v
+		if v > max {
+			max = v
+		}
+		if v < min {
+			min = v
+		}
+	}
+	
+	avg = sum / float64(len(values))
+	
+	// Standard deviation
+	var variance float64
+	for _, v := range values {
+		diff := v - avg
+		variance += diff * diff
+	}
+	variance /= float64(len(values))
+	stdDev = math.Sqrt(variance)
+	
+	// Median
+	sortedValues := make([]float64, len(values))
+	copy(sortedValues, values)
+	sort.Float64s(sortedValues)
+	
+	if len(sortedValues)%2 == 0 {
+		median = (sortedValues[len(sortedValues)/2-1] + sortedValues[len(sortedValues)/2]) / 2
+	} else {
+		median = sortedValues[len(sortedValues)/2]
+	}
+	
+	return
+}
+
+// toJSON converts data to JSON string for embedding in HTML
+func toJSON(data interface{}) string {
+	b, err := json.Marshal(data)
+	if err != nil {
+		return "[]"
+	}
+	return string(b)
 }
 
 // handleSessionInfo returns updated session info for active sessions
