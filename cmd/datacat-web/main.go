@@ -110,6 +110,11 @@ func main() {
 	http.HandleFunc("/api/session-info/", handleSessionInfo)
 	http.HandleFunc("/api/sessions-metrics", handleSessionsMetrics)
 	http.HandleFunc("/api/metric-data/", handleMetricData)
+	http.HandleFunc("/api/products-grid", handleProductsGrid)
+	http.HandleFunc("/api/session-timeline/", handleSessionTimeline)
+	http.HandleFunc("/api/session-metrics-list/", handleSessionMetricsList)
+	http.HandleFunc("/api/session-events/", handleSessionEvents)
+	http.HandleFunc("/api/session-metrics-table/", handleSessionMetricsTable)
 
 	port := ":8080"
 	log.Printf("Starting datacat web UI on %s", port)
@@ -1635,3 +1640,334 @@ func handleSessionInfo(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(html.String()))
 }
 
+
+// handleProductsGrid returns the products grid with live session counts
+func handleProductsGrid(w http.ResponseWriter, r *http.Request) {
+w.Header().Set("Content-Type", "text/html")
+
+sessions, err := datacatClient.GetAllSessions()
+if err != nil {
+// Return error state with retry
+w.Write([]byte(`<div id="products-grid-container" hx-get="/api/products-grid" hx-trigger="every 10s" hx-swap="outerHTML">
+<p style="color: var(--error-color); padding: 20px; text-align: center;">
+Error loading products. Retrying...
+</p>
+</div>`))
+return
+}
+
+products := extractProductInfo(sessions)
+
+// Check if there are any active sessions to adjust polling
+hasActiveSessions := false
+for _, session := range sessions {
+if session.Active {
+hasActiveSessions = true
+break
+}
+}
+
+pollInterval := "30s"
+if hasActiveSessions {
+pollInterval = "10s"
+}
+
+// Build HTML
+var html strings.Builder
+html.WriteString(fmt.Sprintf(`<div id="products-grid-container" hx-get="/api/products-grid" hx-trigger="every %s" hx-swap="outerHTML">`, pollInterval))
+
+if len(products) == 0 {
+html.WriteString(`<p style="color: var(--text-secondary); padding: 20px; text-align: center;">
+No sessions found. Start logging data to see products here.
+</p>`)
+} else {
+html.WriteString(`<div class="products-grid">`)
+for _, product := range products {
+html.WriteString(fmt.Sprintf(`
+<div class="product-card">
+<h3 class="product-name">%s</h3>
+<div class="versions-list">`, product.Name))
+
+for _, version := range product.Versions {
+html.WriteString(fmt.Sprintf(`
+<div class="version-item">
+<a href="/sessions?product=%s&version=%s" class="version-link">
+<span class="version-number">v%s</span>
+<span class="session-count">%d sessions</span>
+</a>
+<div class="version-stats">`,
+url.QueryEscape(product.Name),
+url.QueryEscape(version.Version),
+version.Version,
+version.SessionCount))
+
+if version.ActiveCount > 0 {
+html.WriteString(fmt.Sprintf(`<span class="stat-badge stat-active">%d active</span>`, version.ActiveCount))
+}
+if version.EndedCount > 0 {
+html.WriteString(fmt.Sprintf(`<span class="stat-badge stat-ended">%d ended</span>`, version.EndedCount))
+}
+if version.CrashedCount > 0 {
+html.WriteString(fmt.Sprintf(`<span class="stat-badge stat-crashed">%d crashed</span>`, version.CrashedCount))
+}
+if version.HungCount > 0 {
+html.WriteString(fmt.Sprintf(`<span class="stat-badge stat-hung">%d hung</span>`, version.HungCount))
+}
+
+html.WriteString(`</div>
+</div>`)
+}
+
+html.WriteString(fmt.Sprintf(`
+<div class="version-item">
+<a href="/sessions?product=%s" class="version-link version-all">
+<span class="version-number">All Versions</span>
+<span class="session-count">View all →</span>
+</a>
+</div>
+</div>
+</div>`, url.QueryEscape(product.Name)))
+}
+html.WriteString(`</div>`)
+
+html.WriteString(`
+<div style="margin-top: 30px; text-align: center;">
+<a href="/sessions" class="btn">View All Sessions</a>
+</div>`)
+}
+
+html.WriteString(`</div>`)
+w.Write([]byte(html.String()))
+}
+
+// handleSessionTimeline returns the timeline HTML for a session with live updates
+func handleSessionTimeline(w http.ResponseWriter, r *http.Request) {
+w.Header().Set("Content-Type", "text/html")
+
+sessionID := strings.TrimPrefix(r.URL.Path, "/api/session-timeline/")
+
+session, err := datacatClient.GetSession(sessionID)
+if err != nil {
+w.Write([]byte(`<div id="timeline-data">
+<p style="color: var(--error-color);">Error loading timeline</p>
+</div>`))
+return
+}
+
+// Determine poll interval based on session status
+pollInterval := ""
+if session.Active {
+pollInterval = ` hx-get="/api/session-timeline/` + sessionID + `" hx-trigger="every 5s" hx-swap="outerHTML"`
+}
+
+// Build timeline items JSON data
+var timelineItems []map[string]interface{}
+
+// Add state changes
+for i, snapshot := range session.StateHistory {
+timelineItems = append(timelineItems, map[string]interface{}{
+"type":        "state",
+"timestamp":   snapshot.Timestamp.Format("2006-01-02T15:04:05.000Z07:00"),
+"displayTime": snapshot.Timestamp.Format("15:04:05.000"),
+"index":       i,
+})
+}
+
+// Add events
+for _, event := range session.Events {
+eventType := "event"
+if event.Name == "exception" {
+eventType = "exception"
+}
+timelineItems = append(timelineItems, map[string]interface{}{
+"type":        eventType,
+"timestamp":   event.Timestamp.Format("2006-01-02T15:04:05.000Z07:00"),
+"displayTime": event.Timestamp.Format("15:04:05.000"),
+"name":        event.Name,
+})
+}
+
+timelineJSON, _ := json.Marshal(timelineItems)
+
+var html strings.Builder
+html.WriteString(fmt.Sprintf(`<div id="timeline-data"%s>`, pollInterval))
+html.WriteString(fmt.Sprintf(`<script>
+// Update timeline with new data
+if (typeof updateTimelineData === 'function') {
+updateTimelineData(%s);
+}
+</script>`, string(timelineJSON)))
+html.WriteString(`</div>`)
+
+w.Write([]byte(html.String()))
+}
+
+// handleSessionMetricsList returns the metrics list with live updates
+func handleSessionMetricsList(w http.ResponseWriter, r *http.Request) {
+w.Header().Set("Content-Type", "text/html")
+
+sessionID := strings.TrimPrefix(r.URL.Path, "/api/session-metrics-list/")
+
+session, err := datacatClient.GetSession(sessionID)
+if err != nil {
+w.Write([]byte(`<div id="metrics-data">
+<p style="color: var(--error-color);">Error loading metrics</p>
+</div>`))
+return
+}
+
+// Determine poll interval based on session status
+pollInterval := ""
+if session.Active {
+pollInterval = ` hx-get="/api/session-metrics-list/` + sessionID + `" hx-trigger="every 5s" hx-swap="outerHTML"`
+}
+
+// Build metrics JSON data
+metricsJSON, _ := json.Marshal(session.Metrics)
+
+var html strings.Builder
+html.WriteString(fmt.Sprintf(`<div id="metrics-data"%s>`, pollInterval))
+html.WriteString(fmt.Sprintf(`<script>
+// Update metrics with new data
+if (typeof updateMetricsData === 'function') {
+updateMetricsData(%s);
+}
+</script>`, string(metricsJSON)))
+html.WriteString(`</div>`)
+
+w.Write([]byte(html.String()))
+}
+
+// handleSessionEvents returns the events table with live updates
+func handleSessionEvents(w http.ResponseWriter, r *http.Request) {
+w.Header().Set("Content-Type", "text/html")
+
+sessionID := strings.TrimPrefix(r.URL.Path, "/api/session-events/")
+
+session, err := datacatClient.GetSession(sessionID)
+if err != nil {
+w.Write([]byte(`<div id="events-container">
+<p style="color: var(--error-color);">Error loading events</p>
+</div>`))
+return
+}
+
+// Determine poll interval based on session status
+pollInterval := ""
+if session.Active {
+pollInterval = ` hx-get="/api/session-events/` + sessionID + `" hx-trigger="every 10s" hx-swap="outerHTML"`
+}
+
+var html strings.Builder
+html.WriteString(fmt.Sprintf(`<div id="events-container"%s>`, pollInterval))
+
+if len(session.Events) == 0 {
+html.WriteString(`<p style="color: var(--text-secondary); padding: 20px;">No events recorded</p>`)
+} else {
+html.WriteString(`<table>
+<thead>
+<tr>
+<th style="width: 120px">Timestamp</th>
+<th style="width: 200px">Name</th>
+<th>Data</th>
+</tr>
+</thead>
+<tbody>`)
+
+for i, event := range session.Events {
+eventDataJSON, _ := json.Marshal(event.Data)
+html.WriteString(fmt.Sprintf(`
+<tr>
+<td style="font-family: monospace">%s</td>
+<td>%s</td>
+<td>
+<div id="event-data-%d" class="json-viewer-container"></div>
+<script>
+(function() {
+const eventData = %s;
+new JSONViewer('event-data-%d', eventData, {
+collapsed: true,
+showCopyButton: true,
+showRawButton: true
+});
+})();
+</script>
+</td>
+</tr>`,
+event.Timestamp.Format("15:04:05"),
+event.Name,
+i,
+string(eventDataJSON),
+i))
+}
+
+html.WriteString(`</tbody>
+</table>`)
+}
+
+html.WriteString(`</div>`)
+w.Write([]byte(html.String()))
+}
+
+// handleSessionMetricsTable returns the metrics data table with live updates
+func handleSessionMetricsTable(w http.ResponseWriter, r *http.Request) {
+w.Header().Set("Content-Type", "text/html")
+
+sessionID := strings.TrimPrefix(r.URL.Path, "/api/session-metrics-table/")
+
+session, err := datacatClient.GetSession(sessionID)
+if err != nil {
+w.Write([]byte(`<div id="metrics-table-container">
+<p style="color: var(--error-color);">Error loading metrics</p>
+</div>`))
+return
+}
+
+// Determine poll interval based on session status
+pollInterval := ""
+if session.Active {
+pollInterval = ` hx-get="/api/session-metrics-table/` + sessionID + `" hx-trigger="every 10s" hx-swap="outerHTML"`
+}
+
+var html strings.Builder
+html.WriteString(fmt.Sprintf(`<div id="metrics-table-container"%s>`, pollInterval))
+
+if len(session.Metrics) == 0 {
+html.WriteString(`<p style="color: var(--text-secondary); padding: 20px;">No metrics recorded</p>`)
+} else {
+html.WriteString(`<table>
+<thead>
+<tr>
+<th>Timestamp</th>
+<th>Name</th>
+<th>Value</th>
+<th>Tags</th>
+</tr>
+</thead>
+<tbody>`)
+
+for _, metric := range session.Metrics {
+tags := ""
+for _, tag := range metric.Tags {
+tags += tag + " "
+}
+html.WriteString(fmt.Sprintf(`
+<tr>
+<td style="font-family: monospace">%s</td>
+<td>%s</td>
+<td>%f</td>
+<td>%s</td>
+</tr>`,
+metric.Timestamp.Format("15:04:05"),
+metric.Name,
+metric.Value,
+tags))
+}
+
+html.WriteString(`</tbody>
+</table>`)
+}
+
+html.WriteString(`</div>`)
+w.Write([]byte(html.String()))
+}
