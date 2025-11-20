@@ -443,7 +443,9 @@ class TestCreateSessionFactory(unittest.TestCase):
         mock_client_class.return_value = mock_client
 
         # Create session
-        session = create_session("http://test.example.com:8080", product="TestProduct", version="1.0.0")
+        session = create_session(
+            "http://test.example.com:8080", product="TestProduct", version="1.0.0"
+        )
 
         # Verify client was created with correct URL and default parameters
         mock_client_class.assert_called_once_with(

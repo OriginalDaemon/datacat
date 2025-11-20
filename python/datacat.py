@@ -633,7 +633,11 @@ class Session(object):
 
 # Factory function for convenience
 def create_session(
-    base_url="http://localhost:9090", use_daemon=True, daemon_port="8079", product=None, version=None
+    base_url="http://localhost:9090",
+    use_daemon=True,
+    daemon_port="8079",
+    product=None,
+    version=None,
 ):
     """
     Create a new session and return a Session object
@@ -653,7 +657,7 @@ def create_session(
     """
     if not product or not version:
         raise Exception("Product and version are required to create a session")
-    
+
     client = DatacatClient(base_url, use_daemon=use_daemon, daemon_port=daemon_port)
     session_id = client.register_session(product, version)
     return Session(client, session_id)

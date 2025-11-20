@@ -29,7 +29,9 @@ def main():
 
     # 1. Create and start a session
     print("1. Creating session...")
-    session = create_session("http://localhost:9090", product="CompleteExample", version="1.0.0")
+    session = create_session(
+        "http://localhost:9090", product="CompleteExample", version="1.0.0"
+    )
     print("   Session ID:", session.session_id)
 
     # 2. Log session start event

@@ -16,7 +16,9 @@ from datacat import create_session
 
 def main():
     # Create a new session
-    session = create_session("http://localhost:9090", product="BasicExample", version="1.0.0")
+    session = create_session(
+        "http://localhost:9090", product="BasicExample", version="1.0.0"
+    )
     print("Created session:", session.session_id)
 
     # Update application state

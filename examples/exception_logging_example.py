@@ -34,7 +34,9 @@ def main():
     print()
 
     # Create session
-    session = create_session("http://localhost:9090", product="ExceptionLoggingExample", version="1.0.0")
+    session = create_session(
+        "http://localhost:9090", product="ExceptionLoggingExample", version="1.0.0"
+    )
     print("Session ID:", session.session_id)
 
     # Start heartbeat monitor
