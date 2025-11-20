@@ -9,21 +9,23 @@ import (
 
 // Config holds server configuration
 type Config struct {
-	DataPath             string        `json:"data_path"`
-	RetentionDays        int           `json:"retention_days"`
-	CleanupIntervalHours int           `json:"cleanup_interval_hours"`
-	ServerPort           string        `json:"server_port"`
-	CleanupInterval      time.Duration `json:"-"` // Derived field, not serialized
+	DataPath                string        `json:"data_path"`
+	RetentionDays           int           `json:"retention_days"`
+	CleanupIntervalHours    int           `json:"cleanup_interval_hours"`
+	ServerPort              string        `json:"server_port"`
+	HeartbeatTimeoutSeconds int           `json:"heartbeat_timeout_seconds"`
+	CleanupInterval         time.Duration `json:"-"` // Derived field, not serialized
 }
 
 // DefaultConfig returns default configuration
 func DefaultConfig() *Config {
 	return &Config{
-		DataPath:             "./datacat_data",
-		RetentionDays:        365,
-		CleanupIntervalHours: 24,
-		ServerPort:           "9090",
-		CleanupInterval:      24 * time.Hour,
+		DataPath:                "./datacat_data",
+		RetentionDays:           365,
+		CleanupIntervalHours:    24,
+		ServerPort:              "9090",
+		HeartbeatTimeoutSeconds: 60,
+		CleanupInterval:         24 * time.Hour,
 	}
 }
 

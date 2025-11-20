@@ -15,15 +15,16 @@ import (
 
 // Session represents a registered session
 type Session struct {
-	ID           string                 `json:"id"`
-	CreatedAt    time.Time              `json:"created_at"`
-	UpdatedAt    time.Time              `json:"updated_at"`
-	EndedAt      *time.Time             `json:"ended_at,omitempty"`
-	Active       bool                   `json:"active"`
-	State        map[string]interface{} `json:"state"`
-	StateHistory []StateSnapshot        `json:"state_history"`
-	Events       []Event                `json:"events"`
-	Metrics      []Metric               `json:"metrics"`
+	ID            string                 `json:"id"`
+	CreatedAt     time.Time              `json:"created_at"`
+	UpdatedAt     time.Time              `json:"updated_at"`
+	EndedAt       *time.Time             `json:"ended_at,omitempty"`
+	LastHeartbeat *time.Time             `json:"last_heartbeat,omitempty"`
+	Active        bool                   `json:"active"`
+	State         map[string]interface{} `json:"state"`
+	StateHistory  []StateSnapshot        `json:"state_history"`
+	Events        []Event                `json:"events"`
+	Metrics       []Metric               `json:"metrics"`
 }
 
 // StateSnapshot represents the state at a specific point in time
@@ -165,7 +166,39 @@ func (s *Store) GetSession(id string) (*Session, bool) {
 	defer s.mu.RUnlock()
 
 	session, ok := s.sessions[id]
-	return session, ok
+	if !ok {
+		return nil, false
+	}
+
+	// Update active status based on current time before returning
+	// Make a copy to avoid modifying the stored session without lock
+	sessionCopy := *session
+	s.updateActiveStatusReadOnly(&sessionCopy)
+	
+	return &sessionCopy, true
+}
+
+// updateActiveStatusReadOnly updates active status without modifying the original session
+// Used when we have read lock only
+func (s *Store) updateActiveStatusReadOnly(session *Session) {
+	// If session is ended, it's not active
+	if session.EndedAt != nil {
+		session.Active = false
+		return
+	}
+
+	// If no heartbeat has been received yet, keep initial active status
+	if session.LastHeartbeat == nil {
+		return
+	}
+
+	// Check if heartbeat is within timeout
+	timeout := time.Duration(s.config.HeartbeatTimeoutSeconds) * time.Second
+	if time.Since(*session.LastHeartbeat) > timeout {
+		session.Active = false
+	} else {
+		session.Active = true
+	}
 }
 
 // GetAllSessions retrieves all sessions
@@ -175,7 +208,10 @@ func (s *Store) GetAllSessions() []*Session {
 
 	sessions := make([]*Session, 0, len(s.sessions))
 	for _, session := range s.sessions {
-		sessions = append(sessions, session)
+		// Make a copy and update active status based on current time
+		sessionCopy := *session
+		s.updateActiveStatusReadOnly(&sessionCopy)
+		sessions = append(sessions, &sessionCopy)
 	}
 	return sessions
 }
@@ -246,6 +282,52 @@ func (s *Store) UpdateState(id string, state map[string]interface{}) error {
 	go s.saveSessionToDB(session)
 
 	return nil
+}
+
+// UpdateHeartbeat updates the last heartbeat time for a session
+func (s *Store) UpdateHeartbeat(id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	session, ok := s.sessions[id]
+	if !ok {
+		return fmt.Errorf("session not found")
+	}
+
+	now := time.Now()
+	session.LastHeartbeat = &now
+	session.UpdatedAt = now
+
+	// Update active status based on heartbeat
+	s.updateActiveStatus(session)
+
+	// Save to database asynchronously
+	go s.saveSessionToDB(session)
+
+	return nil
+}
+
+// updateActiveStatus updates the active status based on heartbeat and ended state
+// This should be called with the mutex already locked
+func (s *Store) updateActiveStatus(session *Session) {
+	// If session is ended, it's not active
+	if session.EndedAt != nil {
+		session.Active = false
+		return
+	}
+
+	// If no heartbeat has been received yet, keep initial active status
+	if session.LastHeartbeat == nil {
+		return
+	}
+
+	// Check if heartbeat is within timeout
+	timeout := time.Duration(s.config.HeartbeatTimeoutSeconds) * time.Second
+	if time.Since(*session.LastHeartbeat) > timeout {
+		session.Active = false
+	} else {
+		session.Active = true
+	}
 }
 
 // EndSession marks a session as ended
@@ -506,6 +588,18 @@ func handleSessionOperations(w http.ResponseWriter, r *http.Request) {
 	// POST /api/sessions/{id}/end - End session
 	if r.Method == "POST" && operation == "end" {
 		if err := store.EndSession(sessionID); err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+		return
+	}
+
+	// POST /api/sessions/{id}/heartbeat - Update heartbeat
+	if r.Method == "POST" && operation == "heartbeat" {
+		if err := store.UpdateHeartbeat(sessionID); err != nil {
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}
