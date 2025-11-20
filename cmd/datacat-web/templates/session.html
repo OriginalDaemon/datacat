@@ -1107,18 +1107,27 @@
                     </details>
                 `;
 
+                // Show changes summary in details
+                const diff = computeDiff(previousState, item.state);
+
+                // Extract keys for highlighting
+                const addedKeys = Object.keys(diff.added);
+                const modifiedKeys = Object.keys(diff.modified);
+                const removedKeys = Object.keys(diff.removed);
+
                 new JSONViewer('timeline-state-old', previousState, {
                     collapsed: false,
-                    maxHeight: '400px'
+                    maxHeight: '400px',
+                    highlightModified: modifiedKeys,
+                    highlightRemoved: removedKeys
                 });
 
                 new JSONViewer('timeline-state-new', item.state, {
                     collapsed: false,
-                    maxHeight: '400px'
+                    maxHeight: '400px',
+                    highlightAdded: addedKeys,
+                    highlightModified: modifiedKeys
                 });
-
-                // Show changes summary in details
-                const diff = computeDiff(previousState, item.state);
                 let changesHtml = '';
 
                 if (Object.keys(diff.added).length > 0) {

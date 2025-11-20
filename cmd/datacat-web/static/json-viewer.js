@@ -17,6 +17,9 @@ class JSONViewer {
       showCopyButton: options.showCopyButton !== false,
       showRawButton: options.showRawButton !== false,
       maxHeight: options.maxHeight || null,
+      highlightAdded: options.highlightAdded || [],
+      highlightModified: options.highlightModified || [],
+      highlightRemoved: options.highlightRemoved || [],
       ...options,
     };
 
@@ -69,7 +72,7 @@ class JSONViewer {
         `;
 
     if (this.viewMode === "tree") {
-      content.appendChild(this.renderTree(this.jsonData, 0));
+      content.appendChild(this.renderTree(this.jsonData, 0, ""));
     } else {
       const pre = document.createElement("pre");
       pre.style.cssText =
@@ -81,9 +84,23 @@ class JSONViewer {
     this.container.appendChild(content);
   }
 
-  renderTree(data, depth) {
+  renderTree(data, depth, path) {
     const container = document.createElement("div");
     container.style.marginLeft = depth > 0 ? "20px" : "0";
+
+    // Helper to get highlight style for current path
+    const getHighlightStyle = (itemPath) => {
+      if (this.options.highlightAdded.includes(itemPath)) {
+        return "background: rgba(72, 187, 120, 0.15); border-left: 3px solid #48bb78; padding-left: 8px; margin-left: -8px;";
+      }
+      if (this.options.highlightModified.includes(itemPath)) {
+        return "background: rgba(246, 173, 85, 0.15); border-left: 3px solid #f6ad55; padding-left: 8px; margin-left: -8px;";
+      }
+      if (this.options.highlightRemoved.includes(itemPath)) {
+        return "background: rgba(245, 101, 101, 0.15); border-left: 3px solid #f56565; padding-left: 8px; margin-left: -8px;";
+      }
+      return "";
+    };
 
     if (data === null) {
       container.innerHTML = `<span style="color: #999;">null</span>`;
@@ -103,8 +120,15 @@ class JSONViewer {
 
       // For arrays, render each item with index
       data.forEach((item, index) => {
+        const itemPath = path ? `${path}[${index}]` : `[${index}]`;
         const itemDiv = document.createElement("div");
         itemDiv.style.margin = "4px 0";
+
+        // Apply highlight style if this path matches
+        const highlightStyle = getHighlightStyle(itemPath);
+        if (highlightStyle) {
+          itemDiv.style.cssText += highlightStyle;
+        }
 
         // Check if item is complex (object/array)
         const isComplex = typeof item === "object" && item !== null;
@@ -145,7 +169,7 @@ class JSONViewer {
 
           const childContainer = document.createElement("div");
           childContainer.style.display = isCollapsed ? "none" : "block";
-          childContainer.appendChild(this.renderTree(item, depth + 1));
+          childContainer.appendChild(this.renderTree(item, depth + 1, itemPath));
 
           header.onclick = () => {
             const isHidden = childContainer.style.display === "none";
@@ -176,8 +200,15 @@ class JSONViewer {
       }
 
       keys.forEach((key) => {
+        const itemPath = path ? `${path}.${key}` : key;
         const itemDiv = document.createElement("div");
         itemDiv.style.margin = "4px 0";
+
+        // Apply highlight style if this path matches
+        const highlightStyle = getHighlightStyle(itemPath);
+        if (highlightStyle) {
+          itemDiv.style.cssText += highlightStyle;
+        }
 
         const value = data[key];
         const isComplex = typeof value === "object" && value !== null;
@@ -219,7 +250,7 @@ class JSONViewer {
 
           const childContainer = document.createElement("div");
           childContainer.style.display = isCollapsed ? "none" : "block";
-          childContainer.appendChild(this.renderTree(value, depth + 1));
+          childContainer.appendChild(this.renderTree(value, depth + 1, itemPath));
 
           header.onclick = () => {
             const isHidden = childContainer.style.display === "none";
