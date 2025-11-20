@@ -43,6 +43,8 @@ def main():
     print("\n3. Setting initial nested state...")
     session.update_state(
         {
+            "product": "CompleteExample",  # Top-level product name for web UI
+            "version": "1.0.0",  # Top-level version for web UI
             "application": {
                 "name": "CompleteExample",
                 "version": "1.0.0",

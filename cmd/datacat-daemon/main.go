@@ -216,7 +216,8 @@ func (d *Daemon) handleState(w http.ResponseWriter, r *http.Request) {
 		buffer.LastState = d.mergeState(buffer.LastState, req.State)
 	}
 
-	w.WriteHeader(http.StatusOK)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
 
 // handleEvent handles event logging requests
@@ -253,7 +254,8 @@ func (d *Daemon) handleEvent(w http.ResponseWriter, r *http.Request) {
 	})
 	buffer.mu.Unlock()
 
-	w.WriteHeader(http.StatusOK)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
 
 // handleMetric handles metric logging requests
@@ -292,7 +294,8 @@ func (d *Daemon) handleMetric(w http.ResponseWriter, r *http.Request) {
 	})
 	buffer.mu.Unlock()
 
-	w.WriteHeader(http.StatusOK)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
 
 // handleHeartbeat handles heartbeat requests
@@ -332,7 +335,8 @@ func (d *Daemon) handleHeartbeat(w http.ResponseWriter, r *http.Request) {
 	}
 	buffer.mu.Unlock()
 
-	w.WriteHeader(http.StatusOK)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
 
 // handleEnd handles session end requests
@@ -390,7 +394,8 @@ func (d *Daemon) handleEnd(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Printf("Session ended: %s", req.SessionID)
-	w.WriteHeader(http.StatusOK)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
 
 // handleHealth handles health check requests
@@ -881,47 +886,27 @@ func (d *Daemon) handleGetSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	d.mu.RLock()
-	buffer, exists := d.sessions[sessionID]
-	d.mu.RUnlock()
+	// Always fetch from server to get complete session data including events and metrics
+	resp, err := http.Get(d.config.ServerURL + "/api/sessions/" + sessionID)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Session not found: %v", err), http.StatusNotFound)
+		return
+	}
+	defer resp.Body.Close()
 
-	if !exists {
-		// Try to fetch from server
-		resp, err := http.Get(d.config.ServerURL + "/api/sessions/" + sessionID)
-		if err != nil {
-			http.Error(w, fmt.Sprintf("Session not found: %v", err), http.StatusNotFound)
-			return
-		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode != http.StatusOK {
-			http.Error(w, "Session not found", http.StatusNotFound)
-			return
-		}
-
-		// Forward the response from server
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		json.NewDecoder(resp.Body).Decode(&map[string]interface{}{})
+	if resp.StatusCode != http.StatusOK {
+		http.Error(w, "Session not found", http.StatusNotFound)
 		return
 	}
 
-	// Build response from local buffer
-	buffer.mu.Lock()
-	response := map[string]interface{}{
-		"id":         buffer.SessionID,
-		"created_at": buffer.CreatedAt.Format(time.RFC3339),
-		"updated_at": time.Now().Format(time.RFC3339),
-		"active":     buffer.Active,
-		"state":      buffer.LastState,
-	}
-	if buffer.EndedAt != nil {
-		response["ended_at"] = buffer.EndedAt.Format(time.RFC3339)
-	}
-	buffer.mu.Unlock()
-
+	// Forward the response from server
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	var sessionData map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&sessionData); err != nil {
+		http.Error(w, "Failed to decode session data", http.StatusInternalServerError)
+		return
+	}
+	json.NewEncoder(w).Encode(sessionData)
 }
 
 // handleGetSessions handles requests to get all sessions
