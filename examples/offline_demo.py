@@ -34,31 +34,32 @@ def main():
     session = create_session(
         base_url="http://localhost:19999",  # Invalid server
         use_daemon=True,
-        daemon_port="8079"
+        daemon_port="8079",
     )
     print("   Session created: {}".format(session.session_id))
-    print("   (Note: session ID starts with 'local-session-' indicating offline creation)")
+    print(
+        "   (Note: session ID starts with 'local-session-' indicating offline creation)"
+    )
     print()
 
     # Update state - should work offline
     print("2. Updating state...")
-    session.update_state({
-        "application": {
-            "name": "offline-demo",
-            "status": "running",
-            "version": "1.0.0"
-        },
-        "environment": "test"
-    })
+    session.update_state(
+        {
+            "application": {
+                "name": "offline-demo",
+                "status": "running",
+                "version": "1.0.0",
+            },
+            "environment": "test",
+        }
+    )
     print("   State updated successfully")
     print()
 
     # Log events - should work offline
     print("3. Logging events...")
-    session.log_event("app_started", {
-        "timestamp": time.time(),
-        "mode": "offline"
-    })
+    session.log_event("app_started", {"timestamp": time.time(), "mode": "offline"})
     print("   Event logged successfully")
     print()
 
@@ -86,11 +87,7 @@ def main():
 
     # Update state again to show deep merge
     print("7. Updating state again (testing deep merge)...")
-    session.update_state({
-        "application": {
-            "status": "processing"
-        }
-    })
+    session.update_state({"application": {"status": "processing"}})
     details = session.get_details()
     print("   Updated state: {}".format(details.get("state", {})))
     print("   (Note: 'name' and 'version' fields are preserved)")
