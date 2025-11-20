@@ -327,28 +327,47 @@ function renderChart(data) {
         chart.destroy();
     }
     
-    // Prepare data for Chart.js
-    const labels = data.points.map(p => new Date(p.timestamp).toLocaleTimeString());
-    const values = data.points.map(p => p.value);
+    // Calculate time range from all data points
+    let minTime = null;
+    let maxTime = null;
+    
+    if (data.points.length > 0) {
+        minTime = new Date(Math.min(...data.points.map(p => new Date(p.timestamp).getTime())));
+        maxTime = new Date(Math.max(...data.points.map(p => new Date(p.timestamp).getTime())));
+    }
+    
+    // Calculate point radius based on data density
+    const pointRadius = data.points.length > 100 ? 2 : (data.points.length > 50 ? 3 : 4);
     
     chart = new Chart(ctx, {
         type: 'line',
         data: {
-            labels: labels,
             datasets: [{
                 label: data.metric_name,
-                data: values,
+                data: data.points.map(p => ({
+                    x: new Date(p.timestamp).getTime(),
+                    y: p.value,
+                    sessionId: p.session_id
+                })),
                 borderColor: 'rgb(102, 126, 234)',
                 backgroundColor: 'rgba(102, 126, 234, 0.1)',
                 tension: 0.1,
                 fill: true,
-                pointRadius: 3,
-                pointHoverRadius: 5
+                pointRadius: pointRadius,
+                pointHoverRadius: pointRadius + 2,
+                pointBackgroundColor: 'rgb(102, 126, 234)',
+                pointBorderColor: '#ffffff',
+                pointBorderWidth: 1
             }]
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
+            interaction: {
+                mode: 'nearest',
+                axis: 'x',
+                intersect: false
+            },
             plugins: {
                 title: {
                     display: true,
@@ -363,12 +382,42 @@ function renderChart(data) {
                 },
                 tooltip: {
                     callbacks: {
+                        title: function(context) {
+                            const timestamp = new Date(context[0].parsed.x);
+                            return timestamp.toLocaleString();
+                        },
+                        label: function(context) {
+                            return `Value: ${context.parsed.y.toFixed(2)}`;
+                        },
                         afterLabel: function(context) {
-                            const point = data.points[context.dataIndex];
-                            return `Session: ${point.session_id.substring(0, 8)}...`;
+                            const point = context.raw;
+                            return `Session: ${point.sessionId.substring(0, 8)}...`;
                         }
                     }
-                }
+                },
+                zoom: typeof Chart.Zoom !== 'undefined' ? {
+                    zoom: {
+                        drag: {
+                            enabled: true,
+                            backgroundColor: 'rgba(102, 126, 234, 0.2)'
+                        },
+                        mode: 'x',
+                        onZoomComplete: function({chart}) {
+                            const xScale = chart.scales.x;
+                            const newStart = new Date(xScale.min);
+                            const newEnd = new Date(xScale.max);
+                            
+                            globalTimeRangeStart = newStart;
+                            globalTimeRangeEnd = newEnd;
+                            
+                            document.getElementById('time-range-start').value = formatDateTimeLocal(newStart);
+                            document.getElementById('time-range-end').value = formatDateTimeLocal(newEnd);
+                            updateTimeRangeInfo();
+                            
+                            renderChartWithTimeRange(allDataPoints);
+                        }
+                    }
+                } : undefined
             },
             scales: {
                 y: {
@@ -376,79 +425,45 @@ function renderChart(data) {
                     title: {
                         display: true,
                         text: 'Value'
+                    },
+                    grid: {
+                        color: 'rgba(160, 174, 192, 0.1)'
+                    },
+                    ticks: {
+                        color: '#a0aec0'
                     }
                 },
                 x: {
+                    type: 'time',
+                    time: {
+                        displayFormats: {
+                            millisecond: 'HH:mm:ss.SSS',
+                            second: 'HH:mm:ss',
+                            minute: 'HH:mm',
+                            hour: 'HH:mm',
+                            day: 'MMM dd'
+                        },
+                        tooltipFormat: 'yyyy-MM-dd HH:mm:ss'
+                    },
+                    min: minTime ? minTime.getTime() : undefined,
+                    max: maxTime ? maxTime.getTime() : undefined,
                     title: {
                         display: true,
                         text: 'Time (drag to zoom)'
+                    },
+                    grid: {
+                        color: 'rgba(160, 174, 192, 0.1)'
+                    },
+                    ticks: {
+                        color: '#a0aec0',
+                        maxRotation: 45,
+                        minRotation: 0,
+                        autoSkip: true,
+                        maxTicksLimit: 10
                     }
-                }
-            },
-            onClick: (event, activeElements) => {
-                // Double-click to reset zoom
-                if (event.native && event.native.detail === 2) {
-                    resetTimeRange();
                 }
             }
         }
-    });
-    
-    // Add drag-to-zoom functionality
-    const canvas = document.getElementById('metricsChart');
-    let isDragging = false;
-    let dragStart = null;
-    
-    canvas.addEventListener('mousedown', (e) => {
-        isDragging = true;
-        const rect = canvas.getBoundingClientRect();
-        dragStart = e.clientX - rect.left;
-    });
-    
-    canvas.addEventListener('mousemove', (e) => {
-        if (!isDragging) return;
-        // Could add visual feedback here
-    });
-    
-    canvas.addEventListener('mouseup', (e) => {
-        if (!isDragging) return;
-        isDragging = false;
-        
-        const rect = canvas.getBoundingClientRect();
-        const dragEnd = e.clientX - rect.left;
-        const width = Math.abs(dragEnd - dragStart);
-        
-        // Only process if drag is significant
-        if (width < 20) return;
-        
-        // Calculate which data points are in the drag range
-        const chartArea = chart.chartArea;
-        const chartWidth = chartArea.right - chartArea.left;
-        
-        const startPercent = Math.min(dragStart - chartArea.left, dragEnd - chartArea.left) / chartWidth;
-        const endPercent = Math.max(dragStart - chartArea.left, dragEnd - chartArea.left) / chartWidth;
-        
-        // Map to data indices
-        const startIndex = Math.max(0, Math.floor(startPercent * data.points.length));
-        const endIndex = Math.min(data.points.length - 1, Math.ceil(endPercent * data.points.length));
-        
-        if (startIndex < endIndex && data.points[startIndex] && data.points[endIndex]) {
-            const newStart = new Date(data.points[startIndex].timestamp);
-            const newEnd = new Date(data.points[endIndex].timestamp);
-            
-            globalTimeRangeStart = newStart;
-            globalTimeRangeEnd = newEnd;
-            
-            document.getElementById('time-range-start').value = formatDateTimeLocal(newStart);
-            document.getElementById('time-range-end').value = formatDateTimeLocal(newEnd);
-            updateTimeRangeInfo();
-            
-            renderChartWithTimeRange(allDataPoints);
-        }
-    });
-    
-    canvas.addEventListener('mouseleave', () => {
-        isDragging = false;
     });
 }
 </script>

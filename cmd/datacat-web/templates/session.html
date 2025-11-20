@@ -567,18 +567,16 @@
                   mode: 'x',
                   onZoomComplete: function({chart}) {
                       const xScale = chart.scales.x;
-                      const minIndex = Math.max(0, Math.floor(xScale.min));
-                      const maxIndex = Math.min(filteredMetrics.length - 1, Math.ceil(xScale.max));
+                      // xScale.min and max are now timestamps (milliseconds)
+                      const newStart = new Date(xScale.min);
+                      const newEnd = new Date(xScale.max);
 
-                      if (minIndex < filteredMetrics.length && maxIndex >= 0) {
-                          const newStart = filteredMetrics[minIndex].timestamp;
-                          const newEnd = filteredMetrics[maxIndex].timestamp;
-
-                          zoomStart = newStart;
-                          zoomEnd = newEnd;
-                          updateTimeRangeFromZoom(newStart, newEnd);
-                          renderTimeline();
-                      }
+                      zoomStart = newStart;
+                      zoomEnd = newEnd;
+                      updateTimeRangeFromZoom(newStart, newEnd);
+                      renderTimeline();
+                      // Update all other charts to match the new range
+                      updateAllMetricCharts();
                   }
               }
           };
