@@ -89,7 +89,16 @@
 <!-- Current State -->
 <div class="card">
     <h2>Current State</h2>
-    <pre style="background: var(--bg-hover); padding: 15px; border-radius: 4px; overflow-x: auto; color: var(--text-primary);">{{.Session.State | printf "%#v"}}</pre>
+    <div id="current-state-json" class="json-viewer-container"></div>
+    <script>
+        (function() {
+            const stateData = {{.Session.State | toJSONSafe}};
+            new JSONViewer('current-state-json', stateData, {
+                collapsed: false,
+                maxHeight: '500px'
+            });
+        })();
+    </script>
 </div>
 
 <!-- Metrics Summary -->
@@ -257,17 +266,29 @@ function toggleMetric(safeMetricName) {
     <table>
         <thead>
             <tr>
-                <th>Timestamp</th>
-                <th>Name</th>
+                <th style="width: 120px;">Timestamp</th>
+                <th style="width: 200px;">Name</th>
                 <th>Data</th>
             </tr>
         </thead>
         <tbody>
-            {{range .Session.Events}}
+            {{range $index, $event := .Session.Events}}
             <tr>
-                <td style="font-family: monospace;">{{.Timestamp.Format "15:04:05"}}</td>
-                <td>{{.Name}}</td>
-                <td>{{.Data}}</td>
+                <td style="font-family: monospace;">{{$event.Timestamp.Format "15:04:05"}}</td>
+                <td>{{$event.Name}}</td>
+                <td>
+                    <div id="event-data-{{$index}}" class="json-viewer-container"></div>
+                    <script>
+                        (function() {
+                            const eventData = {{$event.Data | toJSONSafe}};
+                            new JSONViewer('event-data-{{$index}}', eventData, {
+                                collapsed: true,
+                                showCopyButton: true,
+                                showRawButton: true
+                            });
+                        })();
+                    </script>
+                </td>
             </tr>
             {{end}}
         </tbody>
@@ -475,43 +496,79 @@ const showTimelineDetails = (item) => {
     
     if (item.type === 'state') {
         titleDiv.textContent = `State at ${item.displayTime}`;
-        contentDiv.innerHTML = `<pre style="margin: 0; color: var(--text-primary);">${JSON.stringify(item.state, null, 2)}</pre>`;
+        contentDiv.innerHTML = `<div id="timeline-state-viewer"></div>`;
+        new JSONViewer('timeline-state-viewer', item.state, {
+            collapsed: false,
+            maxHeight: '400px'
+        });
     } else if (item.type === 'exception') {
         titleDiv.textContent = `Exception: ${item.name} at ${item.displayTime}`;
         
         // Find state at this time
         const stateAtTime = findStateAtTime(item.timestamp);
         
-        contentDiv.innerHTML = `
+        let html = `
             <div style="margin-bottom: 15px;">
                 <strong>Exception Data:</strong>
-                <pre style="margin-top: 5px; color: var(--text-primary);">${JSON.stringify(item.data, null, 2)}</pre>
+                <div id="timeline-exception-data-viewer" style="margin-top: 5px;"></div>
             </div>
-            ${stateAtTime ? `
+        `;
+        
+        if (stateAtTime) {
+            html += `
             <div>
                 <strong>Application State at Time of Exception:</strong>
-                <pre style="margin-top: 5px; color: var(--text-primary);">${JSON.stringify(stateAtTime, null, 2)}</pre>
+                <div id="timeline-exception-state-viewer" style="margin-top: 5px;"></div>
             </div>
-            ` : ''}
-        `;
+            `;
+        }
+        
+        contentDiv.innerHTML = html;
+        new JSONViewer('timeline-exception-data-viewer', item.data, {
+            collapsed: false,
+            maxHeight: '300px'
+        });
+        
+        if (stateAtTime) {
+            new JSONViewer('timeline-exception-state-viewer', stateAtTime, {
+                collapsed: true,
+                maxHeight: '300px'
+            });
+        }
     } else {
         titleDiv.textContent = `Event: ${item.name} at ${item.displayTime}`;
         
         // Find state at this time
         const stateAtTime = findStateAtTime(item.timestamp);
         
-        contentDiv.innerHTML = `
+        let html = `
             <div style="margin-bottom: 15px;">
                 <strong>Event Data:</strong>
-                <pre style="margin-top: 5px; color: var(--text-primary);">${JSON.stringify(item.data, null, 2)}</pre>
+                <div id="timeline-event-data-viewer" style="margin-top: 5px;"></div>
             </div>
-            ${stateAtTime ? `
+        `;
+        
+        if (stateAtTime) {
+            html += `
             <div>
                 <strong>Application State at Event Time:</strong>
-                <pre style="margin-top: 5px; color: var(--text-primary);">${JSON.stringify(stateAtTime, null, 2)}</pre>
+                <div id="timeline-event-state-viewer" style="margin-top: 5px;"></div>
             </div>
-            ` : ''}
-        `;
+            `;
+        }
+        
+        contentDiv.innerHTML = html;
+        new JSONViewer('timeline-event-data-viewer', item.data, {
+            collapsed: false,
+            maxHeight: '300px'
+        });
+        
+        if (stateAtTime) {
+            new JSONViewer('timeline-event-state-viewer', stateAtTime, {
+                collapsed: true,
+                maxHeight: '300px'
+            });
+        }
     }
     
     detailsDiv.style.display = 'block';
