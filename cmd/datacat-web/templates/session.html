@@ -1330,39 +1330,54 @@
     const innerWrapper = document.getElementById('timeline-inner');
     const selectionOverlay = document.getElementById('selection-overlay');
 
+    // Helper to get X position relative to innerWrapper
+    const getRelativeX = (e) => {
+        const rect = innerWrapper.getBoundingClientRect();
+        return e.clientX - rect.left;
+    };
+
     innerWrapper.addEventListener('mousedown', (e) => {
-        if (e.target === innerWrapper || e.target === document.getElementById('timeline-line') || e.target === document.getElementById('timeline-container')) {
+        // Only handle clicks on the timeline area, not on the points themselves
+        const clickedElement = e.target;
+        const isTimelineArea = clickedElement === innerWrapper ||
+                              clickedElement === document.getElementById('timeline-line') ||
+                              clickedElement === document.getElementById('timeline-container');
+
+        if (isTimelineArea) {
             isDragging = true;
-            dragStartX = e.offsetX;
+            dragStartX = getRelativeX(e);
             dragStartTime = Date.now();
-            selectionOverlay.style.left = dragStartX + 'px';
-            selectionOverlay.style.width = '0px';
-            selectionOverlay.style.display = 'block';
+            // Don't show overlay yet - wait for actual drag
         }
     });
 
     innerWrapper.addEventListener('mousemove', (e) => {
         if (isDragging) {
-            const currentX = e.offsetX;
-            const left = Math.min(dragStartX, currentX);
+            const currentX = getRelativeX(e);
             const width = Math.abs(currentX - dragStartX);
-            selectionOverlay.style.left = left + 'px';
-            selectionOverlay.style.width = width + 'px';
+
+            // Only show overlay if we've moved more than 5 pixels (actual drag)
+            if (width > 5) {
+                const left = Math.min(dragStartX, currentX);
+                selectionOverlay.style.left = left + 'px';
+                selectionOverlay.style.width = width + 'px';
+                selectionOverlay.style.display = 'block';
+            }
         }
     });
 
     innerWrapper.addEventListener('mouseup', (e) => {
         if (isDragging) {
             isDragging = false;
-            const currentX = e.offsetX;
+            const currentX = getRelativeX(e);
             const width = Math.abs(currentX - dragStartX);
             const dragDuration = Date.now() - dragStartTime;
 
-            // If drag width is small and duration is short, treat as click
-            if (width < 10 && dragDuration < 300) {
+            // If drag width is small (less than 5px), treat as click
+            if (width < 5) {
                 // Click behavior - set time marker
                 const containerWidth = innerWrapper.offsetWidth;
-                const clickPercent = currentX / containerWidth;
+                const clickPercent = dragStartX / containerWidth;
 
                 const timeRange = getTimeRange();
                 const totalDuration = timeRange.end - timeRange.start;
@@ -1371,8 +1386,8 @@
                 selectedTime = clickedTime;
                 showTimeMarker(clickPercent * 100, clickedTime);
                 updateCurrentStateDisplay(clickedTime, clickedTime.toLocaleString());
-            } else if (width > 20) {
-                // Drag behavior - zoom to selection
+            } else if (width > 30) {
+                // Drag behavior - zoom to selection (require 30px minimum for zoom)
                 const containerWidth = innerWrapper.offsetWidth;
                 const startPercent = Math.min(dragStartX, currentX) / containerWidth;
                 const endPercent = Math.max(dragStartX, currentX) / containerWidth;
@@ -1394,6 +1409,7 @@
                 renderTimeline();
             }
 
+            // Always hide overlay on mouseup
             selectionOverlay.style.display = 'none';
         }
     });
