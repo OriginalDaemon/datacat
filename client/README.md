@@ -1,6 +1,6 @@
-# datacat Go Client
+# DataCat Go Client
 
-Go client library for interacting with the datacat REST API.
+Go client library for interacting with the DataCat REST API.
 
 ## Installation
 
@@ -16,21 +16,21 @@ package main
 import (
     "fmt"
     "log"
-    
+
     "github.com/OriginalDaemon/datacat/client"
 )
 
 func main() {
     // Create client
     c := client.NewClient("http://localhost:9090")
-    
+
     // Create session
     sessionID, err := c.CreateSession()
     if err != nil {
         log.Fatal(err)
     }
     fmt.Printf("Created session: %s\n", sessionID)
-    
+
     // Update state
     err = c.UpdateState(sessionID, map[string]interface{}{
         "status": "running",
@@ -39,7 +39,7 @@ func main() {
     if err != nil {
         log.Fatal(err)
     }
-    
+
     // Log event
     err = c.LogEvent(sessionID, "user_login", map[string]interface{}{
         "username": "alice",
@@ -47,20 +47,20 @@ func main() {
     if err != nil {
         log.Fatal(err)
     }
-    
+
     // Log metric
     err = c.LogMetric(sessionID, "cpu_usage", 45.2, []string{"app:myapp"})
     if err != nil {
         log.Fatal(err)
     }
-    
+
     // Get session
     session, err := c.GetSession(sessionID)
     if err != nil {
         log.Fatal(err)
     }
     fmt.Printf("Session: %+v\n", session)
-    
+
     // End session
     err = c.EndSession(sessionID)
     if err != nil {

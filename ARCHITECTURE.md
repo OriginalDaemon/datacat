@@ -1,4 +1,4 @@
-# datacat Architecture
+# DataCat Architecture
 
 ## Architecture with Daemon (Recommended)
 
@@ -138,7 +138,7 @@
 - If no heartbeat for 60s, logs "application_appears_hung"
 - If heartbeat resumes, logs "application_recovered"
 
-### 4. Parent Process Monitoring  
+### 4. Parent Process Monitoring
 - Daemon tracks parent process PID
 - Checks every 5s if parent is still alive
 - If parent crashes/exits abnormally, logs "parent_process_crashed"
@@ -198,15 +198,15 @@ Result:
 1. App starts with daemon:
    - Client library starts daemon subprocess
    - Daemon tracks parent PID
-   
+
 2. App creates session:
    - session = create_session(..., use_daemon=True)
    - Client sends parent PID to daemon
-   
+
 3. App sends heartbeats:
    - session.heartbeat() sends to daemon
    - Daemon updates LastHeartbeat timestamp
-   
+
 4. Daemon monitors (every 5 seconds):
    a) Heartbeat monitoring:
       - If (now - LastHeartbeat) > 60s && !HangLogged:
@@ -214,13 +214,13 @@ Result:
         -> Sets HangLogged = true
       - If heartbeat received after hang:
         -> Logs "application_recovered" event
-        
+
    b) Parent process monitoring:
       - If parent PID not running && !CrashLogged:
         -> Logs "parent_process_crashed" event
         -> Sets CrashLogged = true
         -> Immediately flushes to server
-        
+
 5. App ends normally:
    - session.end()
    - Daemon flushes remaining data

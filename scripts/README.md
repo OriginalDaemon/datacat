@@ -1,6 +1,6 @@
 # PowerShell Scripts for Windows
 
-This directory contains convenient PowerShell scripts for running datacat services, tests, and examples on Windows.
+This directory contains convenient PowerShell scripts for running DataCat services, tests, and examples on Windows.
 
 ## Prerequisites
 

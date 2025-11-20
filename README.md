@@ -1,4 +1,20 @@
-# datacat
+# DataCat
+
+```
+██████╗  █████╗ ████████╗ █████╗  ██████╗ █████╗ ████████╗
+██╔══██╗██╔══██╗╚══██╔══╝██╔══██╗██╔════╝██╔══██╗╚══██╔══╝
+██║  ██║███████║   ██║   ███████║██║     ███████║   ██║
+██║  ██║██╔══██║   ██║   ██╔══██║██║     ██╔══██║   ██║
+██████╔╝██║  ██║   ██║   ██║  ██║╚██████╗██║  ██║   ██║
+╚═════╝ ╚═╝  ╚═╝   ╚═╝   ╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝   ╚═╝
+            Session & State Monitoring
+
+     /\_/\     📊 Events  📈 Metrics
+    ( o.o )    🔄 States  📍 Sessions
+     > ^ <     ⚡ Real-time Analytics
+    /|   |\
+   (_|   |_)
+```
 
 [![Tests](https://github.com/OriginalDaemon/datacat/workflows/Tests/badge.svg)](https://github.com/OriginalDaemon/datacat/actions)
 [![codecov](https://codecov.io/gh/OriginalDaemon/datacat/branch/main/graph/badge.svg)](https://codecov.io/gh/OriginalDaemon/datacat)
@@ -115,7 +131,7 @@ Interactive web UI for browsing sessions and visualizing metrics.
 
 ### [Go Client Library](client/)
 
-Type-safe Go client for the datacat API.
+Type-safe Go client for the DataCat API.
 
 - **Coverage:** >85%
 - **Features:** Full API support, timeout handling
@@ -133,7 +149,7 @@ Python 2.7+ and 3.x compatible client with advanced features.
 
 ### 🎨 Try the Interactive Demo
 
-Want to try datacat before diving into code? Check out the **Demo GUI**!
+Want to try DataCat before diving into code? Check out the **Demo GUI**!
 
 ```bash
 # Install requirements
@@ -305,7 +321,7 @@ session.start_heartbeat_monitor(timeout=60)
 
 ## 📖 Documentation
 
-- **[Full Documentation Site](https://OriginalDaemon.github.io/datacat/)** - Complete guides and API reference
+- **[Full Documentation Site](https://OriginalDaemon.github.io/datacat/)** - Complete guides and API reference for DataCat
 - **[Quick Start Guide](QUICKSTART.md)** - Get up and running quickly
 - **[Architecture](ARCHITECTURE.md)** - System design and components
 - **[Branch Protection Rules](.github/BRANCH_PROTECTION.md)** - PR requirements

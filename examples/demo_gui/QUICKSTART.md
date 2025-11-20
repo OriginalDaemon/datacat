@@ -1,15 +1,15 @@
-# 🚀 datacat Demo GUI - Quick Start Guide
+# 🚀 DataCat Demo GUI - Quick Start Guide
 
-Get up and running with the datacat Demo GUI in under 5 minutes!
+Get up and running with the DataCat Demo GUI in under 5 minutes!
 
 ## Prerequisites
 
-1. **datacat server running** on http://localhost:9090
+1. **DataCat server running** on http://localhost:9090
 2. **Python 3.6+** (or Python 2.7+ with limited features)
 
 ## Installation (3 steps)
 
-### Step 1: Install the datacat Python client
+### Step 1: Install the DataCat Python client
 
 ```bash
 cd python

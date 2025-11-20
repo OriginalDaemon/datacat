@@ -1,6 +1,6 @@
 # datacat-web
 
-Interactive web dashboard for browsing datacat sessions and visualizing metrics.
+Interactive web dashboard for browsing DataCat sessions and visualizing metrics.
 
 ## Features
 
@@ -123,7 +123,7 @@ Click the "🌓 Toggle Theme" button in the navigation to switch between themes.
 ### Statistics Explained
 
 - **Average**: Mean value = Σ(values) / count
-- **Std Dev**: Standard deviation = √(Σ(x - avg)² / count)  
+- **Std Dev**: Standard deviation = √(Σ(x - avg)² / count)
 - **Median**: Middle value when sorted (50th percentile)
 - **Min/Max**: Lowest and highest values recorded
 - **Points**: Total number of data points

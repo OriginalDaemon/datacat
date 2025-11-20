@@ -1,6 +1,6 @@
 # datacat-server
 
-The main REST API server for datacat. This service provides endpoints for session management, state tracking, event logging, and metrics collection.
+The main REST API server for DataCat. This service provides endpoints for session management, state tracking, event logging, and metrics collection.
 
 ## Features
 

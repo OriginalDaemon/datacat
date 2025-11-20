@@ -1,10 +1,10 @@
 # Go Client Example
 
-Demonstrates using the datacat Go client library to track application sessions.
+Demonstrates using the DataCat Go client library to track application sessions.
 
 ## Prerequisites
 
-Make sure the datacat-server is running:
+Make sure the DataCat server is running:
 
 ```bash
 cd ../../cmd/datacat-server

@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document summarizes the changes made to implement offline mode support in the datacat daemon, ensuring that all client commands are routed through the daemon and never directly to the server.
+This document summarizes the changes made to implement offline mode support in the DataCat daemon, ensuring that all client commands are routed through the daemon and never directly to the server.
 
 ## Problem
 
@@ -55,7 +55,7 @@ The original implementation had the following issues:
 - `GetSession()`: Routes through daemon when `UseDaemon=true`
   - Daemon mode: `GET /session?session_id=<id>`
   - Direct mode: `GET /api/sessions/<id>`
-  
+
 - `GetAllSessions()`: Routes through daemon when `UseDaemon=true`
   - Daemon mode: `GET /sessions`
   - Direct mode: `GET /api/data/sessions`
@@ -64,7 +64,7 @@ The original implementation had the following issues:
 - `get_session()`: Routes through daemon when `use_daemon=True`
   - Daemon mode: `GET /session?session_id=<id>`
   - Direct mode: `GET /api/sessions/<id>`
-  
+
 - `get_all_sessions()`: Routes through daemon when `use_daemon=True`
   - Daemon mode: `GET /sessions`
   - Direct mode: `GET /api/data/sessions`
