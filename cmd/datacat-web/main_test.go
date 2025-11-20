@@ -1603,3 +1603,140 @@ if versions[0] != "1.0.0" {
 t.Errorf("Expected version to be 1.0.0, got %s", versions[0])
 }
 }
+
+// Test handleSessions with filters
+func TestHandleSessionsWithFilters(t *testing.T) {
+// Create a mock server for GetAllSessions
+mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+sessions := []*client.Session{
+{
+ID:        "session1",
+Active:    true,
+CreatedAt: time.Now().Add(-1 * time.Hour),
+UpdatedAt: time.Now(),
+State: map[string]interface{}{
+"product": "app1",
+"version": "1.0.0",
+"env":     "production",
+},
+Events: []client.Event{{Name: "startup"}},
+},
+{
+ID:        "session2",
+Active:    false,
+CreatedAt: time.Now().Add(-2 * time.Hour),
+UpdatedAt: time.Now().Add(-1 * time.Hour),
+State: map[string]interface{}{
+"product": "app2",
+"version": "2.0.0",
+"env":     "staging",
+},
+Events: []client.Event{{Name: "shutdown"}},
+},
+}
+json.NewEncoder(w).Encode(sessions)
+}))
+defer mockServer.Close()
+
+datacatClient = client.NewClient(mockServer.URL)
+
+// Test with product filter
+req := httptest.NewRequest("GET", "/sessions?product=app1", nil)
+w := httptest.NewRecorder()
+
+handleSessions(w, req)
+
+if w.Code != http.StatusOK {
+t.Errorf("Expected status 200, got %d", w.Code)
+}
+
+body := w.Body.String()
+if !strings.Contains(body, "app1") {
+t.Error("Expected response to contain filtered product")
+}
+
+// Test with event filter
+req = httptest.NewRequest("GET", "/sessions?event=startup", nil)
+w = httptest.NewRecorder()
+
+handleSessions(w, req)
+
+if w.Code != http.StatusOK {
+t.Errorf("Expected status 200, got %d", w.Code)
+}
+}
+
+// Test handleIndex with template parse error
+func TestHandleIndexTemplateError(t *testing.T) {
+// This test verifies graceful handling of template errors
+mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+sessions := []*client.Session{
+{
+ID:        "session1",
+Active:    true,
+CreatedAt: time.Now(),
+UpdatedAt: time.Now(),
+State:     map[string]interface{}{"status": "running"},
+},
+}
+json.NewEncoder(w).Encode(sessions)
+}))
+defer mockServer.Close()
+
+datacatClient = client.NewClient(mockServer.URL)
+
+req := httptest.NewRequest("GET", "/?filterMode=current_state&filterKey=status&filterValue=running", nil)
+w := httptest.NewRecorder()
+
+handleIndex(w, req)
+
+if w.Code != http.StatusOK {
+	t.Errorf("Expected status 200, got %d", w.Code)
+}
+}
+
+// Test extractProductInfo with various session states
+func TestExtractProductInfoVariousStates(t *testing.T) {
+sessions := []*client.Session{
+{
+ID:     "session1",
+Active: true,
+State: map[string]interface{}{
+"product": "MyApp",
+"version": "1.0.0",
+"status":  "running",
+},
+},
+{
+ID:     "session2",
+Active: true,
+State: map[string]interface{}{
+"product": "MyApp",
+"version": "1.0.0",
+"status":  "crashed",
+},
+},
+{
+ID:     "session3",
+Active: false,
+State: map[string]interface{}{
+"product": "MyApp",
+"version": "2.0.0",
+},
+},
+}
+
+products := extractProductInfo(sessions)
+
+if len(products) != 1 {
+t.Errorf("Expected 1 product, got %d", len(products))
+}
+
+if products[0].Name != "MyApp" {
+t.Errorf("Expected product name to be MyApp, got %s", products[0].Name)
+}
+
+if len(products[0].Versions) != 2 {
+t.Errorf("Expected 2 versions, got %d", len(products[0].Versions))
+}
+}

@@ -922,3 +922,36 @@ func TestCloseStore(t *testing.T) {
 	_ = store.Close()
 	// BadgerDB returns error when closing an already closed DB, which is expected
 }
+
+// Test StartCleanupRoutine execution
+func TestStartCleanupRoutineExecution(t *testing.T) {
+	tmpDir := t.TempDir()
+	config := DefaultConfig()
+	config.CleanupInterval = 50 * time.Millisecond // Short interval for testing
+	config.RetentionDays = 0                       // Clean up sessions immediately
+
+	store, err := NewStore(tmpDir, config)
+	if err != nil {
+		t.Fatalf("NewStore failed: %v", err)
+	}
+	defer store.Close()
+
+	// Create an old session
+	session := store.CreateSession()
+	session.CreatedAt = time.Now().Add(-2 * 24 * time.Hour)
+
+	// Start cleanup routine
+	store.StartCleanupRoutine()
+
+	// Wait for cleanup to run
+	time.Sleep(100 * time.Millisecond)
+
+	// Session should be cleaned up
+	store.mu.RLock()
+	_, exists := store.sessions[session.ID]
+	store.mu.RUnlock()
+
+	if exists {
+		t.Error("Expected old session to be cleaned up")
+	}
+}
