@@ -279,6 +279,90 @@ session.start_heartbeat_monitor(timeout=60)
 - **[Architecture](ARCHITECTURE.md)** - System design and components
 - **[Branch Protection Rules](.github/BRANCH_PROTECTION.md)** - PR requirements
 
+## ❓ FAQ
+
+### Where is my data stored?
+
+All session data is stored in a **BadgerDB database** on the server. The location is configurable in `config.json`:
+
+- **Default location:** `./datacat_data` (relative to where the server is run)
+- **Configurable via:** `data_path` setting in `config.json`
+
+**Important - Data Location Depends on How You Run the Server:**
+
+- **When using PowerShell scripts** (`.\scripts\run-server.ps1` or `.\scripts\run-both.ps1`):
+  - Data is stored in the **repository root directory**: `./datacat_data`
+  - Config file is in the **repository root**: `./config.json`
+
+- **When running from cmd/datacat-server** (`cd cmd/datacat-server && go run main.go`):
+  - Data is stored in **cmd/datacat-server/datacat_data**
+  - Config file is in **cmd/datacat-server/config.json**
+
+The data directory contains BadgerDB files including MANIFEST, LOCK, .vlog, and .mem files.
+
+### How do I delete all data from the server?
+
+To completely reset the server and delete all session data:
+
+**If you're using PowerShell scripts** (`.\scripts\run-server.ps1` or `.\scripts\run-both.ps1`):
+
+```powershell
+# 1. Stop the server (Ctrl+C in the PowerShell window)
+
+# 2. Delete the data directory from repository root
+Remove-Item -Recurse -Force ./datacat_data
+
+# 3. Optionally delete the config to reset to defaults
+Remove-Item config.json
+
+# 4. Restart the server
+.\scripts\run-server.ps1
+```
+
+**If you're running the server manually** (`cd cmd/datacat-server && go run main.go`):
+
+```bash
+# 1. Stop the server (Ctrl+C or kill the process)
+
+# 2. Delete the data directory
+cd cmd/datacat-server
+rm -rf ./datacat_data
+
+# 3. Optionally delete the config to reset to defaults
+rm config.json
+
+# 4. Restart the server
+go run main.go config.go
+```
+
+**Important:** Always stop the server before deleting the data directory to prevent corruption.
+
+See [cmd/datacat-server/README.md](cmd/datacat-server/README.md#data-management) for more details on data management.
+
+### How long is data retained?
+
+By default, session data is retained for **365 days** (1 year). You can configure this in `config.json`:
+
+```json
+{
+  "retention_days": 365,
+  "cleanup_interval_hours": 24
+}
+```
+
+The cleanup routine runs automatically every 24 hours by default.
+
+### Can I backup my data?
+
+Yes! To backup your data:
+
+```bash
+# Stop the server first
+cp -r ./datacat_data ./datacat_data_backup
+```
+
+To restore, stop the server and copy the backup back to the original location.
+
 ## Contributing
 
 We welcome contributions! Please ensure your PR meets the following requirements:

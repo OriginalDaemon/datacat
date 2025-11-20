@@ -156,9 +156,13 @@ Custom output directory:
 
 This removes:
 - `bin/` - Compiled binaries
-- `badger_data/` - Database files
+- `datacat_data/` - Database files (session data)
+- `config.json` - Server configuration file
+- `badger_data/` - Legacy database directory (if it exists)
 - Coverage reports
 - Python cache files (`__pycache__`, `*.egg-info`)
+
+**Note:** This will delete all session data from the server. Make sure to backup any important data before running.
 
 ### Remove Everything Including Virtual Environment
 
@@ -213,8 +217,25 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 If port 9090 or 8080 is already in use, you'll need to:
 1. Stop the process using the port, or
 2. Modify the port in the respective configuration or source files:
-   - Server: Edit `cmd/datacat-server/config.json` and change `server_port`
+   - Server: Edit `config.json` (in repository root when using scripts) and change `server_port`
    - Web UI: Edit `cmd/datacat-web/main.go` and change the `port` variable
+
+### Data Storage Location
+
+When running the server with scripts (`run-server.ps1` or `run-both.ps1`), the database and configuration files are created in the **repository root directory**:
+
+- **Data directory:** `./datacat_data/` (contains BadgerDB files)
+- **Config file:** `./config.json`
+
+To delete all session data:
+
+```powershell
+# Stop the server first (Ctrl+C), then:
+Remove-Item -Recurse -Force ./datacat_data
+Remove-Item config.json  # Optional - removes custom config
+```
+
+See [FAQ in main README](../README.md#-faq) for more details on data management.
 
 ### Python Dependencies Issues
 
