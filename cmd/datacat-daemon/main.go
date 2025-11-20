@@ -335,6 +335,9 @@ func (d *Daemon) handleHeartbeat(w http.ResponseWriter, r *http.Request) {
 	}
 	buffer.mu.Unlock()
 
+	// Forward heartbeat to server
+	d.sendHeartbeat(req.SessionID)
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
@@ -540,6 +543,20 @@ func (d *Daemon) sendMetric(sessionID string, metric MetricData) {
 	
 	// Mark session as synced with server on successful operation
 	d.markSessionSynced(sessionID)
+}
+
+// sendHeartbeat sends a heartbeat to the server
+func (d *Daemon) sendHeartbeat(sessionID string) {
+	resp, err := http.Post(
+		d.config.ServerURL+"/api/sessions/"+sessionID+"/heartbeat",
+		"application/json",
+		bytes.NewBuffer([]byte("{}")),
+	)
+	if err != nil {
+		log.Printf("Failed to send heartbeat to server: %v", err)
+		return
+	}
+	_ = resp.Body.Close()
 }
 
 // heartbeatMonitor checks for hung applications

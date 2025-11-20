@@ -923,7 +923,7 @@ func TestCloseStore(t *testing.T) {
 	// BadgerDB returns error when closing an already closed DB, which is expected
 }
 
-// Test StartCleanupRoutine execution
+	// Test StartCleanupRoutine execution
 func TestStartCleanupRoutineExecution(t *testing.T) {
 	tmpDir := t.TempDir()
 	config := DefaultConfig()
@@ -954,4 +954,164 @@ func TestStartCleanupRoutineExecution(t *testing.T) {
 	if exists {
 		t.Error("Expected old session to be cleaned up")
 	}
+}
+
+func TestUpdateHeartbeat(t *testing.T) {
+	tmpDir := t.TempDir()
+	config := DefaultConfig()
+	store, err := NewStore(tmpDir, config)
+	if err != nil {
+		t.Fatalf("NewStore failed: %v", err)
+	}
+	defer store.Close()
+
+	session := store.CreateSession()
+
+	// Update heartbeat
+	err = store.UpdateHeartbeat(session.ID)
+	if err != nil {
+		t.Fatalf("UpdateHeartbeat failed: %v", err)
+	}
+
+	// Verify heartbeat was updated
+	retrieved, _ := store.GetSession(session.ID)
+	if retrieved.LastHeartbeat == nil {
+		t.Error("LastHeartbeat should be set")
+	}
+	if !retrieved.Active {
+		t.Error("Session should be active after heartbeat")
+	}
+}
+
+func TestUpdateHeartbeatNonExistent(t *testing.T) {
+	tmpDir := t.TempDir()
+	config := DefaultConfig()
+	store, err := NewStore(tmpDir, config)
+	if err != nil {
+		t.Fatalf("NewStore failed: %v", err)
+	}
+	defer store.Close()
+
+	// Try to update heartbeat of non-existent session
+	err = store.UpdateHeartbeat("non-existent")
+	if err == nil {
+		t.Error("Expected error when updating heartbeat of non-existent session")
+	}
+}
+
+func TestActiveStatusBasedOnHeartbeat(t *testing.T) {
+	tmpDir := t.TempDir()
+	config := DefaultConfig()
+	config.HeartbeatTimeoutSeconds = 1 // Short timeout for testing
+	store, err := NewStore(tmpDir, config)
+	if err != nil {
+		t.Fatalf("NewStore failed: %v", err)
+	}
+	defer store.Close()
+
+	session := store.CreateSession()
+
+	// Send heartbeat
+	store.UpdateHeartbeat(session.ID)
+
+	// Session should be active
+	retrieved, _ := store.GetSession(session.ID)
+	if !retrieved.Active {
+		t.Error("Session should be active after recent heartbeat")
+	}
+
+	// Wait for heartbeat timeout
+	time.Sleep(2 * time.Second)
+
+	// Session should now be inactive
+	retrieved, _ = store.GetSession(session.ID)
+	if retrieved.Active {
+		t.Error("Session should be inactive after heartbeat timeout")
+	}
+}
+
+func TestActiveStatusWithoutHeartbeat(t *testing.T) {
+	tmpDir := t.TempDir()
+	config := DefaultConfig()
+	store, err := NewStore(tmpDir, config)
+	if err != nil {
+		t.Fatalf("NewStore failed: %v", err)
+	}
+	defer store.Close()
+
+	session := store.CreateSession()
+
+	// Session without heartbeat should still show initial active status
+	retrieved, _ := store.GetSession(session.ID)
+	if !retrieved.Active {
+		t.Error("Session should be active initially even without heartbeat")
+	}
+}
+
+func TestActiveStatusAfterEnd(t *testing.T) {
+	tmpDir := t.TempDir()
+	config := DefaultConfig()
+	store, err := NewStore(tmpDir, config)
+	if err != nil {
+		t.Fatalf("NewStore failed: %v", err)
+	}
+	defer store.Close()
+
+	session := store.CreateSession()
+
+	// Send heartbeat
+	store.UpdateHeartbeat(session.ID)
+
+	// End session
+	store.EndSession(session.ID)
+
+	// Session should be inactive even with recent heartbeat
+	retrieved, _ := store.GetSession(session.ID)
+	if retrieved.Active {
+		t.Error("Session should be inactive after being ended")
+	}
+}
+
+func TestHeartbeatHTTPHandler(t *testing.T) {
+	tmpDir := t.TempDir()
+	config := DefaultConfig()
+	var err error
+	store, err = NewStore(tmpDir, config)
+	if err != nil {
+		t.Fatalf("NewStore failed: %v", err)
+	}
+	defer store.Close()
+
+	session := store.CreateSession()
+	sessionID := session.ID
+
+	// Test heartbeat endpoint
+	t.Run("Heartbeat", func(t *testing.T) {
+		req := httptest.NewRequest("POST", "/api/sessions/"+sessionID+"/heartbeat", nil)
+		w := httptest.NewRecorder()
+
+		handleSessionOperations(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("Expected status 200, got %d", w.Code)
+		}
+
+		// Verify heartbeat was recorded
+		retrieved, _ := store.GetSession(sessionID)
+		if retrieved.LastHeartbeat == nil {
+			t.Error("LastHeartbeat should be set after heartbeat call")
+		}
+	})
+
+	// Test heartbeat for non-existent session
+	t.Run("HeartbeatNonExistent", func(t *testing.T) {
+		req := httptest.NewRequest("POST", "/api/sessions/non-existent/heartbeat", nil)
+		w := httptest.NewRecorder()
+
+		handleSessionOperations(w, req)
+
+		if w.Code != http.StatusNotFound {
+			t.Errorf("Expected status 404, got %d", w.Code)
+		}
+	})
 }
