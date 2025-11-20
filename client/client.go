@@ -238,7 +238,15 @@ func (c *Client) CreateSession() (string, error) {
 
 // GetSession retrieves a session by ID
 func (c *Client) GetSession(sessionID string) (*Session, error) {
-	resp, err := c.HTTPClient.Get(c.BaseURL + "/api/sessions/" + sessionID)
+	var url string
+	
+	if c.UseDaemon {
+		url = c.BaseURL + "/session?session_id=" + sessionID
+	} else {
+		url = c.BaseURL + "/api/sessions/" + sessionID
+	}
+	
+	resp, err := c.HTTPClient.Get(url)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get session: %w", err)
 	}
@@ -466,7 +474,15 @@ func (c *Client) Heartbeat(sessionID string) error {
 
 // GetAllSessions retrieves all sessions
 func (c *Client) GetAllSessions() ([]*Session, error) {
-	resp, err := c.HTTPClient.Get(c.BaseURL + "/api/data/sessions")
+	var url string
+	
+	if c.UseDaemon {
+		url = c.BaseURL + "/sessions"
+	} else {
+		url = c.BaseURL + "/api/data/sessions"
+	}
+	
+	resp, err := c.HTTPClient.Get(url)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get sessions: %w", err)
 	}
