@@ -61,7 +61,7 @@ try {
         "go-client" {
             Push-Location go-client-example
             try {
-                go run main.go
+                go run .
             } finally {
                 Pop-Location
             }

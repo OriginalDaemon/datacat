@@ -1013,3 +1013,291 @@ func TestStateContainsAllNonMapFilterValue(t *testing.T) {
 		t.Error("Expected state not to contain mismatched number filter")
 	}
 }
+
+func TestHandleStatsCards(t *testing.T) {
+// Setup mock client with test data
+originalClient := datacatClient
+defer func() { datacatClient = originalClient }()
+
+// Create a test server to act as the datacat API
+testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+sessions := []*client.Session{
+{
+ID:        "test-session-1",
+Active:    true,
+CreatedAt: time.Now(),
+UpdatedAt: time.Now(),
+Events:    []client.Event{{Name: "test"}},
+Metrics:   []client.Metric{{Name: "test", Value: 1.0}},
+},
+{
+ID:        "test-session-2",
+Active:    false,
+CreatedAt: time.Now(),
+UpdatedAt: time.Now(),
+Events:    []client.Event{},
+Metrics:   []client.Metric{{Name: "test", Value: 2.0}},
+},
+}
+json.NewEncoder(w).Encode(sessions)
+}))
+defer testServer.Close()
+
+datacatClient = client.NewClient(testServer.URL)
+
+req := httptest.NewRequest("GET", "/api/stats-cards", nil)
+w := httptest.NewRecorder()
+
+handleStatsCards(w, req)
+
+if w.Code != http.StatusOK {
+t.Errorf("Expected status 200, got %d", w.Code)
+}
+
+body := w.Body.String()
+
+// Verify HTML structure
+if !strings.Contains(body, `id="stats-cards"`) {
+t.Error("Expected stats-cards div")
+}
+
+// Verify HTMX attributes
+if !strings.Contains(body, `hx-get="/api/stats-cards"`) {
+t.Error("Expected hx-get attribute")
+}
+
+if !strings.Contains(body, `hx-trigger="every`) {
+t.Error("Expected hx-trigger attribute")
+}
+
+if !strings.Contains(body, `hx-swap="outerHTML"`) {
+t.Error("Expected hx-swap attribute")
+}
+
+// Verify stats
+if !strings.Contains(body, "Total Sessions") {
+t.Error("Expected Total Sessions stat")
+}
+
+if !strings.Contains(body, "Active Sessions") {
+t.Error("Expected Active Sessions stat")
+}
+
+if !strings.Contains(body, "<div class=\"value\">2</div>") {
+t.Error("Expected total sessions count of 2")
+}
+
+if !strings.Contains(body, "<div class=\"value\">1</div>") {
+t.Error("Expected active sessions count of 1")
+}
+}
+
+func TestHandleSessionsTable(t *testing.T) {
+// Setup mock client
+originalClient := datacatClient
+defer func() { datacatClient = originalClient }()
+
+testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+sessions := []*client.Session{
+{
+ID:        "test-session-1",
+Active:    true,
+CreatedAt: time.Now(),
+UpdatedAt: time.Now(),
+Events:    []client.Event{{Name: "test"}},
+Metrics:   []client.Metric{{Name: "test", Value: 1.0}},
+},
+}
+json.NewEncoder(w).Encode(sessions)
+}))
+defer testServer.Close()
+
+datacatClient = client.NewClient(testServer.URL)
+
+req := httptest.NewRequest("GET", "/api/sessions-table", nil)
+w := httptest.NewRecorder()
+
+handleSessionsTable(w, req)
+
+if w.Code != http.StatusOK {
+t.Errorf("Expected status 200, got %d", w.Code)
+}
+
+body := w.Body.String()
+
+// Verify HTML structure
+if !strings.Contains(body, `id="sessions-table"`) {
+t.Error("Expected sessions-table div")
+}
+
+// Verify HTMX attributes
+if !strings.Contains(body, `hx-get="/api/sessions-table"`) {
+t.Error("Expected hx-get attribute")
+}
+
+// Verify table structure
+if !strings.Contains(body, "<table>") {
+t.Error("Expected table element")
+}
+
+if !strings.Contains(body, "<thead>") {
+t.Error("Expected thead element")
+}
+
+// Verify session data
+if !strings.Contains(body, "test-session-1") {
+t.Error("Expected session ID in table")
+}
+
+if !strings.Contains(body, `class="badge badge-active"`) {
+t.Error("Expected active badge")
+}
+}
+
+func TestHandleSessionInfo(t *testing.T) {
+// Setup mock client
+originalClient := datacatClient
+defer func() { datacatClient = originalClient }()
+
+testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+if strings.Contains(r.URL.Path, "test-session-1") {
+session := &client.Session{
+ID:           "test-session-1",
+Active:       true,
+CreatedAt:    time.Now(),
+UpdatedAt:    time.Now(),
+Events:       []client.Event{{Name: "test"}},
+Metrics:      []client.Metric{{Name: "test", Value: 1.0}},
+StateHistory: []client.StateSnapshot{{Timestamp: time.Now(), State: map[string]interface{}{"status": "running"}}},
+}
+json.NewEncoder(w).Encode(session)
+} else {
+w.WriteHeader(http.StatusNotFound)
+}
+}))
+defer testServer.Close()
+
+datacatClient = client.NewClient(testServer.URL)
+
+req := httptest.NewRequest("GET", "/api/session-info/test-session-1", nil)
+w := httptest.NewRecorder()
+
+handleSessionInfo(w, req)
+
+if w.Code != http.StatusOK {
+t.Errorf("Expected status 200, got %d", w.Code)
+}
+
+body := w.Body.String()
+
+// Verify HTML structure
+if !strings.Contains(body, `id="session-info"`) {
+t.Error("Expected session-info div")
+}
+
+// Verify HTMX attributes for active session
+if !strings.Contains(body, `hx-get="/api/session-info/test-session-1"`) {
+t.Error("Expected hx-get attribute for active session")
+}
+
+// Verify session data
+if !strings.Contains(body, "Created") {
+t.Error("Expected Created row")
+}
+
+if !strings.Contains(body, "Updated") {
+t.Error("Expected Updated row")
+}
+
+if !strings.Contains(body, "Status") {
+t.Error("Expected Status row")
+}
+
+if !strings.Contains(body, `class="badge badge-active"`) {
+t.Error("Expected active badge")
+}
+
+if !strings.Contains(body, "State Changes") {
+t.Error("Expected State Changes row")
+}
+}
+
+func TestHandleStatsCardsError(t *testing.T) {
+// Setup mock client that returns error
+originalClient := datacatClient
+defer func() { datacatClient = originalClient }()
+
+testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+w.WriteHeader(http.StatusInternalServerError)
+}))
+defer testServer.Close()
+
+datacatClient = client.NewClient(testServer.URL)
+
+req := httptest.NewRequest("GET", "/api/stats-cards", nil)
+w := httptest.NewRecorder()
+
+handleStatsCards(w, req)
+
+if w.Code != http.StatusOK {
+t.Errorf("Expected status 200 even on error, got %d", w.Code)
+}
+
+body := w.Body.String()
+
+// Should return error state with HTMX attributes
+if !strings.Contains(body, `hx-get="/api/stats-cards"`) {
+t.Error("Expected hx-get attribute even on error")
+}
+}
+
+func TestHandleSessionInfoInactive(t *testing.T) {
+// Test that inactive sessions don't get polling attributes
+originalClient := datacatClient
+defer func() { datacatClient = originalClient }()
+
+testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+endedAt := time.Now()
+session := &client.Session{
+ID:           "test-session-2",
+Active:       false,
+CreatedAt:    time.Now().Add(-1 * time.Hour),
+UpdatedAt:    time.Now().Add(-30 * time.Minute),
+EndedAt:      &endedAt,
+Events:       []client.Event{},
+Metrics:      []client.Metric{},
+StateHistory: []client.StateSnapshot{},
+}
+json.NewEncoder(w).Encode(session)
+}))
+defer testServer.Close()
+
+datacatClient = client.NewClient(testServer.URL)
+
+req := httptest.NewRequest("GET", "/api/session-info/test-session-2", nil)
+w := httptest.NewRecorder()
+
+handleSessionInfo(w, req)
+
+if w.Code != http.StatusOK {
+t.Errorf("Expected status 200, got %d", w.Code)
+}
+
+body := w.Body.String()
+
+// Verify no HTMX polling for inactive session
+if strings.Contains(body, `hx-trigger="every`) {
+t.Error("Expected no hx-trigger for inactive session")
+}
+
+// Verify ended badge
+if !strings.Contains(body, `class="badge badge-inactive"`) {
+t.Error("Expected inactive badge")
+}
+
+// Verify ended timestamp is shown
+if !strings.Contains(body, "Ended") {
+t.Error("Expected Ended row for inactive session")
+}
+}
+

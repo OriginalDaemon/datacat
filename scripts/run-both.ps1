@@ -10,7 +10,7 @@ Write-Host ""
 # Start server in background job
 $serverJob = Start-Job -ScriptBlock {
     Set-Location $using:PSScriptRoot/../cmd/datacat-server
-    go run main.go config.go
+    go run .
 }
 
 # Wait a moment for server to start
@@ -19,7 +19,7 @@ Start-Sleep -Seconds 2
 # Start web UI in background job
 $webJob = Start-Job -ScriptBlock {
     Set-Location $using:PSScriptRoot/../cmd/datacat-web
-    go run main.go
+    go run .
 }
 
 Write-Host "Both services started!" -ForegroundColor Green

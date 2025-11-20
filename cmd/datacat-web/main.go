@@ -101,6 +101,11 @@ func main() {
 	http.HandleFunc("/api/timeseries", handleTimeseriesAPI)
 	http.HandleFunc("/metrics", handleMetrics)
 	http.HandleFunc("/api/server-status", handleServerStatus)
+	
+	// HTMX live update endpoints
+	http.HandleFunc("/api/stats-cards", handleStatsCards)
+	http.HandleFunc("/api/sessions-table", handleSessionsTable)
+	http.HandleFunc("/api/session-info/", handleSessionInfo)
 
 	port := ":8080"
 	log.Printf("Starting datacat web UI on %s", port)
@@ -883,5 +888,229 @@ func handleServerStatus(w http.ResponseWriter, r *http.Request) {
 			<strong>✓ Server Online:</strong> Connected to datacat server at http://localhost:9090
 		</div>`))
 	}
+}
+
+// handleStatsCards returns the stats cards with live session counts
+func handleStatsCards(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html")
+	
+	sessions, err := datacatClient.GetAllSessions()
+	if err != nil {
+		// Return error state
+		w.Write([]byte(`<div class="stats-grid" id="stats-cards" hx-get="/api/stats-cards" hx-trigger="every 5s" hx-swap="outerHTML">
+			<div class="stat-card">
+				<h3>Error</h3>
+				<div class="value">N/A</div>
+			</div>
+		</div>`))
+		return
+	}
+	
+	// Calculate stats
+	totalSessions := len(sessions)
+	activeSessions := 0
+	totalEvents := 0
+	totalMetrics := 0
+	
+	for _, session := range sessions {
+		if session.Active {
+			activeSessions++
+		}
+		totalEvents += len(session.Events)
+		totalMetrics += len(session.Metrics)
+	}
+	
+	// Determine poll interval based on active sessions
+	pollInterval := "10s"
+	if activeSessions > 0 {
+		pollInterval = "5s"
+	}
+	
+	html := fmt.Sprintf(`<div class="stats-grid" id="stats-cards" hx-get="/api/stats-cards" hx-trigger="every %s" hx-swap="outerHTML">
+		<div class="stat-card">
+			<h3>Total Sessions</h3>
+			<div class="value">%d</div>
+		</div>
+		<div class="stat-card">
+			<h3>Active Sessions</h3>
+			<div class="value">%d</div>
+		</div>
+		<div class="stat-card">
+			<h3>Total Events</h3>
+			<div class="value">%d</div>
+		</div>
+		<div class="stat-card">
+			<h3>Total Metrics</h3>
+			<div class="value">%d</div>
+		</div>
+	</div>`, pollInterval, totalSessions, activeSessions, totalEvents, totalMetrics)
+	
+	w.Write([]byte(html))
+}
+
+// handleSessionsTable returns the sessions table for HTMX updates
+func handleSessionsTable(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html")
+	
+	sessions, err := datacatClient.GetAllSessions()
+	if err != nil {
+		w.Write([]byte(`<div id="sessions-table" hx-get="/api/sessions-table" hx-trigger="every 10s" hx-swap="outerHTML">
+			<p style="color: var(--error-color);">Error loading sessions</p>
+		</div>`))
+		return
+	}
+	
+	// Sort sessions by created_at descending
+	sort.Slice(sessions, func(i, j int) bool {
+		return sessions[i].CreatedAt.After(sessions[j].CreatedAt)
+	})
+	
+	// Check if there are active sessions to determine poll interval
+	hasActiveSessions := false
+	for _, session := range sessions {
+		if session.Active {
+			hasActiveSessions = true
+			break
+		}
+	}
+	
+	pollInterval := "30s"
+	if hasActiveSessions {
+		pollInterval = "10s"
+	}
+	
+	// Build the table HTML
+	var html strings.Builder
+	html.WriteString(fmt.Sprintf(`<div id="sessions-table" hx-get="/api/sessions-table" hx-trigger="every %s" hx-swap="outerHTML">`, pollInterval))
+	html.WriteString(`<table>
+		<thead>
+			<tr>
+				<th>Session ID</th>
+				<th>Created</th>
+				<th>Updated</th>
+				<th>Status</th>
+				<th>Events</th>
+				<th>Metrics</th>
+				<th>Actions</th>
+			</tr>
+		</thead>
+		<tbody>`)
+	
+	if len(sessions) == 0 {
+		html.WriteString(`<tr>
+			<td colspan="7" style="text-align: center; padding: 40px; color: var(--text-secondary);">
+				No sessions found
+			</td>
+		</tr>`)
+	} else {
+		for _, session := range sessions {
+			statusBadge := `<span class="badge badge-inactive">Ended</span>`
+			if session.Active {
+				statusBadge = `<span class="badge badge-active">Active</span>`
+			}
+			
+			sessionIDShort := session.ID
+			if len(sessionIDShort) > 12 {
+				sessionIDShort = sessionIDShort[:12] + "..."
+			}
+			
+			html.WriteString(fmt.Sprintf(`<tr>
+				<td>
+					<a href="/session/%s" style="color: var(--accent-primary); text-decoration: none;">
+						%s
+					</a>
+				</td>
+				<td>%s</td>
+				<td>%s</td>
+				<td>%s</td>
+				<td>%d</td>
+				<td>%d</td>
+				<td>
+					<a href="/session/%s" class="btn btn-secondary" style="padding: 6px 12px; font-size: 13px;">View</a>
+				</td>
+			</tr>`,
+				session.ID,
+				sessionIDShort,
+				session.CreatedAt.Format("2006-01-02 15:04:05"),
+				session.UpdatedAt.Format("2006-01-02 15:04:05"),
+				statusBadge,
+				len(session.Events),
+				len(session.Metrics),
+				session.ID))
+		}
+	}
+	
+	html.WriteString(`</tbody>
+	</table>
+	</div>`)
+	
+	w.Write([]byte(html.String()))
+}
+
+// handleSessionInfo returns updated session info for active sessions
+func handleSessionInfo(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html")
+	
+	sessionID := strings.TrimPrefix(r.URL.Path, "/api/session-info/")
+	
+	session, err := datacatClient.GetSession(sessionID)
+	if err != nil {
+		w.Write([]byte(`<div id="session-info">
+			<p style="color: var(--error-color);">Error loading session</p>
+		</div>`))
+		return
+	}
+	
+	// Determine poll interval based on session status
+	pollInterval := ""
+	if session.Active {
+		pollInterval = fmt.Sprintf(` hx-get="/api/session-info/%s" hx-trigger="every 10s" hx-swap="outerHTML"`, sessionID)
+	}
+	
+	// Build session info HTML
+	var html strings.Builder
+	html.WriteString(fmt.Sprintf(`<div id="session-info"%s>`, pollInterval))
+	html.WriteString(`<table style="margin-bottom: 20px;">
+		<tr>
+			<th style="width: 200px;">Created</th>
+			<td>` + session.CreatedAt.Format("2006-01-02 15:04:05") + `</td>
+		</tr>
+		<tr>
+			<th>Updated</th>
+			<td>` + session.UpdatedAt.Format("2006-01-02 15:04:05") + `</td>
+		</tr>`)
+	
+	if session.EndedAt != nil {
+		html.WriteString(`<tr>
+			<th>Ended</th>
+			<td>` + session.EndedAt.Format("2006-01-02 15:04:05") + `</td>
+		</tr>`)
+	}
+	
+	statusBadge := `<span class="badge badge-inactive">Ended</span>`
+	if session.Active {
+		statusBadge = `<span class="badge badge-active">Active</span>`
+	}
+	
+	html.WriteString(`<tr>
+		<th>Status</th>
+		<td>` + statusBadge + `</td>
+	</tr>
+	<tr>
+		<th>State Changes</th>
+		<td>` + fmt.Sprintf("%d", len(session.StateHistory)) + ` updates recorded</td>
+	</tr>
+	<tr>
+		<th>Events</th>
+		<td>` + fmt.Sprintf("%d", len(session.Events)) + ` events logged</td>
+	</tr>
+	<tr>
+		<th>Metrics</th>
+		<td>` + fmt.Sprintf("%d", len(session.Metrics)) + ` metrics recorded</td>
+	</tr>
+	</table>
+	</div>`)
+	
+	w.Write([]byte(html.String()))
 }
 
