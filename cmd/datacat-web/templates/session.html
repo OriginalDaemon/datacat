@@ -141,17 +141,24 @@
 </div>
 
 <script>
+// Initialize metrics state (will be used later for charts)
+const metricsByName = {};
+let chartInstances = {};
+
 // Group metrics by name
 {{range .Session.Metrics}}
-const metricName_{{.Name | replace "." "_"}} = "{{.Name}}";
-if (!metricsByName[metricName_{{.Name | replace "." "_"}}]) {
-    metricsByName[metricName_{{.Name | replace "." "_"}}] = [];
-}
-metricsByName[metricName_{{.Name | replace "." "_"}}].push({
-    timestamp: new Date("{{.Timestamp.Format "2006-01-02T15:04:05Z07:00"}}"),
-    value: {{.Value}},
-    tags: {{.Tags | printf "%#v"}}
-});
+(function() {
+    const metricName = "{{.Name}}";
+    const safeMetricName = metricName.replace(/\./g, '_');
+    if (!metricsByName[metricName]) {
+        metricsByName[metricName] = [];
+    }
+    metricsByName[metricName].push({
+        timestamp: new Date("{{.Timestamp.Format "2006-01-02T15:04:05Z07:00"}}"),
+        value: {{.Value}},
+        tags: {{.Tags | toJSONSafe}}
+    });
+})();
 {{end}}
 
 // Create expandable metric summaries
@@ -236,6 +243,21 @@ function toggleMetric(safeMetricName) {
 
 // Create a metric chart
 function createMetricChart(safeMetricName) {
+    // Check if Chart.js is available
+    if (typeof Chart === 'undefined') {
+        // Fallback: Show a message that the chart library is not loaded
+        const chartContainer = document.getElementById(`chart-container-${safeMetricName}`);
+        const canvas = chartContainer.querySelector('canvas');
+        const parent = canvas.parentElement;
+        parent.innerHTML = `
+            <div style="padding: 20px; text-align: center; color: var(--text-secondary);">
+                <p style="margin-bottom: 15px;">Chart visualization requires Chart.js library.</p>
+                <p style="font-size: 13px;">The statistics above provide a comprehensive summary of this metric.</p>
+            </div>
+        `;
+        return;
+    }
+    
     const metrics = metricsByName[Object.keys(metricsByName).find(k => k.replace(/\./g, '_') === safeMetricName)];
     const ctx = document.getElementById(`chart-${safeMetricName}`).getContext('2d');
     
@@ -245,7 +267,7 @@ function createMetricChart(safeMetricName) {
         m.timestamp >= timeRange.start && m.timestamp <= timeRange.end
     );
     
-    chartInstances[safeMetricName] = new Chart(ctx, {
+    const chartConfig = {
         type: 'line',
         data: {
             labels: filteredMetrics.map(m => m.timestamp.toLocaleTimeString()),
@@ -263,6 +285,13 @@ function createMetricChart(safeMetricName) {
         options: {
             responsive: true,
             maintainAspectRatio: false,
+            onClick: function(event, elements) {
+                if (elements.length > 0) {
+                    const index = elements[0].index;
+                    const metric = filteredMetrics[index];
+                    alert(`Value at ${metric.timestamp.toLocaleString()}: ${metric.value.toFixed(2)}`);
+                }
+            },
             plugins: {
                 legend: {
                     display: true,
@@ -272,33 +301,14 @@ function createMetricChart(safeMetricName) {
                 },
                 tooltip: {
                     mode: 'index',
-                    intersect: false
-                },
-                zoom: {
-                    zoom: {
-                        drag: {
-                            enabled: true,
-                            backgroundColor: 'rgba(102, 126, 234, 0.2)'
+                    intersect: false,
+                    callbacks: {
+                        title: function(context) {
+                            const index = context[0].dataIndex;
+                            return filteredMetrics[index].timestamp.toLocaleString();
                         },
-                        mode: 'x',
-                        onZoomComplete: function({chart}) {
-                            // Get the new time range from the chart
-                            const xScale = chart.scales.x;
-                            const minIndex = Math.max(0, Math.floor(xScale.min));
-                            const maxIndex = Math.min(filteredMetrics.length - 1, Math.ceil(xScale.max));
-                            
-                            if (minIndex < filteredMetrics.length && maxIndex >= 0) {
-                                const newStart = filteredMetrics[minIndex].timestamp;
-                                const newEnd = filteredMetrics[maxIndex].timestamp;
-                                
-                                // Update global time range
-                                zoomStart = newStart;
-                                zoomEnd = newEnd;
-                                updateTimeRangeFromZoom(newStart, newEnd);
-                                
-                                // Update timeline
-                                renderTimeline();
-                            }
+                        label: function(context) {
+                            return `Value: ${context.parsed.y.toFixed(2)}`;
                         }
                     }
                 }
@@ -325,7 +335,37 @@ function createMetricChart(safeMetricName) {
                 }
             }
         }
-    });
+    };
+    
+    // Check if zoom plugin is available
+    if (typeof Chart.Zoom !== 'undefined') {
+        chartConfig.options.plugins.zoom = {
+            zoom: {
+                drag: {
+                    enabled: true,
+                    backgroundColor: 'rgba(102, 126, 234, 0.2)'
+                },
+                mode: 'x',
+                onZoomComplete: function({chart}) {
+                    const xScale = chart.scales.x;
+                    const minIndex = Math.max(0, Math.floor(xScale.min));
+                    const maxIndex = Math.min(filteredMetrics.length - 1, Math.ceil(xScale.max));
+                    
+                    if (minIndex < filteredMetrics.length && maxIndex >= 0) {
+                        const newStart = filteredMetrics[minIndex].timestamp;
+                        const newEnd = filteredMetrics[maxIndex].timestamp;
+                        
+                        zoomStart = newStart;
+                        zoomEnd = newEnd;
+                        updateTimeRangeFromZoom(newStart, newEnd);
+                        renderTimeline();
+                    }
+                }
+            }
+        };
+    }
+    
+    chartInstances[safeMetricName] = new Chart(ctx, chartConfig);
 }
 
 // Update a metric chart with current time range
@@ -477,10 +517,6 @@ let isDragging = false;
 let dragStartX = 0;
 let dragStartTime = 0; // Track when drag started to distinguish click from drag
 let selectedTime = null; // Track selected time for state display
-
-// Metrics state (used if metrics exist)
-const metricsByName = {};
-let chartInstances = {};
 
 // Format date for datetime-local input
 function formatDateTimeLocal(date) {
