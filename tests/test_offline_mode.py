@@ -92,17 +92,19 @@ class TestOfflineMode(unittest.TestCase):
 
         response = urlopen(req)
         response_data = response.read().decode("utf-8")
-        
+
         # Handle empty responses
         if not response_data or response_data.strip() == "":
             return {}
-        
+
         return json.loads(response_data)
 
     def test_create_session_offline(self):
         """Test that sessions can be created when server is offline"""
         url = "{}/register".format(self.base_daemon_url)
-        result = self._make_request(url, method="POST", data={"parent_pid": os.getpid()})
+        result = self._make_request(
+            url, method="POST", data={"parent_pid": os.getpid()}
+        )
 
         session_id = result.get("session_id")
         self.assertIsNotNone(session_id)
@@ -112,7 +114,9 @@ class TestOfflineMode(unittest.TestCase):
         """Test that state updates work when server is offline"""
         # Create session
         url = "{}/register".format(self.base_daemon_url)
-        result = self._make_request(url, method="POST", data={"parent_pid": os.getpid()})
+        result = self._make_request(
+            url, method="POST", data={"parent_pid": os.getpid()}
+        )
         session_id = result.get("session_id")
 
         # Update state - should succeed locally
@@ -127,7 +131,9 @@ class TestOfflineMode(unittest.TestCase):
         """Test that events can be logged when server is offline"""
         # Create session
         url = "{}/register".format(self.base_daemon_url)
-        result = self._make_request(url, method="POST", data={"parent_pid": os.getpid()})
+        result = self._make_request(
+            url, method="POST", data={"parent_pid": os.getpid()}
+        )
         session_id = result.get("session_id")
 
         # Log event - should succeed locally
@@ -135,7 +141,11 @@ class TestOfflineMode(unittest.TestCase):
         result = self._make_request(
             url,
             method="POST",
-            data={"session_id": session_id, "name": "test_event", "data": {"key": "value"}},
+            data={
+                "session_id": session_id,
+                "name": "test_event",
+                "data": {"key": "value"},
+            },
         )
         self.assertIsNotNone(result)
 
@@ -143,7 +153,9 @@ class TestOfflineMode(unittest.TestCase):
         """Test that metrics can be logged when server is offline"""
         # Create session
         url = "{}/register".format(self.base_daemon_url)
-        result = self._make_request(url, method="POST", data={"parent_pid": os.getpid()})
+        result = self._make_request(
+            url, method="POST", data={"parent_pid": os.getpid()}
+        )
         session_id = result.get("session_id")
 
         # Log metric - should succeed locally
@@ -164,7 +176,9 @@ class TestOfflineMode(unittest.TestCase):
         """Test that session details can be retrieved from daemon when server is offline"""
         # Create session
         url = "{}/register".format(self.base_daemon_url)
-        result = self._make_request(url, method="POST", data={"parent_pid": os.getpid()})
+        result = self._make_request(
+            url, method="POST", data={"parent_pid": os.getpid()}
+        )
         session_id = result.get("session_id")
 
         # Update some state
@@ -186,7 +200,9 @@ class TestOfflineMode(unittest.TestCase):
         """Test that sessions can be ended when server is offline"""
         # Create session
         url = "{}/register".format(self.base_daemon_url)
-        result = self._make_request(url, method="POST", data={"parent_pid": os.getpid()})
+        result = self._make_request(
+            url, method="POST", data={"parent_pid": os.getpid()}
+        )
         session_id = result.get("session_id")
 
         # End session - should succeed locally
@@ -198,10 +214,14 @@ class TestOfflineMode(unittest.TestCase):
         """Test that all sessions can be retrieved from daemon when server is offline"""
         # Create a few sessions
         url = "{}/register".format(self.base_daemon_url)
-        result1 = self._make_request(url, method="POST", data={"parent_pid": os.getpid()})
+        result1 = self._make_request(
+            url, method="POST", data={"parent_pid": os.getpid()}
+        )
         session_id1 = result1.get("session_id")
 
-        result2 = self._make_request(url, method="POST", data={"parent_pid": os.getpid()})
+        result2 = self._make_request(
+            url, method="POST", data={"parent_pid": os.getpid()}
+        )
         session_id2 = result2.get("session_id")
 
         # Get all sessions from daemon
@@ -216,7 +236,9 @@ class TestOfflineMode(unittest.TestCase):
         """Test that heartbeats work when server is offline"""
         # Create session
         url = "{}/register".format(self.base_daemon_url)
-        result = self._make_request(url, method="POST", data={"parent_pid": os.getpid()})
+        result = self._make_request(
+            url, method="POST", data={"parent_pid": os.getpid()}
+        )
         session_id = result.get("session_id")
 
         # Send heartbeat
