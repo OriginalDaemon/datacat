@@ -1301,3 +1301,305 @@ t.Error("Expected Ended row for inactive session")
 }
 }
 
+
+// Tests for matchesFilters function
+func TestMatchesFilters(t *testing.T) {
+session := &client.Session{
+ID:     "test-session",
+Active: true,
+State: map[string]interface{}{
+"product": "test-product",
+"version": "1.0.0",
+"status":  "running",
+},
+Events: []client.Event{
+{Name: "startup"},
+{Name: "click"},
+},
+}
+
+// Test product filter - matching
+if !matchesFilters(session, "test-product", "", "", "", "", "") {
+t.Error("Expected session to match product filter")
+}
+
+// Test product filter - not matching
+if matchesFilters(session, "other-product", "", "", "", "", "") {
+t.Error("Expected session to not match different product")
+}
+
+// Test version filter - matching
+if !matchesFilters(session, "", "1.0.0", "", "", "", "") {
+t.Error("Expected session to match version filter")
+}
+
+// Test version filter - not matching
+if matchesFilters(session, "", "2.0.0", "", "", "", "") {
+t.Error("Expected session to not match different version")
+}
+
+// Test status filter - active
+if !matchesFilters(session, "", "", "active", "", "", "") {
+t.Error("Expected session to match active status filter")
+}
+
+// Test status filter - ended (should not match active session)
+if matchesFilters(session, "", "", "ended", "", "", "") {
+t.Error("Expected active session to not match ended filter")
+}
+
+// Test status filter - crashed
+session.State["status"] = "crashed"
+if !matchesFilters(session, "", "", "crashed", "", "", "") {
+t.Error("Expected session with crashed status to match crashed filter")
+}
+
+// Test status filter - hung
+session.State["status"] = "hung"
+if !matchesFilters(session, "", "", "hung", "", "", "") {
+t.Error("Expected session with hung status to match hung filter")
+}
+
+// Test event name filter - matching
+if !matchesFilters(session, "", "", "", "", "", "startup") {
+t.Error("Expected session to match event name filter")
+}
+
+// Test event name filter - not matching
+if matchesFilters(session, "", "", "", "", "", "shutdown") {
+t.Error("Expected session to not match different event name")
+}
+
+// Test combined filters
+session.State["status"] = "running"
+if !matchesFilters(session, "test-product", "1.0.0", "active", "", "", "") {
+t.Error("Expected session to match combined filters")
+}
+}
+
+// Tests for hasStateValue function
+func TestHasStateValue(t *testing.T) {
+session := &client.Session{
+ID: "test-session",
+State: map[string]interface{}{
+"status": "running",
+"count":  42,
+},
+StateHistory: []client.StateSnapshot{
+{
+State: map[string]interface{}{
+"status": "starting",
+"count":  10,
+},
+},
+{
+State: map[string]interface{}{
+"status": "running",
+"count":  20,
+},
+},
+},
+}
+
+// Test current state - string match
+if !hasStateValue(session, "status", "running") {
+t.Error("Expected to find status=running in current state")
+}
+
+// Test current state - number match
+if !hasStateValue(session, "count", "42") {
+t.Error("Expected to find count=42 in current state")
+}
+
+// Test state history - value in history
+if !hasStateValue(session, "status", "starting") {
+t.Error("Expected to find status=starting in state history")
+}
+
+if !hasStateValue(session, "count", "10") {
+t.Error("Expected to find count=10 in state history")
+}
+
+// Test non-existent key
+if hasStateValue(session, "nonexistent", "value") {
+t.Error("Expected not to find non-existent key")
+}
+
+// Test non-matching value
+if hasStateValue(session, "status", "stopped") {
+t.Error("Expected not to find status=stopped")
+}
+}
+
+// Tests for hasEvent function
+func TestHasEvent(t *testing.T) {
+session := &client.Session{
+ID: "test-session",
+Events: []client.Event{
+{Name: "startup"},
+{Name: "click"},
+{Name: "shutdown"},
+},
+}
+
+// Test event exists
+if !hasEvent(session, "startup") {
+t.Error("Expected to find startup event")
+}
+
+if !hasEvent(session, "click") {
+t.Error("Expected to find click event")
+}
+
+if !hasEvent(session, "shutdown") {
+t.Error("Expected to find shutdown event")
+}
+
+// Test event does not exist
+if hasEvent(session, "nonexistent") {
+t.Error("Expected not to find non-existent event")
+}
+
+// Test empty events
+emptySession := &client.Session{
+ID:     "empty",
+Events: []client.Event{},
+}
+
+if hasEvent(emptySession, "startup") {
+t.Error("Expected not to find event in empty events list")
+}
+}
+
+// Tests for handleServerStatus
+func TestHandleServerStatus(t *testing.T) {
+// Test with server online
+mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+sessions := []*client.Session{}
+json.NewEncoder(w).Encode(sessions)
+}))
+defer mockServer.Close()
+
+datacatClient = client.NewClient(mockServer.URL)
+
+req := httptest.NewRequest("GET", "/api/server-status", nil)
+w := httptest.NewRecorder()
+
+handleServerStatus(w, req)
+
+if w.Code != http.StatusOK {
+t.Errorf("Expected status 200, got %d", w.Code)
+}
+
+body := w.Body.String()
+if !strings.Contains(body, "Server Online") {
+t.Error("Expected response to contain 'Server Online'")
+}
+}
+
+func TestHandleServerStatusOffline(t *testing.T) {
+// Test with server offline (error response)
+mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+w.WriteHeader(http.StatusInternalServerError)
+}))
+defer mockServer.Close()
+
+datacatClient = client.NewClient(mockServer.URL)
+
+req := httptest.NewRequest("GET", "/api/server-status", nil)
+w := httptest.NewRecorder()
+
+handleServerStatus(w, req)
+
+if w.Code != http.StatusOK {
+t.Errorf("Expected status 200, got %d", w.Code)
+}
+
+body := w.Body.String()
+if !strings.Contains(body, "Server Offline") {
+t.Error("Expected response to contain 'Server Offline'")
+}
+}
+
+// Test matchesFilters with state key/value filter
+func TestMatchesFiltersStateKeyValue(t *testing.T) {
+session := &client.Session{
+ID:     "test-session",
+Active: true,
+State: map[string]interface{}{
+"env": "production",
+},
+StateHistory: []client.StateSnapshot{
+{
+State: map[string]interface{}{
+"env": "staging",
+},
+},
+},
+}
+
+// Test state key/value filter - matching current state
+if !matchesFilters(session, "", "", "", "env", "production", "") {
+t.Error("Expected session to match state key/value filter")
+}
+
+// Test state key/value filter - matching state history
+if !matchesFilters(session, "", "", "", "env", "staging", "") {
+t.Error("Expected session to match state key/value from history")
+}
+
+// Test state key/value filter - not matching
+if matchesFilters(session, "", "", "", "env", "development", "") {
+t.Error("Expected session to not match different state value")
+}
+}
+
+// Test extractUniqueProducts with empty state
+func TestExtractUniqueProductsEmptyState(t *testing.T) {
+sessions := []*client.Session{
+{
+ID:    "session1",
+State: map[string]interface{}{},
+},
+{
+ID: "session2",
+State: map[string]interface{}{
+"product": "app1",
+},
+},
+}
+
+products := extractUniqueProducts(sessions)
+
+if len(products) != 1 {
+t.Errorf("Expected 1 product, got %d", len(products))
+}
+if products[0] != "app1" {
+t.Errorf("Expected product to be app1, got %s", products[0])
+}
+}
+
+// Test extractUniqueVersions with empty state
+func TestExtractUniqueVersionsEmptyState(t *testing.T) {
+sessions := []*client.Session{
+{
+ID:    "session1",
+State: map[string]interface{}{},
+},
+{
+ID: "session2",
+State: map[string]interface{}{
+"version": "1.0.0",
+},
+},
+}
+
+versions := extractUniqueVersions(sessions, "")
+
+if len(versions) != 1 {
+t.Errorf("Expected 1 version, got %d", len(versions))
+}
+if versions[0] != "1.0.0" {
+t.Errorf("Expected version to be 1.0.0, got %s", versions[0])
+}
+}

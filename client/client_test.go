@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -723,3 +724,5 @@ func TestLogMetricWithTags(t *testing.T) {
 		t.Errorf("LogMetric failed: %v", err)
 	}
 }
+
+// Tests for GetAllSessions
