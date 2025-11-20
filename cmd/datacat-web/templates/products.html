@@ -1,0 +1,163 @@
+{{define "content"}}
+<div class="card">
+    <h2>Products and Versions</h2>
+    <p style="margin-bottom: 20px; color: var(--text-secondary);">
+        Select a product or version to view and filter sessions.
+    </p>
+
+    {{if .ServerOffline}}
+        <p style="color: var(--error-color); padding: 20px; text-align: center;">
+            Server is offline. Please start the datacat server.
+        </p>
+    {{else if eq (len .Products) 0}}
+        <p style="color: var(--text-secondary); padding: 20px; text-align: center;">
+            No sessions found. Start logging data to see products here.
+        </p>
+    {{else}}
+        <div class="products-grid">
+            {{range .Products}}
+            {{$productName := .Name}}
+            <div class="product-card">
+                <h3 class="product-name">{{.Name}}</h3>
+                <div class="versions-list">
+                    {{range .Versions}}
+                    <div class="version-item">
+                        <a href="/sessions?product={{$productName}}&version={{.Version}}" class="version-link">
+                            <span class="version-number">v{{.Version}}</span>
+                            <span class="session-count">{{.SessionCount}} sessions</span>
+                        </a>
+                        <div class="version-stats">
+                            {{if gt .ActiveCount 0}}<span class="stat-badge stat-active">{{.ActiveCount}} active</span>{{end}}
+                            {{if gt .EndedCount 0}}<span class="stat-badge stat-ended">{{.EndedCount}} ended</span>{{end}}
+                            {{if gt .CrashedCount 0}}<span class="stat-badge stat-crashed">{{.CrashedCount}} crashed</span>{{end}}
+                            {{if gt .HungCount 0}}<span class="stat-badge stat-hung">{{.HungCount}} hung</span>{{end}}
+                        </div>
+                    </div>
+                    {{end}}
+                    <div class="version-item">
+                        <a href="/sessions?product={{$productName}}" class="version-link version-all">
+                            <span class="version-number">All Versions</span>
+                            <span class="session-count">View all →</span>
+                        </a>
+                    </div>
+                </div>
+            </div>
+            {{end}}
+        </div>
+        
+        <div style="margin-top: 30px; text-align: center;">
+            <a href="/sessions" class="btn">View All Sessions</a>
+        </div>
+    {{end}}
+</div>
+
+<style>
+.products-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 20px;
+    margin-top: 20px;
+}
+
+.product-card {
+    background: var(--bg-secondary);
+    border-radius: 8px;
+    padding: 20px;
+    border: 1px solid var(--border-color);
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.product-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+}
+
+.product-name {
+    font-size: 20px;
+    margin-bottom: 15px;
+    color: var(--accent-primary);
+    border-bottom: 2px solid var(--border-color);
+    padding-bottom: 10px;
+}
+
+.versions-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.version-item {
+    padding: 10px;
+    background: var(--bg-primary);
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+    transition: background 0.2s;
+}
+
+.version-item:hover {
+    background: var(--bg-hover);
+}
+
+.version-link {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    text-decoration: none;
+    color: var(--text-primary);
+}
+
+.version-link.version-all {
+    font-weight: 600;
+    color: var(--accent-primary);
+}
+
+.version-number {
+    font-weight: 600;
+    font-size: 16px;
+}
+
+.session-count {
+    color: var(--text-secondary);
+    font-size: 14px;
+}
+
+.version-stats {
+    margin-top: 8px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.stat-badge {
+    display: inline-block;
+    padding: 3px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.stat-active {
+    background: rgba(72, 187, 120, 0.2);
+    color: var(--success-color);
+    border: 1px solid var(--success-color);
+}
+
+.stat-ended {
+    background: rgba(160, 174, 192, 0.2);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-color);
+}
+
+.stat-crashed {
+    background: rgba(245, 101, 101, 0.2);
+    color: var(--error-color);
+    border: 1px solid var(--error-color);
+}
+
+.stat-hung {
+    background: rgba(237, 137, 54, 0.2);
+    color: var(--warning-color);
+    border: 1px solid var(--warning-color);
+}
+</style>
+{{end}}
