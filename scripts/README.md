@@ -119,6 +119,28 @@ Custom output directory:
 
 ## Running Examples
 
+### Run the Interactive Demo GUI
+
+```powershell
+.\scripts\run-demo-gui.ps1
+```
+
+This launches the modern web-based demo GUI, which provides an interactive interface for exploring all datacat features:
+- 📝 State management with JSON editing
+- 📢 Event logging
+- 📈 Metrics tracking
+- ⚠️ Error logging via custom handler
+- 💥 Exception generation with full stack traces
+
+The script will:
+- **Automatically use the virtual environment** (`.venv`) if available
+- Check prerequisites (Python, Gradio, datacat client)
+- Offer to install Gradio if missing (into the venv)
+- Check if the server is running
+- Launch the demo at http://127.0.0.1:7860
+
+**Note:** The demo requires the datacat server to be running. If you haven't set up the virtual environment yet, run `.\scripts\setup.ps1` first. See [examples/demo_gui/](../examples/demo_gui/) for more details.
+
 ### Run an Example Application
 
 ```powershell
@@ -270,6 +292,7 @@ Alternatively, you can manually reinstall dependencies in the virtual environmen
 | `run-server.ps1` | Build and start REST API server |
 | `run-web.ps1` | Build and start web UI dashboard |
 | `run-both.ps1` | Build and start both services in parallel |
+| `run-demo-gui.ps1` | Launch the interactive demo GUI |
 | `run-example.ps1` | Run example applications |
 | `test-all.ps1` | Run all tests (Go + Python) |
 | `test-python.ps1` | Run Python integration tests |

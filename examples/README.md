@@ -2,6 +2,43 @@
 
 This directory contains example applications demonstrating various features of datacat.
 
+## 🎨 Interactive Demo GUI
+
+### [demo_gui/](demo_gui/) - Modern Web-Based Demo
+
+**A comprehensive interactive demo with a modern web UI!**
+
+Features a beautiful web interface (powered by Gradio) that demonstrates all datacat features:
+- 🌙 Dark mode by default using Gradio's native theme
+- 📝 State management with JSON editor
+- 📢 Event logging
+- 📈 Metrics tracking
+- ⚠️ Custom logging handler for error messages
+- 💥 Exception generation and handling with full stack traces
+
+**Installation:**
+```bash
+cd examples/demo_gui
+pip install -r requirements.txt
+pip install -e ../../python
+```
+
+**Run:**
+```bash
+# Option 1: Direct
+cd examples/demo_gui
+python demo_gui.py
+
+# Option 2: Using PowerShell script (Windows)
+.\scripts\run-demo-gui.ps1
+```
+
+Opens automatically in your browser at http://127.0.0.1:7860
+
+📖 **[Full Documentation](demo_gui/README.md)** | 🚀 **[Quick Start](demo_gui/QUICKSTART.md)**
+
+---
+
 ## Python Examples
 
 All Python examples assume the datacat-server is running on `http://localhost:9090`.
@@ -36,6 +73,19 @@ Demonstrates exception logging with full traceback capture and custom context.
 
 ```bash
 python examples/exception_logging_example.py
+```
+
+### [logging_handler_example.py](logging_handler_example.py)
+
+Shows how to integrate datacat with Python's standard `logging` module using a custom handler. Demonstrates:
+- Custom `DatacatLoggingHandler` implementation
+- Exception logging with stack traces
+- Log levels (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+- Custom log fields
+- Integration with existing logging infrastructure
+
+```bash
+python examples/logging_handler_example.py
 ```
 
 ### [testing_example.py](testing_example.py)
