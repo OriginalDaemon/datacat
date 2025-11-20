@@ -59,7 +59,7 @@ curl -X POST http://localhost:9090/api/sessions/{id}/state \
 # Get session
 curl http://localhost:9090/api/sessions/{id}
 
-# Get all sessions (Grafana)
+# Get all sessions
 curl http://localhost:9090/api/data/sessions
 ```
 

@@ -473,8 +473,6 @@ func main() {
 	http.HandleFunc("/api/sessions", handleSessions)
 	http.HandleFunc("/api/sessions/", handleSessionOperations)
 	http.HandleFunc("/api/data/sessions", handleGetAllSessions)
-	// Legacy endpoint for backward compatibility
-	http.HandleFunc("/api/grafana/sessions", handleGetAllSessions)
 
 	port := ":" + config.ServerPort
 	log.Printf("Starting datacat server on %s", port)

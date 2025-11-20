@@ -227,7 +227,7 @@ The REST API provides the following endpoints:
 - `POST /api/sessions/{id}/events` - Log event
 - `POST /api/sessions/{id}/metrics` - Log metric
 - `POST /api/sessions/{id}/end` - End session
-- `GET /api/data/sessions` - Export all sessions (Grafana)
+- `GET /api/data/sessions` - Export all sessions
 
 ## ✨ Key Features
 
@@ -278,6 +278,101 @@ session.start_heartbeat_monitor(timeout=60)
 - **[Quick Start Guide](QUICKSTART.md)** - Get up and running quickly
 - **[Architecture](ARCHITECTURE.md)** - System design and components
 - **[Branch Protection Rules](.github/BRANCH_PROTECTION.md)** - PR requirements
+
+## ❓ FAQ
+
+### Where is my data stored?
+
+All session data is stored in a **BadgerDB database** on the server. The location is configurable in `config.json`:
+
+- **Default location:** `./datacat_data` (relative to where the server binary is executed)
+- **Configurable via:** `data_path` setting in `config.json`
+
+**Important - Data Location Depends on How You Run the Server:**
+
+- **When using PowerShell scripts** (`.\scripts\run-server.ps1` or `.\scripts\run-both.ps1`):
+  - Data is stored in the **repository root directory**: `./datacat_data`
+  - Config file is in the **repository root**: `./config.json`
+  - (Scripts explicitly set the working directory to ensure consistent location)
+
+- **When running from cmd/datacat-server** (`cd cmd/datacat-server && go run main.go`):
+  - Data is stored in **cmd/datacat-server/datacat_data**
+  - Config file is in **cmd/datacat-server/config.json**
+
+- **When running the binary directly** without the scripts:
+  - Data is stored **relative to your current working directory** when you run the binary
+  - Check the server startup logs to see the exact path being used
+
+**To find your data directory:**
+- Check the server startup logs - they show the data path:
+  ```
+  Configuration loaded: Data path=./datacat_data, Retention=365 days, Port=9090
+  ```
+- Look in the directory where you ran the server from
+- Search your system for `datacat_data` directory
+
+The data directory contains BadgerDB files including MANIFEST, LOCK, .vlog, and .mem files.
+
+### How do I delete all data from the server?
+
+To completely reset the server and delete all session data:
+
+**Step 1: Stop the server** 
+
+Stop the running server (Ctrl+C in the terminal/PowerShell window)
+
+**Step 2: Locate and delete the data**
+
+**If you used PowerShell scripts** (`.\scripts\run-server.ps1` or `.\scripts\run-both.ps1`):
+```powershell
+# Data is in repository root
+Remove-Item -Recurse -Force ./datacat_data
+Remove-Item -Force ./config.json  # Optional - removes custom config
+```
+
+**If you ran manually from cmd/datacat-server**:
+```bash
+cd cmd/datacat-server
+rm -rf ./datacat_data
+rm config.json  # Optional
+```
+
+**If you're unsure where the data is:**
+1. Check the server logs when it started - they show the data path
+2. Search for `datacat_data` directory in your repository
+3. Use the clean script: `.\scripts\clean.ps1` (cleans repository directory)
+
+**Step 3: Restart the server**
+
+The server will create a fresh database on startup.
+
+**Important:** Always stop the server before deleting the data directory to prevent corruption.
+
+See [cmd/datacat-server/README.md](cmd/datacat-server/README.md#data-management) for more details on data management.
+
+### How long is data retained?
+
+By default, session data is retained for **365 days** (1 year). You can configure this in `config.json`:
+
+```json
+{
+  "retention_days": 365,
+  "cleanup_interval_hours": 24
+}
+```
+
+The cleanup routine runs automatically every 24 hours by default.
+
+### Can I backup my data?
+
+Yes! To backup your data:
+
+```bash
+# Stop the server first
+cp -r ./datacat_data ./datacat_data_backup
+```
+
+To restore, stop the server and copy the backup back to the original location.
 
 ## Contributing
 

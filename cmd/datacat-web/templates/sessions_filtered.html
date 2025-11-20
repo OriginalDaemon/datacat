@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sessions - Datacat</title>
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <style>
         :root {
             --bg-primary: #1a202c;
@@ -215,6 +217,77 @@
         .breadcrumb a:hover {
             text-decoration: underline;
         }
+
+        .collapsible-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .collapsible-header:hover {
+            opacity: 0.8;
+        }
+
+        .collapse-icon {
+            font-size: 20px;
+            transition: transform 0.3s;
+        }
+
+        .collapse-icon.collapsed {
+            transform: rotate(-90deg);
+        }
+
+        .collapsible-content {
+            max-height: 2000px;
+            overflow: hidden;
+            transition: max-height 0.3s ease-out;
+        }
+
+        .collapsible-content.collapsed {
+            max-height: 0;
+        }
+
+        .metric-card {
+            background: var(--bg-card);
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 15px;
+            border: 1px solid var(--border-color);
+        }
+
+        .chart-container {
+            position: relative;
+            height: 300px;
+            margin: 15px 0;
+        }
+
+        .stats-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 10px;
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid var(--border-color);
+        }
+
+        .stat-item {
+            text-align: center;
+        }
+
+        .stat-label {
+            font-size: 11px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            margin-bottom: 5px;
+        }
+
+        .stat-value {
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--accent-primary);
+        }
     </style>
 </head>
 <body>
@@ -229,6 +302,29 @@
             <h3 style="margin-top: 0; margin-bottom: 15px; color: var(--accent-primary);">Filter Sessions</h3>
             <form action="/sessions" method="get" id="filterForm">
                 <div class="filter-grid">
+                    <div class="form-group">
+                        <label for="time_range">Time Range</label>
+                        <select name="time_range" id="time_range" onchange="toggleCustomTimeRange()">
+                            <option value="2w" {{if eq $.TimeRange "2w"}}selected{{end}}>Last 2 Weeks (Default)</option>
+                            <option value="1d" {{if eq $.TimeRange "1d"}}selected{{end}}>Last 24 Hours</option>
+                            <option value="1w" {{if eq $.TimeRange "1w"}}selected{{end}}>Last Week</option>
+                            <option value="1m" {{if eq $.TimeRange "1m"}}selected{{end}}>Last Month</option>
+                            <option value="3m" {{if eq $.TimeRange "3m"}}selected{{end}}>Last 3 Months</option>
+                            <option value="all" {{if eq $.TimeRange "all"}}selected{{end}}>All Time</option>
+                            <option value="custom" {{if eq $.TimeRange "custom"}}selected{{end}}>Custom Range</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group" id="custom_start_group" style="display: none;">
+                        <label for="start_time">Start Time</label>
+                        <input type="datetime-local" name="start_time" id="start_time" value="{{.StartTime}}">
+                    </div>
+
+                    <div class="form-group" id="custom_end_group" style="display: none;">
+                        <label for="end_time">End Time</label>
+                        <input type="datetime-local" name="end_time" id="end_time" value="{{.EndTime}}">
+                    </div>
+
                     <div class="form-group">
                         <label for="product">Product</label>
                         <select name="product" id="product" onchange="document.getElementById('filterForm').submit()">
@@ -293,13 +389,21 @@
                 {{if .Product}} • Product: <strong>{{.Product}}</strong>{{end}}
                 {{if .Version}} • Version: <strong>{{.Version}}</strong>{{end}}
                 {{if .StatusFilter}} • Status: <strong>{{.StatusFilter}}</strong>{{end}}
+                {{if .TimeRangeDisplay}} • Time: <strong>{{.TimeRangeDisplay}}</strong>{{end}}
             </div>
             <div>
                 Page {{.CurrentPage}} of {{.TotalPages}}
             </div>
         </div>
 
-        <table>
+        <!-- Collapsible Sessions List -->
+        <div class="filter-section">
+            <div class="collapsible-header" onclick="toggleSection('sessions-list')">
+                <h3 style="margin: 0; color: var(--accent-primary);">Sessions List</h3>
+                <span class="collapse-icon" id="sessions-list-icon">▼</span>
+            </div>
+            <div class="collapsible-content" id="sessions-list-content">
+                <table>
             <thead>
                 <tr>
                     <th>Session ID</th>
@@ -349,16 +453,124 @@
         {{if gt .TotalPages 1}}
         <div class="pagination">
             {{if .HasPrev}}
-                <a href="/sessions?page={{sub .CurrentPage 1}}&product={{.Product}}&version={{.Version}}&status={{.StatusFilter}}&state_key={{.StateKey}}&state_value={{.StateValue}}&event_name={{.EventName}}&sort={{.SortBy}}&order={{.SortOrder}}">← Previous</a>
+                <a href="/sessions?page={{sub .CurrentPage 1}}&time_range={{.TimeRange}}&start_time={{.StartTime}}&end_time={{.EndTime}}&product={{.Product}}&version={{.Version}}&status={{.StatusFilter}}&state_key={{.StateKey}}&state_value={{.StateValue}}&event_name={{.EventName}}&sort={{.SortBy}}&order={{.SortOrder}}">← Previous</a>
             {{end}}
             
             <span>Page {{.CurrentPage}} of {{.TotalPages}}</span>
             
             {{if .HasNext}}
-                <a href="/sessions?page={{add .CurrentPage 1}}&product={{.Product}}&version={{.Version}}&status={{.StatusFilter}}&state_key={{.StateKey}}&state_value={{.StateValue}}&event_name={{.EventName}}&sort={{.SortBy}}&order={{.SortOrder}}">Next →</a>
+                <a href="/sessions?page={{add .CurrentPage 1}}&time_range={{.TimeRange}}&start_time={{.StartTime}}&end_time={{.EndTime}}&product={{.Product}}&version={{.Version}}&status={{.StatusFilter}}&state_key={{.StateKey}}&state_value={{.StateValue}}&event_name={{.EventName}}&sort={{.SortBy}}&order={{.SortOrder}}">Next →</a>
             {{end}}
         </div>
         {{end}}
+            </div>
+        </div>
+
+        <!-- Collapsible Metrics Section -->
+        <div class="filter-section" style="margin-top: 30px;">
+            <div class="collapsible-header" onclick="toggleSection('metrics-list')">
+                <h3 style="margin: 0; color: var(--accent-primary);">Metrics Timeseries</h3>
+                <span class="collapse-icon" id="metrics-list-icon">▼</span>
+            </div>
+            <div class="collapsible-content" id="metrics-list-content">
+                <div id="metrics-container" hx-get="/api/sessions-metrics?{{.QueryString}}" hx-trigger="load" hx-swap="innerHTML">
+                    <p style="text-align: center; padding: 20px; color: var(--text-secondary);">Loading metrics...</p>
+                </div>
+            </div>
+        </div>
     </div>
+
+    <script>
+        // Toggle custom time range fields
+        function toggleCustomTimeRange() {
+            const timeRange = document.getElementById('time_range').value;
+            const customStartGroup = document.getElementById('custom_start_group');
+            const customEndGroup = document.getElementById('custom_end_group');
+            
+            if (timeRange === 'custom') {
+                customStartGroup.style.display = 'flex';
+                customEndGroup.style.display = 'flex';
+            } else {
+                customStartGroup.style.display = 'none';
+                customEndGroup.style.display = 'none';
+            }
+        }
+
+        // Initialize on page load
+        toggleCustomTimeRange();
+
+        // Toggle collapsible sections
+        function toggleSection(sectionId) {
+            const content = document.getElementById(sectionId + '-content');
+            const icon = document.getElementById(sectionId + '-icon');
+            
+            if (content.classList.contains('collapsed')) {
+                content.classList.remove('collapsed');
+                icon.classList.remove('collapsed');
+            } else {
+                content.classList.add('collapsed');
+                icon.classList.add('collapsed');
+            }
+        }
+
+        // Toggle individual metric card
+        function toggleMetric(metricName) {
+            const content = document.getElementById('metric-' + metricName + '-content');
+            const icon = document.getElementById('metric-' + metricName + '-icon');
+            
+            if (content.classList.contains('collapsed')) {
+                content.classList.remove('collapsed');
+                icon.classList.remove('collapsed');
+                
+                // Save to localStorage
+                const expanded = getExpandedMetrics();
+                if (!expanded.includes(metricName)) {
+                    expanded.push(metricName);
+                    localStorage.setItem('expandedMetrics', JSON.stringify(expanded));
+                }
+                
+                // Trigger HTMX to load the metric data
+                htmx.trigger('#metric-' + metricName + '-content', 'loadMetric');
+            } else {
+                content.classList.add('collapsed');
+                icon.classList.add('collapsed');
+                
+                // Remove from localStorage
+                const expanded = getExpandedMetrics();
+                const index = expanded.indexOf(metricName);
+                if (index > -1) {
+                    expanded.splice(index, 1);
+                    localStorage.setItem('expandedMetrics', JSON.stringify(expanded));
+                }
+            }
+        }
+
+        // Get list of expanded metrics from localStorage
+        function getExpandedMetrics() {
+            const stored = localStorage.getItem('expandedMetrics');
+            return stored ? JSON.parse(stored) : [];
+        }
+
+        // Auto-expand metrics that were previously expanded
+        function autoExpandMetrics() {
+            const expanded = getExpandedMetrics();
+            expanded.forEach(metricName => {
+                const icon = document.getElementById('metric-' + metricName + '-icon');
+                const content = document.getElementById('metric-' + metricName + '-content');
+                if (icon && content) {
+                    content.classList.remove('collapsed');
+                    icon.classList.remove('collapsed');
+                    htmx.trigger('#metric-' + metricName + '-content', 'loadMetric');
+                }
+            });
+        }
+
+        // Listen for htmx afterSwap to auto-expand metrics
+        document.body.addEventListener('htmx:afterSwap', function(event) {
+            if (event.detail.target.id === 'metrics-container') {
+                setTimeout(autoExpandMetrics, 100);
+            }
+        });
+    </script>
 </body>
 </html>

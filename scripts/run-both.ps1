@@ -31,18 +31,20 @@ if (-not (Test-Path $webBin)) {
 
 # Start server in background job
 $serverJob = Start-Job -ScriptBlock {
-    param($binPath)
+    param($binPath, $workDir)
+    Set-Location $workDir
     & $binPath
-} -ArgumentList $serverBin
+} -ArgumentList $serverBin, $repoRoot
 
 # Wait a moment for server to start
 Start-Sleep -Seconds 2
 
 # Start web UI in background job
 $webJob = Start-Job -ScriptBlock {
-    param($binPath)
+    param($binPath, $workDir)
+    Set-Location $workDir
     & $binPath
-} -ArgumentList $webBin
+} -ArgumentList $webBin, $repoRoot
 
 Write-Host "Both services started!" -ForegroundColor Green
 Write-Host "Server job ID: $($serverJob.Id)" -ForegroundColor Gray
