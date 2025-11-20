@@ -214,6 +214,13 @@ func handleSessionDetail(w http.ResponseWriter, r *http.Request) {
 
 	funcMap := template.FuncMap{
 		"replace": strings.ReplaceAll,
+		"toJSONSafe": func(v interface{}) template.JS {
+			b, err := json.Marshal(v)
+			if err != nil {
+				return "{}"
+			}
+			return template.JS(b)
+		},
 	}
 	tmpl, err := template.New("base.html").Funcs(funcMap).ParseFS(content, "templates/base.html", "templates/session.html")
 	if err != nil {
