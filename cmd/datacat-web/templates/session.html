@@ -90,20 +90,20 @@
     </div>
     
     <!-- Timeline Container -->
-    <div id="timeline-wrapper" style="position: relative; margin: 30px 0; min-height: 150px; user-select: none;">
-        <!-- Timeline line -->
-        <div id="timeline-line" style="position: absolute; top: 40px; left: 0; right: 0; height: 2px; background: var(--border-color);"></div>
+    <div id="timeline-wrapper" style="position: relative; margin: 30px 0; min-height: 80px; user-select: none;">
+        <!-- Timeline points container (height will be set dynamically) -->
+        <div id="timeline-container" style="position: relative; min-height: 80px;"></div>
+        
+        <!-- Timeline line (positioned at bottom of container) -->
+        <div id="timeline-line" style="position: absolute; bottom: 30px; left: 0; right: 0; height: 2px; background: var(--border-color);"></div>
         
         <!-- Selection overlay -->
         <div id="selection-overlay" style="position: absolute; top: 0; bottom: 0; background: rgba(102, 126, 234, 0.2); border: 1px solid #667eea; display: none;"></div>
         
         <!-- Time marker (vertical bar) -->
         <div id="time-marker" style="position: absolute; top: 0; bottom: 0; width: 2px; background: #f56565; display: none; z-index: 5; pointer-events: none;">
-            <div style="position: absolute; top: -20px; left: 50%; transform: translateX(-50%); background: #f56565; color: white; padding: 2px 6px; border-radius: 3px; font-size: 11px; white-space: nowrap;"></div>
+            <div style="position: absolute; bottom: 25px; left: 50%; transform: translateX(-50%); background: #f56565; color: white; padding: 2px 6px; border-radius: 3px; font-size: 11px; white-space: nowrap;"></div>
         </div>
-        
-        <!-- Timeline points container -->
-        <div id="timeline-container" style="position: relative; height: 150px;"></div>
     </div>
     
     <!-- Details display area -->
@@ -658,7 +658,7 @@ const renderTimeline = () => {
     }
     
     const containerWidth = container.offsetWidth || 1000;
-    const dotWidth = 20; // Width of each dot in pixels
+    const dotWidth = 15; // Reduced width for tighter spacing
     const bucketSize = (totalDuration / containerWidth) * dotWidth; // Time span per bucket
     
     // Group items into buckets
@@ -673,28 +673,45 @@ const renderTimeline = () => {
         buckets[bucketIndex].push(item);
     });
     
+    // Find maximum stack height
+    let maxStackHeight = 0;
+    Object.values(buckets).forEach(items => {
+        if (items.length > maxStackHeight) {
+            maxStackHeight = items.length;
+        }
+    });
+    
+    // Calculate dynamic container height
+    const pointSpacing = 18; // Reduced spacing for compactness with slight overlap
+    const timelinePadding = 50; // Space below for timeline line and labels
+    const topPadding = 10; // Small padding at top
+    const dynamicHeight = topPadding + (maxStackHeight * pointSpacing) + timelinePadding;
+    container.style.height = dynamicHeight + 'px';
+    
     // Render buckets
     Object.keys(buckets).forEach(bucketIndex => {
         const items = buckets[bucketIndex];
-        // Sort items in bucket by timestamp (oldest first = top)
-        items.sort((a, b) => a.timestamp - b.timestamp);
+        // Sort items in bucket by timestamp (newest first = bottom, oldest = top)
+        items.sort((a, b) => b.timestamp - a.timestamp);
         
         const bucketTime = timeRange.start.getTime() + (bucketIndex * bucketSize);
         const position = ((bucketTime - timeRange.start) / totalDuration) * 100;
         
-        items.forEach((item, verticalIndex) => {
+        items.forEach((item, stackIndex) => {
             const point = document.createElement('div');
             point.style.position = 'absolute';
             point.style.left = position + '%';
-            point.style.top = (30 + verticalIndex * 25) + 'px';
-            point.style.width = '16px';
-            point.style.height = '16px';
+            // Position from bottom up: timeline is at bottom: 30px, stack upward with reduced spacing
+            const bottomOffset = timelinePadding - 8; // Align with timeline (30px from bottom minus half dot height)
+            point.style.bottom = (bottomOffset + stackIndex * pointSpacing) + 'px';
+            point.style.width = '14px';
+            point.style.height = '14px';
             point.style.borderRadius = '50%';
             point.style.border = '2px solid var(--bg-card)';
             point.style.boxShadow = '0 2px 4px rgba(0,0,0,0.3)';
             point.style.cursor = 'pointer';
             point.style.transition = 'transform 0.2s, box-shadow 0.2s';
-            point.style.zIndex = '10';
+            point.style.zIndex = 10 + stackIndex; // Higher z-index for items on top
             
             // Color based on type
             if (item.type === 'state') {
@@ -708,11 +725,13 @@ const renderTimeline = () => {
             point.addEventListener('mouseenter', () => {
                 point.style.transform = 'scale(1.3)';
                 point.style.boxShadow = '0 4px 8px rgba(0,0,0,0.4)';
+                point.style.zIndex = 100; // Bring to front on hover
             });
             
             point.addEventListener('mouseleave', () => {
                 point.style.transform = 'scale(1)';
                 point.style.boxShadow = '0 2px 4px rgba(0,0,0,0.3)';
+                point.style.zIndex = 10 + stackIndex;
             });
             
             point.addEventListener('click', (e) => {
@@ -720,12 +739,12 @@ const renderTimeline = () => {
                 showTimelineDetails(item);
             });
             
-            // Time label (only for first item in bucket)
-            if (verticalIndex === 0) {
+            // Time label (only for bottom item in bucket)
+            if (stackIndex === 0) {
                 const label = document.createElement('div');
                 label.style.position = 'absolute';
                 label.style.left = position + '%';
-                label.style.top = '60px';
+                label.style.bottom = '8px'; // Just below the timeline
                 label.style.transform = 'translateX(-50%)';
                 label.style.fontSize = '11px';
                 label.style.color = 'var(--text-secondary)';
