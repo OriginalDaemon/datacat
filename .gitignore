@@ -70,3 +70,5 @@ datacat-web-test
 # Screenshots
 screenshots/
 
+# Temporary files
+tmp/
