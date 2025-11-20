@@ -227,7 +227,7 @@ The REST API provides the following endpoints:
 - `POST /api/sessions/{id}/events` - Log event
 - `POST /api/sessions/{id}/metrics` - Log metric
 - `POST /api/sessions/{id}/end` - End session
-- `GET /api/data/sessions` - Export all sessions (Grafana)
+- `GET /api/data/sessions` - Export all sessions
 
 ## ✨ Key Features
 

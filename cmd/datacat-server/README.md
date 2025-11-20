@@ -10,7 +10,7 @@ The main REST API server for datacat. This service provides endpoints for sessio
 - **BadgerDB persistence** (data survives restarts)
 - **Configurable data retention** (default: 1 year)
 - **Automatic cleanup** of old sessions
-- Grafana JSON export endpoint
+- JSON export endpoint for external tools
 
 ## Configuration
 
@@ -66,7 +66,7 @@ go build -o datacat-server
 - `POST /api/sessions/{id}/events` - Log event
 - `POST /api/sessions/{id}/metrics` - Log metric
 - `POST /api/sessions/{id}/end` - End session
-- `GET /api/data/sessions` - Export all sessions for Grafana
+- `GET /api/data/sessions` - Export all sessions
 
 ## Data Management
 
