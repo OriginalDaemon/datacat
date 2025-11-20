@@ -9,44 +9,13 @@
         <p style="color: var(--error-color); padding: 20px; text-align: center;">
             Server is offline. Please start the datacat server.
         </p>
-    {{else if eq (len .Products) 0}}
-        <p style="color: var(--text-secondary); padding: 20px; text-align: center;">
-            No sessions found. Start logging data to see products here.
-        </p>
     {{else}}
-        <div class="products-grid">
-            {{range .Products}}
-            {{$productName := .Name}}
-            <div class="product-card">
-                <h3 class="product-name">{{.Name}}</h3>
-                <div class="versions-list">
-                    {{range .Versions}}
-                    <div class="version-item">
-                        <a href="/sessions?product={{$productName}}&version={{.Version}}" class="version-link">
-                            <span class="version-number">v{{.Version}}</span>
-                            <span class="session-count">{{.SessionCount}} sessions</span>
-                        </a>
-                        <div class="version-stats">
-                            {{if gt .ActiveCount 0}}<span class="stat-badge stat-active">{{.ActiveCount}} active</span>{{end}}
-                            {{if gt .EndedCount 0}}<span class="stat-badge stat-ended">{{.EndedCount}} ended</span>{{end}}
-                            {{if gt .CrashedCount 0}}<span class="stat-badge stat-crashed">{{.CrashedCount}} crashed</span>{{end}}
-                            {{if gt .HungCount 0}}<span class="stat-badge stat-hung">{{.HungCount}} hung</span>{{end}}
-                        </div>
-                    </div>
-                    {{end}}
-                    <div class="version-item">
-                        <a href="/sessions?product={{$productName}}" class="version-link version-all">
-                            <span class="version-number">All Versions</span>
-                            <span class="session-count">View all →</span>
-                        </a>
-                    </div>
-                </div>
+        <!-- Live-updating products grid using HTMX -->
+        <div id="products-grid-container" hx-get="/api/products-grid" hx-trigger="load" hx-swap="outerHTML">
+            <div style="text-align: center; padding: 20px;">
+                <div class="spinner"></div>
+                <p style="color: var(--text-secondary); margin-top: 10px;">Loading products...</p>
             </div>
-            {{end}}
-        </div>
-        
-        <div style="margin-top: 30px; text-align: center;">
-            <a href="/sessions" class="btn">View All Sessions</a>
         </div>
     {{end}}
 </div>

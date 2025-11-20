@@ -34,7 +34,49 @@ Interactive web dashboard for browsing datacat sessions and visualizing metrics.
 - Query sessions by array contains (e.g., find sessions with specific windows open)
 - **Intelligent event stacking** - Events at similar times stack vertically
 - **Adaptive bucketing** - Timeline groups items into time tranches based on zoom level
+- **Live updates** - Pages automatically refresh when new data is available
 - Built with htmx for reactive UI without complex frameworks
+
+## Live Updates
+
+The web UI includes automatic live updates for monitoring active sessions in real-time without manual page refreshes.
+
+### What Updates Automatically
+
+**Dashboard (`/`)**
+- Session counts per product/version update every 10-30 seconds
+- Active/ended/crashed/hung session badges
+- New products appear automatically
+
+**Session Detail Page (`/session/{id}`)**
+- Session info (timestamps, status) updates every 10 seconds
+- Events table refreshes every 10 seconds for active sessions
+- Metrics table updates every 10 seconds for active sessions
+- Polling stops automatically when session ends
+
+### Smart Polling
+
+The UI adjusts polling frequency based on session state:
+- **Active sessions**: Poll every 5-10 seconds for fresh data
+- **Ended sessions**: Stop polling to reduce server load
+- **Server offline**: Poll every 10 seconds with retry logic
+
+### Example
+
+```bash
+# Create a session
+SESSION_ID=$(curl -s -X POST http://localhost:9090/api/sessions \
+  -H "Content-Type: application/json" \
+  -d '{"product": "MyApp", "version": "1.0.0"}' | jq -r '.session_id')
+
+# Add events/metrics while viewing the session page
+curl -X POST "http://localhost:9090/api/sessions/$SESSION_ID/events" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "test_event", "data": {"message": "Hello"}}'
+
+# Visit http://localhost:8080/session/$SESSION_ID
+# New events appear automatically within 10 seconds
+```
 
 ## Running
 

@@ -1015,972 +1015,971 @@ func TestStateContainsAllNonMapFilterValue(t *testing.T) {
 }
 
 func TestHandleStatsCards(t *testing.T) {
-// Setup mock client with test data
-originalClient := datacatClient
-defer func() { datacatClient = originalClient }()
+	// Setup mock client with test data
+	originalClient := datacatClient
+	defer func() { datacatClient = originalClient }()
 
-// Create a test server to act as the datacat API
-testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-sessions := []*client.Session{
-{
-ID:        "test-session-1",
-Active:    true,
-CreatedAt: time.Now(),
-UpdatedAt: time.Now(),
-Events:    []client.Event{{Name: "test"}},
-Metrics:   []client.Metric{{Name: "test", Value: 1.0}},
-},
-{
-ID:        "test-session-2",
-Active:    false,
-CreatedAt: time.Now(),
-UpdatedAt: time.Now(),
-Events:    []client.Event{},
-Metrics:   []client.Metric{{Name: "test", Value: 2.0}},
-},
-}
-json.NewEncoder(w).Encode(sessions)
-}))
-defer testServer.Close()
+	// Create a test server to act as the datacat API
+	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sessions := []*client.Session{
+			{
+				ID:        "test-session-1",
+				Active:    true,
+				CreatedAt: time.Now(),
+				UpdatedAt: time.Now(),
+				Events:    []client.Event{{Name: "test"}},
+				Metrics:   []client.Metric{{Name: "test", Value: 1.0}},
+			},
+			{
+				ID:        "test-session-2",
+				Active:    false,
+				CreatedAt: time.Now(),
+				UpdatedAt: time.Now(),
+				Events:    []client.Event{},
+				Metrics:   []client.Metric{{Name: "test", Value: 2.0}},
+			},
+		}
+		json.NewEncoder(w).Encode(sessions)
+	}))
+	defer testServer.Close()
 
-datacatClient = client.NewClient(testServer.URL)
+	datacatClient = client.NewClient(testServer.URL)
 
-req := httptest.NewRequest("GET", "/api/stats-cards", nil)
-w := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/api/stats-cards", nil)
+	w := httptest.NewRecorder()
 
-handleStatsCards(w, req)
+	handleStatsCards(w, req)
 
-if w.Code != http.StatusOK {
-t.Errorf("Expected status 200, got %d", w.Code)
-}
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
 
-body := w.Body.String()
+	body := w.Body.String()
 
-// Verify HTML structure
-if !strings.Contains(body, `id="stats-cards"`) {
-t.Error("Expected stats-cards div")
-}
+	// Verify HTML structure
+	if !strings.Contains(body, `id="stats-cards"`) {
+		t.Error("Expected stats-cards div")
+	}
 
-// Verify HTMX attributes
-if !strings.Contains(body, `hx-get="/api/stats-cards"`) {
-t.Error("Expected hx-get attribute")
-}
+	// Verify HTMX attributes
+	if !strings.Contains(body, `hx-get="/api/stats-cards"`) {
+		t.Error("Expected hx-get attribute")
+	}
 
-if !strings.Contains(body, `hx-trigger="every`) {
-t.Error("Expected hx-trigger attribute")
-}
+	if !strings.Contains(body, `hx-trigger="every`) {
+		t.Error("Expected hx-trigger attribute")
+	}
 
-if !strings.Contains(body, `hx-swap="outerHTML"`) {
-t.Error("Expected hx-swap attribute")
-}
+	if !strings.Contains(body, `hx-swap="outerHTML"`) {
+		t.Error("Expected hx-swap attribute")
+	}
 
-// Verify stats
-if !strings.Contains(body, "Total Sessions") {
-t.Error("Expected Total Sessions stat")
-}
+	// Verify stats
+	if !strings.Contains(body, "Total Sessions") {
+		t.Error("Expected Total Sessions stat")
+	}
 
-if !strings.Contains(body, "Active Sessions") {
-t.Error("Expected Active Sessions stat")
-}
+	if !strings.Contains(body, "Active Sessions") {
+		t.Error("Expected Active Sessions stat")
+	}
 
-if !strings.Contains(body, "<div class=\"value\">2</div>") {
-t.Error("Expected total sessions count of 2")
-}
+	if !strings.Contains(body, "<div class=\"value\">2</div>") {
+		t.Error("Expected total sessions count of 2")
+	}
 
-if !strings.Contains(body, "<div class=\"value\">1</div>") {
-t.Error("Expected active sessions count of 1")
-}
+	if !strings.Contains(body, "<div class=\"value\">1</div>") {
+		t.Error("Expected active sessions count of 1")
+	}
 }
 
 func TestHandleSessionsTable(t *testing.T) {
-// Setup mock client
-originalClient := datacatClient
-defer func() { datacatClient = originalClient }()
+	// Setup mock client
+	originalClient := datacatClient
+	defer func() { datacatClient = originalClient }()
 
-testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-sessions := []*client.Session{
-{
-ID:        "test-session-1",
-Active:    true,
-CreatedAt: time.Now(),
-UpdatedAt: time.Now(),
-Events:    []client.Event{{Name: "test"}},
-Metrics:   []client.Metric{{Name: "test", Value: 1.0}},
-},
-}
-json.NewEncoder(w).Encode(sessions)
-}))
-defer testServer.Close()
+	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sessions := []*client.Session{
+			{
+				ID:        "test-session-1",
+				Active:    true,
+				CreatedAt: time.Now(),
+				UpdatedAt: time.Now(),
+				Events:    []client.Event{{Name: "test"}},
+				Metrics:   []client.Metric{{Name: "test", Value: 1.0}},
+			},
+		}
+		json.NewEncoder(w).Encode(sessions)
+	}))
+	defer testServer.Close()
 
-datacatClient = client.NewClient(testServer.URL)
+	datacatClient = client.NewClient(testServer.URL)
 
-req := httptest.NewRequest("GET", "/api/sessions-table", nil)
-w := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/api/sessions-table", nil)
+	w := httptest.NewRecorder()
 
-handleSessionsTable(w, req)
+	handleSessionsTable(w, req)
 
-if w.Code != http.StatusOK {
-t.Errorf("Expected status 200, got %d", w.Code)
-}
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
 
-body := w.Body.String()
+	body := w.Body.String()
 
-// Verify HTML structure
-if !strings.Contains(body, `id="sessions-table"`) {
-t.Error("Expected sessions-table div")
-}
+	// Verify HTML structure
+	if !strings.Contains(body, `id="sessions-table"`) {
+		t.Error("Expected sessions-table div")
+	}
 
-// Verify HTMX attributes
-if !strings.Contains(body, `hx-get="/api/sessions-table"`) {
-t.Error("Expected hx-get attribute")
-}
+	// Verify HTMX attributes
+	if !strings.Contains(body, `hx-get="/api/sessions-table"`) {
+		t.Error("Expected hx-get attribute")
+	}
 
-// Verify table structure
-if !strings.Contains(body, "<table>") {
-t.Error("Expected table element")
-}
+	// Verify table structure
+	if !strings.Contains(body, "<table>") {
+		t.Error("Expected table element")
+	}
 
-if !strings.Contains(body, "<thead>") {
-t.Error("Expected thead element")
-}
+	if !strings.Contains(body, "<thead>") {
+		t.Error("Expected thead element")
+	}
 
-// Verify session data
-if !strings.Contains(body, "test-session-1") {
-t.Error("Expected session ID in table")
-}
+	// Verify session data
+	if !strings.Contains(body, "test-session-1") {
+		t.Error("Expected session ID in table")
+	}
 
-if !strings.Contains(body, `class="badge badge-active"`) {
-t.Error("Expected active badge")
-}
+	if !strings.Contains(body, `class="badge badge-active"`) {
+		t.Error("Expected active badge")
+	}
 }
 
 func TestHandleSessionInfo(t *testing.T) {
-// Setup mock client
-originalClient := datacatClient
-defer func() { datacatClient = originalClient }()
+	// Setup mock client
+	originalClient := datacatClient
+	defer func() { datacatClient = originalClient }()
 
-testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-if strings.Contains(r.URL.Path, "test-session-1") {
-session := &client.Session{
-ID:           "test-session-1",
-Active:       true,
-CreatedAt:    time.Now(),
-UpdatedAt:    time.Now(),
-Events:       []client.Event{{Name: "test"}},
-Metrics:      []client.Metric{{Name: "test", Value: 1.0}},
-StateHistory: []client.StateSnapshot{{Timestamp: time.Now(), State: map[string]interface{}{"status": "running"}}},
-}
-json.NewEncoder(w).Encode(session)
-} else {
-w.WriteHeader(http.StatusNotFound)
-}
-}))
-defer testServer.Close()
+	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "test-session-1") {
+			session := &client.Session{
+				ID:           "test-session-1",
+				Active:       true,
+				CreatedAt:    time.Now(),
+				UpdatedAt:    time.Now(),
+				Events:       []client.Event{{Name: "test"}},
+				Metrics:      []client.Metric{{Name: "test", Value: 1.0}},
+				StateHistory: []client.StateSnapshot{{Timestamp: time.Now(), State: map[string]interface{}{"status": "running"}}},
+			}
+			json.NewEncoder(w).Encode(session)
+		} else {
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer testServer.Close()
 
-datacatClient = client.NewClient(testServer.URL)
+	datacatClient = client.NewClient(testServer.URL)
 
-req := httptest.NewRequest("GET", "/api/session-info/test-session-1", nil)
-w := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/api/session-info/test-session-1", nil)
+	w := httptest.NewRecorder()
 
-handleSessionInfo(w, req)
+	handleSessionInfo(w, req)
 
-if w.Code != http.StatusOK {
-t.Errorf("Expected status 200, got %d", w.Code)
-}
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
 
-body := w.Body.String()
+	body := w.Body.String()
 
-// Verify HTML structure
-if !strings.Contains(body, `id="session-info"`) {
-t.Error("Expected session-info div")
-}
+	// Verify HTML structure
+	if !strings.Contains(body, `id="session-info"`) {
+		t.Error("Expected session-info div")
+	}
 
-// Verify HTMX attributes for active session
-if !strings.Contains(body, `hx-get="/api/session-info/test-session-1"`) {
-t.Error("Expected hx-get attribute for active session")
-}
+	// Verify HTMX attributes for active session
+	if !strings.Contains(body, `hx-get="/api/session-info/test-session-1"`) {
+		t.Error("Expected hx-get attribute for active session")
+	}
 
-// Verify session data
-if !strings.Contains(body, "Created") {
-t.Error("Expected Created row")
-}
+	// Verify session data
+	if !strings.Contains(body, "Created") {
+		t.Error("Expected Created row")
+	}
 
-if !strings.Contains(body, "Updated") {
-t.Error("Expected Updated row")
-}
+	if !strings.Contains(body, "Updated") {
+		t.Error("Expected Updated row")
+	}
 
-if !strings.Contains(body, "Status") {
-t.Error("Expected Status row")
-}
+	if !strings.Contains(body, "Status") {
+		t.Error("Expected Status row")
+	}
 
-if !strings.Contains(body, `class="badge badge-active"`) {
-t.Error("Expected active badge")
-}
+	if !strings.Contains(body, `class="badge badge-active"`) {
+		t.Error("Expected active badge")
+	}
 
-if !strings.Contains(body, "State Changes") {
-t.Error("Expected State Changes row")
-}
+	if !strings.Contains(body, "State Changes") {
+		t.Error("Expected State Changes row")
+	}
 }
 
 func TestHandleStatsCardsError(t *testing.T) {
-// Setup mock client that returns error
-originalClient := datacatClient
-defer func() { datacatClient = originalClient }()
+	// Setup mock client that returns error
+	originalClient := datacatClient
+	defer func() { datacatClient = originalClient }()
 
-testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-w.WriteHeader(http.StatusInternalServerError)
-}))
-defer testServer.Close()
+	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer testServer.Close()
 
-datacatClient = client.NewClient(testServer.URL)
+	datacatClient = client.NewClient(testServer.URL)
 
-req := httptest.NewRequest("GET", "/api/stats-cards", nil)
-w := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/api/stats-cards", nil)
+	w := httptest.NewRecorder()
 
-handleStatsCards(w, req)
+	handleStatsCards(w, req)
 
-if w.Code != http.StatusOK {
-t.Errorf("Expected status 200 even on error, got %d", w.Code)
-}
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200 even on error, got %d", w.Code)
+	}
 
-body := w.Body.String()
+	body := w.Body.String()
 
-// Should return error state with HTMX attributes
-if !strings.Contains(body, `hx-get="/api/stats-cards"`) {
-t.Error("Expected hx-get attribute even on error")
-}
+	// Should return error state with HTMX attributes
+	if !strings.Contains(body, `hx-get="/api/stats-cards"`) {
+		t.Error("Expected hx-get attribute even on error")
+	}
 }
 
 func TestHandleSessionInfoInactive(t *testing.T) {
-// Test that inactive sessions don't get polling attributes
-originalClient := datacatClient
-defer func() { datacatClient = originalClient }()
+	// Test that inactive sessions don't get polling attributes
+	originalClient := datacatClient
+	defer func() { datacatClient = originalClient }()
 
-testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-endedAt := time.Now()
-session := &client.Session{
-ID:           "test-session-2",
-Active:       false,
-CreatedAt:    time.Now().Add(-1 * time.Hour),
-UpdatedAt:    time.Now().Add(-30 * time.Minute),
-EndedAt:      &endedAt,
-Events:       []client.Event{},
-Metrics:      []client.Metric{},
-StateHistory: []client.StateSnapshot{},
+	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		endedAt := time.Now()
+		session := &client.Session{
+			ID:           "test-session-2",
+			Active:       false,
+			CreatedAt:    time.Now().Add(-1 * time.Hour),
+			UpdatedAt:    time.Now().Add(-30 * time.Minute),
+			EndedAt:      &endedAt,
+			Events:       []client.Event{},
+			Metrics:      []client.Metric{},
+			StateHistory: []client.StateSnapshot{},
+		}
+		json.NewEncoder(w).Encode(session)
+	}))
+	defer testServer.Close()
+
+	datacatClient = client.NewClient(testServer.URL)
+
+	req := httptest.NewRequest("GET", "/api/session-info/test-session-2", nil)
+	w := httptest.NewRecorder()
+
+	handleSessionInfo(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+
+	body := w.Body.String()
+
+	// Verify no HTMX polling for inactive session
+	if strings.Contains(body, `hx-trigger="every`) {
+		t.Error("Expected no hx-trigger for inactive session")
+	}
+
+	// Verify ended badge
+	if !strings.Contains(body, `class="badge badge-inactive"`) {
+		t.Error("Expected inactive badge")
+	}
+
+	// Verify ended timestamp is shown
+	if !strings.Contains(body, "Ended") {
+		t.Error("Expected Ended row for inactive session")
+	}
 }
-json.NewEncoder(w).Encode(session)
-}))
-defer testServer.Close()
-
-datacatClient = client.NewClient(testServer.URL)
-
-req := httptest.NewRequest("GET", "/api/session-info/test-session-2", nil)
-w := httptest.NewRecorder()
-
-handleSessionInfo(w, req)
-
-if w.Code != http.StatusOK {
-t.Errorf("Expected status 200, got %d", w.Code)
-}
-
-body := w.Body.String()
-
-// Verify no HTMX polling for inactive session
-if strings.Contains(body, `hx-trigger="every`) {
-t.Error("Expected no hx-trigger for inactive session")
-}
-
-// Verify ended badge
-if !strings.Contains(body, `class="badge badge-inactive"`) {
-t.Error("Expected inactive badge")
-}
-
-// Verify ended timestamp is shown
-if !strings.Contains(body, "Ended") {
-t.Error("Expected Ended row for inactive session")
-}
-}
-
 
 // Tests for matchesFilters function
 func TestMatchesFilters(t *testing.T) {
-session := &client.Session{
-ID:     "test-session",
-Active: true,
-State: map[string]interface{}{
-"product": "test-product",
-"version": "1.0.0",
-"status":  "running",
-},
-Events: []client.Event{
-{Name: "startup"},
-{Name: "click"},
-},
-}
+	session := &client.Session{
+		ID:     "test-session",
+		Active: true,
+		State: map[string]interface{}{
+			"product": "test-product",
+			"version": "1.0.0",
+			"status":  "running",
+		},
+		Events: []client.Event{
+			{Name: "startup"},
+			{Name: "click"},
+		},
+	}
 
-// Test product filter - matching
-if !matchesFilters(session, "test-product", "", "", "", "", "") {
-t.Error("Expected session to match product filter")
-}
+	// Test product filter - matching
+	if !matchesFilters(session, "test-product", "", "", "", "", "") {
+		t.Error("Expected session to match product filter")
+	}
 
-// Test product filter - not matching
-if matchesFilters(session, "other-product", "", "", "", "", "") {
-t.Error("Expected session to not match different product")
-}
+	// Test product filter - not matching
+	if matchesFilters(session, "other-product", "", "", "", "", "") {
+		t.Error("Expected session to not match different product")
+	}
 
-// Test version filter - matching
-if !matchesFilters(session, "", "1.0.0", "", "", "", "") {
-t.Error("Expected session to match version filter")
-}
+	// Test version filter - matching
+	if !matchesFilters(session, "", "1.0.0", "", "", "", "") {
+		t.Error("Expected session to match version filter")
+	}
 
-// Test version filter - not matching
-if matchesFilters(session, "", "2.0.0", "", "", "", "") {
-t.Error("Expected session to not match different version")
-}
+	// Test version filter - not matching
+	if matchesFilters(session, "", "2.0.0", "", "", "", "") {
+		t.Error("Expected session to not match different version")
+	}
 
-// Test status filter - active
-if !matchesFilters(session, "", "", "active", "", "", "") {
-t.Error("Expected session to match active status filter")
-}
+	// Test status filter - active
+	if !matchesFilters(session, "", "", "active", "", "", "") {
+		t.Error("Expected session to match active status filter")
+	}
 
-// Test status filter - ended (should not match active session)
-if matchesFilters(session, "", "", "ended", "", "", "") {
-t.Error("Expected active session to not match ended filter")
-}
+	// Test status filter - ended (should not match active session)
+	if matchesFilters(session, "", "", "ended", "", "", "") {
+		t.Error("Expected active session to not match ended filter")
+	}
 
-// Test status filter - crashed
-session.State["status"] = "crashed"
-if !matchesFilters(session, "", "", "crashed", "", "", "") {
-t.Error("Expected session with crashed status to match crashed filter")
-}
+	// Test status filter - crashed
+	session.State["status"] = "crashed"
+	if !matchesFilters(session, "", "", "crashed", "", "", "") {
+		t.Error("Expected session with crashed status to match crashed filter")
+	}
 
-// Test status filter - hung
-session.State["status"] = "hung"
-if !matchesFilters(session, "", "", "hung", "", "", "") {
-t.Error("Expected session with hung status to match hung filter")
-}
+	// Test status filter - hung
+	session.State["status"] = "hung"
+	if !matchesFilters(session, "", "", "hung", "", "", "") {
+		t.Error("Expected session with hung status to match hung filter")
+	}
 
-// Test event name filter - matching
-if !matchesFilters(session, "", "", "", "", "", "startup") {
-t.Error("Expected session to match event name filter")
-}
+	// Test event name filter - matching
+	if !matchesFilters(session, "", "", "", "", "", "startup") {
+		t.Error("Expected session to match event name filter")
+	}
 
-// Test event name filter - not matching
-if matchesFilters(session, "", "", "", "", "", "shutdown") {
-t.Error("Expected session to not match different event name")
-}
+	// Test event name filter - not matching
+	if matchesFilters(session, "", "", "", "", "", "shutdown") {
+		t.Error("Expected session to not match different event name")
+	}
 
-// Test combined filters
-session.State["status"] = "running"
-if !matchesFilters(session, "test-product", "1.0.0", "active", "", "", "") {
-t.Error("Expected session to match combined filters")
-}
+	// Test combined filters
+	session.State["status"] = "running"
+	if !matchesFilters(session, "test-product", "1.0.0", "active", "", "", "") {
+		t.Error("Expected session to match combined filters")
+	}
 }
 
 // Tests for hasStateValue function
 func TestHasStateValue(t *testing.T) {
-session := &client.Session{
-ID: "test-session",
-State: map[string]interface{}{
-"status": "running",
-"count":  42,
-},
-StateHistory: []client.StateSnapshot{
-{
-State: map[string]interface{}{
-"status": "starting",
-"count":  10,
-},
-},
-{
-State: map[string]interface{}{
-"status": "running",
-"count":  20,
-},
-},
-},
-}
+	session := &client.Session{
+		ID: "test-session",
+		State: map[string]interface{}{
+			"status": "running",
+			"count":  42,
+		},
+		StateHistory: []client.StateSnapshot{
+			{
+				State: map[string]interface{}{
+					"status": "starting",
+					"count":  10,
+				},
+			},
+			{
+				State: map[string]interface{}{
+					"status": "running",
+					"count":  20,
+				},
+			},
+		},
+	}
 
-// Test current state - string match
-if !hasStateValue(session, "status", "running") {
-t.Error("Expected to find status=running in current state")
-}
+	// Test current state - string match
+	if !hasStateValue(session, "status", "running") {
+		t.Error("Expected to find status=running in current state")
+	}
 
-// Test current state - number match
-if !hasStateValue(session, "count", "42") {
-t.Error("Expected to find count=42 in current state")
-}
+	// Test current state - number match
+	if !hasStateValue(session, "count", "42") {
+		t.Error("Expected to find count=42 in current state")
+	}
 
-// Test state history - value in history
-if !hasStateValue(session, "status", "starting") {
-t.Error("Expected to find status=starting in state history")
-}
+	// Test state history - value in history
+	if !hasStateValue(session, "status", "starting") {
+		t.Error("Expected to find status=starting in state history")
+	}
 
-if !hasStateValue(session, "count", "10") {
-t.Error("Expected to find count=10 in state history")
-}
+	if !hasStateValue(session, "count", "10") {
+		t.Error("Expected to find count=10 in state history")
+	}
 
-// Test non-existent key
-if hasStateValue(session, "nonexistent", "value") {
-t.Error("Expected not to find non-existent key")
-}
+	// Test non-existent key
+	if hasStateValue(session, "nonexistent", "value") {
+		t.Error("Expected not to find non-existent key")
+	}
 
-// Test non-matching value
-if hasStateValue(session, "status", "stopped") {
-t.Error("Expected not to find status=stopped")
-}
+	// Test non-matching value
+	if hasStateValue(session, "status", "stopped") {
+		t.Error("Expected not to find status=stopped")
+	}
 }
 
 // Tests for hasEvent function
 func TestHasEvent(t *testing.T) {
-session := &client.Session{
-ID: "test-session",
-Events: []client.Event{
-{Name: "startup"},
-{Name: "click"},
-{Name: "shutdown"},
-},
-}
+	session := &client.Session{
+		ID: "test-session",
+		Events: []client.Event{
+			{Name: "startup"},
+			{Name: "click"},
+			{Name: "shutdown"},
+		},
+	}
 
-// Test event exists
-if !hasEvent(session, "startup") {
-t.Error("Expected to find startup event")
-}
+	// Test event exists
+	if !hasEvent(session, "startup") {
+		t.Error("Expected to find startup event")
+	}
 
-if !hasEvent(session, "click") {
-t.Error("Expected to find click event")
-}
+	if !hasEvent(session, "click") {
+		t.Error("Expected to find click event")
+	}
 
-if !hasEvent(session, "shutdown") {
-t.Error("Expected to find shutdown event")
-}
+	if !hasEvent(session, "shutdown") {
+		t.Error("Expected to find shutdown event")
+	}
 
-// Test event does not exist
-if hasEvent(session, "nonexistent") {
-t.Error("Expected not to find non-existent event")
-}
+	// Test event does not exist
+	if hasEvent(session, "nonexistent") {
+		t.Error("Expected not to find non-existent event")
+	}
 
-// Test empty events
-emptySession := &client.Session{
-ID:     "empty",
-Events: []client.Event{},
-}
+	// Test empty events
+	emptySession := &client.Session{
+		ID:     "empty",
+		Events: []client.Event{},
+	}
 
-if hasEvent(emptySession, "startup") {
-t.Error("Expected not to find event in empty events list")
-}
+	if hasEvent(emptySession, "startup") {
+		t.Error("Expected not to find event in empty events list")
+	}
 }
 
 // Tests for handleServerStatus
 func TestHandleServerStatus(t *testing.T) {
-// Test with server online
-mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-sessions := []*client.Session{}
-json.NewEncoder(w).Encode(sessions)
-}))
-defer mockServer.Close()
+	// Test with server online
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sessions := []*client.Session{}
+		json.NewEncoder(w).Encode(sessions)
+	}))
+	defer mockServer.Close()
 
-datacatClient = client.NewClient(mockServer.URL)
+	datacatClient = client.NewClient(mockServer.URL)
 
-req := httptest.NewRequest("GET", "/api/server-status", nil)
-w := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/api/server-status", nil)
+	w := httptest.NewRecorder()
 
-handleServerStatus(w, req)
+	handleServerStatus(w, req)
 
-if w.Code != http.StatusOK {
-t.Errorf("Expected status 200, got %d", w.Code)
-}
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
 
-body := w.Body.String()
-if !strings.Contains(body, "Server Online") {
-t.Error("Expected response to contain 'Server Online'")
-}
+	body := w.Body.String()
+	if !strings.Contains(body, "Server Online") {
+		t.Error("Expected response to contain 'Server Online'")
+	}
 }
 
 func TestHandleServerStatusOffline(t *testing.T) {
-// Test with server offline (error response)
-mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-w.WriteHeader(http.StatusInternalServerError)
-}))
-defer mockServer.Close()
+	// Test with server offline (error response)
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer mockServer.Close()
 
-datacatClient = client.NewClient(mockServer.URL)
+	datacatClient = client.NewClient(mockServer.URL)
 
-req := httptest.NewRequest("GET", "/api/server-status", nil)
-w := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/api/server-status", nil)
+	w := httptest.NewRecorder()
 
-handleServerStatus(w, req)
+	handleServerStatus(w, req)
 
-if w.Code != http.StatusOK {
-t.Errorf("Expected status 200, got %d", w.Code)
-}
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
 
-body := w.Body.String()
-if !strings.Contains(body, "Server Offline") {
-t.Error("Expected response to contain 'Server Offline'")
-}
+	body := w.Body.String()
+	if !strings.Contains(body, "Server Offline") {
+		t.Error("Expected response to contain 'Server Offline'")
+	}
 }
 
 // Test matchesFilters with state key/value filter
 func TestMatchesFiltersStateKeyValue(t *testing.T) {
-session := &client.Session{
-ID:     "test-session",
-Active: true,
-State: map[string]interface{}{
-"env": "production",
-},
-StateHistory: []client.StateSnapshot{
-{
-State: map[string]interface{}{
-"env": "staging",
-},
-},
-},
-}
+	session := &client.Session{
+		ID:     "test-session",
+		Active: true,
+		State: map[string]interface{}{
+			"env": "production",
+		},
+		StateHistory: []client.StateSnapshot{
+			{
+				State: map[string]interface{}{
+					"env": "staging",
+				},
+			},
+		},
+	}
 
-// Test state key/value filter - matching current state
-if !matchesFilters(session, "", "", "", "env", "production", "") {
-t.Error("Expected session to match state key/value filter")
-}
+	// Test state key/value filter - matching current state
+	if !matchesFilters(session, "", "", "", "env", "production", "") {
+		t.Error("Expected session to match state key/value filter")
+	}
 
-// Test state key/value filter - matching state history
-if !matchesFilters(session, "", "", "", "env", "staging", "") {
-t.Error("Expected session to match state key/value from history")
-}
+	// Test state key/value filter - matching state history
+	if !matchesFilters(session, "", "", "", "env", "staging", "") {
+		t.Error("Expected session to match state key/value from history")
+	}
 
-// Test state key/value filter - not matching
-if matchesFilters(session, "", "", "", "env", "development", "") {
-t.Error("Expected session to not match different state value")
-}
+	// Test state key/value filter - not matching
+	if matchesFilters(session, "", "", "", "env", "development", "") {
+		t.Error("Expected session to not match different state value")
+	}
 }
 
 // Test extractUniqueProducts with empty state
 func TestExtractUniqueProductsEmptyState(t *testing.T) {
-sessions := []*client.Session{
-{
-ID:    "session1",
-State: map[string]interface{}{},
-},
-{
-ID: "session2",
-State: map[string]interface{}{
-"product": "app1",
-},
-},
-}
+	sessions := []*client.Session{
+		{
+			ID:    "session1",
+			State: map[string]interface{}{},
+		},
+		{
+			ID: "session2",
+			State: map[string]interface{}{
+				"product": "app1",
+			},
+		},
+	}
 
-products := extractUniqueProducts(sessions)
+	products := extractUniqueProducts(sessions)
 
-if len(products) != 1 {
-t.Errorf("Expected 1 product, got %d", len(products))
-}
-if products[0] != "app1" {
-t.Errorf("Expected product to be app1, got %s", products[0])
-}
+	if len(products) != 1 {
+		t.Errorf("Expected 1 product, got %d", len(products))
+	}
+	if products[0] != "app1" {
+		t.Errorf("Expected product to be app1, got %s", products[0])
+	}
 }
 
 // Test extractUniqueVersions with empty state
 func TestExtractUniqueVersionsEmptyState(t *testing.T) {
-sessions := []*client.Session{
-{
-ID:    "session1",
-State: map[string]interface{}{},
-},
-{
-ID: "session2",
-State: map[string]interface{}{
-"version": "1.0.0",
-},
-},
-}
+	sessions := []*client.Session{
+		{
+			ID:    "session1",
+			State: map[string]interface{}{},
+		},
+		{
+			ID: "session2",
+			State: map[string]interface{}{
+				"version": "1.0.0",
+			},
+		},
+	}
 
-versions := extractUniqueVersions(sessions, "")
+	versions := extractUniqueVersions(sessions, "")
 
-if len(versions) != 1 {
-t.Errorf("Expected 1 version, got %d", len(versions))
-}
-if versions[0] != "1.0.0" {
-t.Errorf("Expected version to be 1.0.0, got %s", versions[0])
-}
+	if len(versions) != 1 {
+		t.Errorf("Expected 1 version, got %d", len(versions))
+	}
+	if versions[0] != "1.0.0" {
+		t.Errorf("Expected version to be 1.0.0, got %s", versions[0])
+	}
 }
 
 // Test handleSessions with filters
 func TestHandleSessionsWithFilters(t *testing.T) {
-// Create a mock server for GetAllSessions
-mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-sessions := []*client.Session{
-{
-ID:        "session1",
-Active:    true,
-CreatedAt: time.Now().Add(-1 * time.Hour),
-UpdatedAt: time.Now(),
-State: map[string]interface{}{
-"product": "app1",
-"version": "1.0.0",
-"env":     "production",
-},
-Events: []client.Event{{Name: "startup"}},
-},
-{
-ID:        "session2",
-Active:    false,
-CreatedAt: time.Now().Add(-2 * time.Hour),
-UpdatedAt: time.Now().Add(-1 * time.Hour),
-State: map[string]interface{}{
-"product": "app2",
-"version": "2.0.0",
-"env":     "staging",
-},
-Events: []client.Event{{Name: "shutdown"}},
-},
-}
-json.NewEncoder(w).Encode(sessions)
-}))
-defer mockServer.Close()
+	// Create a mock server for GetAllSessions
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sessions := []*client.Session{
+			{
+				ID:        "session1",
+				Active:    true,
+				CreatedAt: time.Now().Add(-1 * time.Hour),
+				UpdatedAt: time.Now(),
+				State: map[string]interface{}{
+					"product": "app1",
+					"version": "1.0.0",
+					"env":     "production",
+				},
+				Events: []client.Event{{Name: "startup"}},
+			},
+			{
+				ID:        "session2",
+				Active:    false,
+				CreatedAt: time.Now().Add(-2 * time.Hour),
+				UpdatedAt: time.Now().Add(-1 * time.Hour),
+				State: map[string]interface{}{
+					"product": "app2",
+					"version": "2.0.0",
+					"env":     "staging",
+				},
+				Events: []client.Event{{Name: "shutdown"}},
+			},
+		}
+		json.NewEncoder(w).Encode(sessions)
+	}))
+	defer mockServer.Close()
 
-datacatClient = client.NewClient(mockServer.URL)
+	datacatClient = client.NewClient(mockServer.URL)
 
-// Test with product filter
-req := httptest.NewRequest("GET", "/sessions?product=app1", nil)
-w := httptest.NewRecorder()
+	// Test with product filter
+	req := httptest.NewRequest("GET", "/sessions?product=app1", nil)
+	w := httptest.NewRecorder()
 
-handleSessions(w, req)
+	handleSessions(w, req)
 
-if w.Code != http.StatusOK {
-t.Errorf("Expected status 200, got %d", w.Code)
-}
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
 
-body := w.Body.String()
-if !strings.Contains(body, "app1") {
-t.Error("Expected response to contain filtered product")
-}
+	body := w.Body.String()
+	if !strings.Contains(body, "app1") {
+		t.Error("Expected response to contain filtered product")
+	}
 
-// Test with event filter
-req = httptest.NewRequest("GET", "/sessions?event=startup", nil)
-w = httptest.NewRecorder()
+	// Test with event filter
+	req = httptest.NewRequest("GET", "/sessions?event=startup", nil)
+	w = httptest.NewRecorder()
 
-handleSessions(w, req)
+	handleSessions(w, req)
 
-if w.Code != http.StatusOK {
-t.Errorf("Expected status 200, got %d", w.Code)
-}
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
 }
 
 // Test handleIndex with template parse error
 func TestHandleIndexTemplateError(t *testing.T) {
-// This test verifies graceful handling of template errors
-mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-sessions := []*client.Session{
-{
-ID:        "session1",
-Active:    true,
-CreatedAt: time.Now(),
-UpdatedAt: time.Now(),
-State:     map[string]interface{}{"status": "running"},
-},
-}
-json.NewEncoder(w).Encode(sessions)
-}))
-defer mockServer.Close()
+	// This test verifies graceful handling of template errors
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sessions := []*client.Session{
+			{
+				ID:        "session1",
+				Active:    true,
+				CreatedAt: time.Now(),
+				UpdatedAt: time.Now(),
+				State:     map[string]interface{}{"status": "running"},
+			},
+		}
+		json.NewEncoder(w).Encode(sessions)
+	}))
+	defer mockServer.Close()
 
-datacatClient = client.NewClient(mockServer.URL)
+	datacatClient = client.NewClient(mockServer.URL)
 
-req := httptest.NewRequest("GET", "/?filterMode=current_state&filterKey=status&filterValue=running", nil)
-w := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/?filterMode=current_state&filterKey=status&filterValue=running", nil)
+	w := httptest.NewRecorder()
 
-handleIndex(w, req)
+	handleIndex(w, req)
 
-if w.Code != http.StatusOK {
-	t.Errorf("Expected status 200, got %d", w.Code)
-}
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
 }
 
 // Test extractProductInfo with various session states
 func TestExtractProductInfoVariousStates(t *testing.T) {
-sessions := []*client.Session{
-{
-ID:     "session1",
-Active: true,
-State: map[string]interface{}{
-"product": "MyApp",
-"version": "1.0.0",
-"status":  "running",
-},
-},
-{
-ID:     "session2",
-Active: true,
-State: map[string]interface{}{
-"product": "MyApp",
-"version": "1.0.0",
-"status":  "crashed",
-},
-},
-{
-ID:     "session3",
-Active: false,
-State: map[string]interface{}{
-"product": "MyApp",
-"version": "2.0.0",
-},
-},
-}
+	sessions := []*client.Session{
+		{
+			ID:     "session1",
+			Active: true,
+			State: map[string]interface{}{
+				"product": "MyApp",
+				"version": "1.0.0",
+				"status":  "running",
+			},
+		},
+		{
+			ID:     "session2",
+			Active: true,
+			State: map[string]interface{}{
+				"product": "MyApp",
+				"version": "1.0.0",
+				"status":  "crashed",
+			},
+		},
+		{
+			ID:     "session3",
+			Active: false,
+			State: map[string]interface{}{
+				"product": "MyApp",
+				"version": "2.0.0",
+			},
+		},
+	}
 
-products := extractProductInfo(sessions)
+	products := extractProductInfo(sessions)
 
-if len(products) != 1 {
-t.Errorf("Expected 1 product, got %d", len(products))
-}
+	if len(products) != 1 {
+		t.Errorf("Expected 1 product, got %d", len(products))
+	}
 
-if products[0].Name != "MyApp" {
-t.Errorf("Expected product name to be MyApp, got %s", products[0].Name)
-}
+	if products[0].Name != "MyApp" {
+		t.Errorf("Expected product name to be MyApp, got %s", products[0].Name)
+	}
 
-if len(products[0].Versions) != 2 {
-t.Errorf("Expected 2 versions, got %d", len(products[0].Versions))
-}
+	if len(products[0].Versions) != 2 {
+		t.Errorf("Expected 2 versions, got %d", len(products[0].Versions))
+	}
 }
 
 // Test handleSessionDetail template execution error
 func TestHandleSessionDetailTemplateExecutionError(t *testing.T) {
-mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-// Return a session that might cause template issues
-session := &client.Session{
-ID:        "test",
-Active:    true,
-CreatedAt: time.Now(),
-UpdatedAt: time.Now(),
-State:     map[string]interface{}{"key": "value"},
-Events:    []client.Event{},
-Metrics:   []client.Metric{},
-}
-json.NewEncoder(w).Encode(session)
-}))
-defer mockServer.Close()
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Return a session that might cause template issues
+		session := &client.Session{
+			ID:        "test",
+			Active:    true,
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+			State:     map[string]interface{}{"key": "value"},
+			Events:    []client.Event{},
+			Metrics:   []client.Metric{},
+		}
+		json.NewEncoder(w).Encode(session)
+	}))
+	defer mockServer.Close()
 
-datacatClient = client.NewClient(mockServer.URL)
+	datacatClient = client.NewClient(mockServer.URL)
 
-req := httptest.NewRequest("GET", "/session/test", nil)
-w := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/session/test", nil)
+	w := httptest.NewRecorder()
 
-handleSessionDetail(w, req)
+	handleSessionDetail(w, req)
 
-// Should succeed despite the short ID
-if w.Code != http.StatusOK {
-t.Errorf("Expected status 200, got %d", w.Code)
-}
+	// Should succeed despite the short ID
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
 }
 
 // Test handleSessions with product and version filters
 func TestHandleSessionsProductVersionFilters(t *testing.T) {
-mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-sessions := []*client.Session{
-{
-ID:        "session1",
-Active:    true,
-CreatedAt: time.Now(),
-UpdatedAt: time.Now(),
-State: map[string]interface{}{
-"product": "app1",
-"version": "1.0.0",
-},
-},
-}
-json.NewEncoder(w).Encode(sessions)
-}))
-defer mockServer.Close()
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sessions := []*client.Session{
+			{
+				ID:        "session1",
+				Active:    true,
+				CreatedAt: time.Now(),
+				UpdatedAt: time.Now(),
+				State: map[string]interface{}{
+					"product": "app1",
+					"version": "1.0.0",
+				},
+			},
+		}
+		json.NewEncoder(w).Encode(sessions)
+	}))
+	defer mockServer.Close()
 
-datacatClient = client.NewClient(mockServer.URL)
+	datacatClient = client.NewClient(mockServer.URL)
 
-// Test with product and version filter
-req := httptest.NewRequest("GET", "/sessions?product=app1&version=1.0.0", nil)
-w := httptest.NewRecorder()
+	// Test with product and version filter
+	req := httptest.NewRequest("GET", "/sessions?product=app1&version=1.0.0", nil)
+	w := httptest.NewRecorder()
 
-handleSessions(w, req)
+	handleSessions(w, req)
 
-if w.Code != http.StatusOK {
-t.Errorf("Expected status 200, got %d", w.Code)
-}
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
 }
 
 // Test handleIndex with different filter modes
 func TestHandleIndexDifferentFilterModes(t *testing.T) {
-mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-sessions := []*client.Session{
-{
-ID:        "session1",
-Active:    true,
-CreatedAt: time.Now(),
-UpdatedAt: time.Now(),
-State: map[string]interface{}{
-"status": "running",
-"tags":   []interface{}{"tag1", "tag2"},
-},
-Events: []client.Event{{Name: "startup"}},
-},
-}
-json.NewEncoder(w).Encode(sessions)
-}))
-defer mockServer.Close()
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sessions := []*client.Session{
+			{
+				ID:        "session1",
+				Active:    true,
+				CreatedAt: time.Now(),
+				UpdatedAt: time.Now(),
+				State: map[string]interface{}{
+					"status": "running",
+					"tags":   []interface{}{"tag1", "tag2"},
+				},
+				Events: []client.Event{{Name: "startup"}},
+			},
+		}
+		json.NewEncoder(w).Encode(sessions)
+	}))
+	defer mockServer.Close()
 
-datacatClient = client.NewClient(mockServer.URL)
+	datacatClient = client.NewClient(mockServer.URL)
 
-// Test with state_array_contains filter
-req := httptest.NewRequest("GET", "/?filterMode=state_array_contains&filterKey=tags&filterValue=tag1", nil)
-w := httptest.NewRecorder()
+	// Test with state_array_contains filter
+	req := httptest.NewRequest("GET", "/?filterMode=state_array_contains&filterKey=tags&filterValue=tag1", nil)
+	w := httptest.NewRecorder()
 
-handleIndex(w, req)
+	handleIndex(w, req)
 
-if w.Code != http.StatusOK {
-t.Errorf("Expected status 200, got %d", w.Code)
-}
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
 }
 
 // Test matchesFilters with all filter types
 func TestMatchesFiltersAllTypes(t *testing.T) {
-session := &client.Session{
-ID:     "test-session",
-Active: true,
-State: map[string]interface{}{
-"product": "test-product",
-"version": "1.0.0",
-"status":  "running",
-},
-Events: []client.Event{
-{Name: "startup"},
-},
-}
+	session := &client.Session{
+		ID:     "test-session",
+		Active: true,
+		State: map[string]interface{}{
+			"product": "test-product",
+			"version": "1.0.0",
+			"status":  "running",
+		},
+		Events: []client.Event{
+			{Name: "startup"},
+		},
+	}
 
-// Test with no filters (should match)
-if !matchesFilters(session, "", "", "", "", "", "") {
-t.Error("Expected session to match with no filters")
-}
+	// Test with no filters (should match)
+	if !matchesFilters(session, "", "", "", "", "", "") {
+		t.Error("Expected session to match with no filters")
+	}
 
-// Test status filter - hung with inactive session
-session.Active = false
-if matchesFilters(session, "", "", "hung", "", "", "") {
-t.Error("Expected inactive session to not match hung filter")
-}
+	// Test status filter - hung with inactive session
+	session.Active = false
+	if matchesFilters(session, "", "", "hung", "", "", "") {
+		t.Error("Expected inactive session to not match hung filter")
+	}
 
-// Test status filter - crashed with inactive session
-if matchesFilters(session, "", "", "crashed", "", "", "") {
-t.Error("Expected inactive session to not match crashed filter")
-}
+	// Test status filter - crashed with inactive session
+	if matchesFilters(session, "", "", "crashed", "", "", "") {
+		t.Error("Expected inactive session to not match crashed filter")
+	}
 }
 
 // Test handleSessionsTable with state filter
 func TestHandleSessionsTableStateFilter(t *testing.T) {
-mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-sessions := []*client.Session{
-{
-ID:        "session1",
-Active:    true,
-CreatedAt: time.Now(),
-UpdatedAt: time.Now(),
-State: map[string]interface{}{
-"status": "running",
-"env":    "production",
-},
-},
-}
-json.NewEncoder(w).Encode(sessions)
-}))
-defer mockServer.Close()
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sessions := []*client.Session{
+			{
+				ID:        "session1",
+				Active:    true,
+				CreatedAt: time.Now(),
+				UpdatedAt: time.Now(),
+				State: map[string]interface{}{
+					"status": "running",
+					"env":    "production",
+				},
+			},
+		}
+		json.NewEncoder(w).Encode(sessions)
+	}))
+	defer mockServer.Close()
 
-datacatClient = client.NewClient(mockServer.URL)
+	datacatClient = client.NewClient(mockServer.URL)
 
-// Test with state filter JSON
-stateFilter := `{"env":"production"}`
-req := httptest.NewRequest("GET", "/api/sessions-table?stateFilter="+stateFilter, nil)
-w := httptest.NewRecorder()
+	// Test with state filter JSON
+	stateFilter := `{"env":"production"}`
+	req := httptest.NewRequest("GET", "/api/sessions-table?stateFilter="+stateFilter, nil)
+	w := httptest.NewRecorder()
 
-handleSessionsTable(w, req)
+	handleSessionsTable(w, req)
 
-if w.Code != http.StatusOK {
-t.Errorf("Expected status 200, got %d", w.Code)
-}
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
 }
 
 // Test stateContainsAllNestedMapsEdgeCases
 func TestStateContainsAllNestedMapsEdgeCases(t *testing.T) {
-state := map[string]interface{}{
-"nested": map[string]interface{}{
-"deep": map[string]interface{}{
-"value": "test",
-},
-},
-}
+	state := map[string]interface{}{
+		"nested": map[string]interface{}{
+			"deep": map[string]interface{}{
+				"value": "test",
+			},
+		},
+	}
 
-// Test deep nested match
-filter := map[string]interface{}{
-"nested": map[string]interface{}{
-"deep": map[string]interface{}{
-"value": "test",
-},
-},
-}
-if !stateContainsAll(state, filter) {
-t.Error("Expected state to contain deeply nested filter")
-}
+	// Test deep nested match
+	filter := map[string]interface{}{
+		"nested": map[string]interface{}{
+			"deep": map[string]interface{}{
+				"value": "test",
+			},
+		},
+	}
+	if !stateContainsAll(state, filter) {
+		t.Error("Expected state to contain deeply nested filter")
+	}
 
-// Test mismatch in nested value
-filter2 := map[string]interface{}{
-"nested": map[string]interface{}{
-"deep": map[string]interface{}{
-"value": "wrong",
-},
-},
-}
-if stateContainsAll(state, filter2) {
-t.Error("Expected state to not match incorrect nested value")
-}
+	// Test mismatch in nested value
+	filter2 := map[string]interface{}{
+		"nested": map[string]interface{}{
+			"deep": map[string]interface{}{
+				"value": "wrong",
+			},
+		},
+	}
+	if stateContainsAll(state, filter2) {
+		t.Error("Expected state to not match incorrect nested value")
+	}
 }
 
 // Test handleSessionInfo with various session states
 func TestHandleSessionInfoVariousStates(t *testing.T) {
-mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-session := &client.Session{
-ID:        "session1",
-Active:    true,
-CreatedAt: time.Now().Add(-1 * time.Hour),
-UpdatedAt: time.Now(),
-State: map[string]interface{}{
-"status": "running",
-},
-Events: []client.Event{
-{Name: "startup", Timestamp: time.Now()},
-},
-Metrics: []client.Metric{
-{Name: "cpu", Value: 50.0, Timestamp: time.Now()},
-},
-}
-json.NewEncoder(w).Encode(session)
-}))
-defer mockServer.Close()
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		session := &client.Session{
+			ID:        "session1",
+			Active:    true,
+			CreatedAt: time.Now().Add(-1 * time.Hour),
+			UpdatedAt: time.Now(),
+			State: map[string]interface{}{
+				"status": "running",
+			},
+			Events: []client.Event{
+				{Name: "startup", Timestamp: time.Now()},
+			},
+			Metrics: []client.Metric{
+				{Name: "cpu", Value: 50.0, Timestamp: time.Now()},
+			},
+		}
+		json.NewEncoder(w).Encode(session)
+	}))
+	defer mockServer.Close()
 
-datacatClient = client.NewClient(mockServer.URL)
+	datacatClient = client.NewClient(mockServer.URL)
 
-req := httptest.NewRequest("GET", "/api/session-info/session1", nil)
-w := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/api/session-info/session1", nil)
+	w := httptest.NewRecorder()
 
-handleSessionInfo(w, req)
+	handleSessionInfo(w, req)
 
-if w.Code != http.StatusOK {
-t.Errorf("Expected status 200, got %d", w.Code)
-}
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
 
-// Check response contains session info
-body := w.Body.String()
-if !strings.Contains(body, "session1") {
-t.Error("Expected response to contain session ID")
-}
+	// Check response contains session info
+	body := w.Body.String()
+	if !strings.Contains(body, "session1") {
+		t.Error("Expected response to contain session ID")
+	}
 }
 
 func TestCalculateStats(t *testing.T) {
 	// Test with normal values
 	values := []float64{1.0, 2.0, 3.0, 4.0, 5.0}
 	avg, max, min, median, stdDev := calculateStats(values)
-	
+
 	if avg != 3.0 {
 		t.Errorf("Expected avg=3.0, got %f", avg)
 	}
@@ -1997,21 +1996,21 @@ func TestCalculateStats(t *testing.T) {
 	if stdDev < 1.4 || stdDev > 1.5 {
 		t.Errorf("Expected stdDev around 1.414, got %f", stdDev)
 	}
-	
+
 	// Test with even number of values
 	values = []float64{1.0, 2.0, 3.0, 4.0}
 	_, _, _, median, _ = calculateStats(values)
 	if median != 2.5 {
 		t.Errorf("Expected median=2.5, got %f", median)
 	}
-	
+
 	// Test with empty slice
 	values = []float64{}
 	avg, max, min, median, stdDev = calculateStats(values)
 	if avg != 0 || max != 0 || min != 0 || median != 0 || stdDev != 0 {
 		t.Error("Expected all zeros for empty slice")
 	}
-	
+
 	// Test with single value
 	values = []float64{42.0}
 	avg, max, min, median, stdDev = calculateStats(values)
@@ -2055,18 +2054,18 @@ func TestHandleSessionsWithTimeRange(t *testing.T) {
 		json.NewEncoder(w).Encode(sessions)
 	}))
 	defer mockServer.Close()
-	
+
 	datacatClient = client.NewClient(mockServer.URL)
-	
+
 	// Test with 2 week filter (default) - should include sessions 1 and 2
 	req := httptest.NewRequest("GET", "/sessions?time_range=2w", nil)
 	w := httptest.NewRecorder()
 	handleSessions(w, req)
-	
+
 	if w.Code != http.StatusOK {
 		t.Errorf("Expected status 200, got %d", w.Code)
 	}
-	
+
 	body := w.Body.String()
 	if !strings.Contains(body, "session1") {
 		t.Error("Expected session1 in 2 week range")
@@ -2077,12 +2076,12 @@ func TestHandleSessionsWithTimeRange(t *testing.T) {
 	if strings.Contains(body, "session3") {
 		t.Error("Did not expect session3 in 2 week range")
 	}
-	
+
 	// Test with all time filter
 	req = httptest.NewRequest("GET", "/sessions?time_range=all", nil)
 	w = httptest.NewRecorder()
 	handleSessions(w, req)
-	
+
 	body = w.Body.String()
 	if !strings.Contains(body, "session1") || !strings.Contains(body, "session2") || !strings.Contains(body, "session3") {
 		t.Error("Expected all sessions with 'all' time range")
@@ -2117,17 +2116,17 @@ func TestHandleSessionsMetrics(t *testing.T) {
 		json.NewEncoder(w).Encode(sessions)
 	}))
 	defer mockServer.Close()
-	
+
 	datacatClient = client.NewClient(mockServer.URL)
-	
+
 	req := httptest.NewRequest("GET", "/api/sessions-metrics", nil)
 	w := httptest.NewRecorder()
 	handleSessionsMetrics(w, req)
-	
+
 	if w.Code != http.StatusOK {
 		t.Errorf("Expected status 200, got %d", w.Code)
 	}
-	
+
 	body := w.Body.String()
 	if !strings.Contains(body, "cpu_usage") {
 		t.Error("Expected cpu_usage metric in response")
@@ -2170,18 +2169,18 @@ func TestHandleMetricData(t *testing.T) {
 		json.NewEncoder(w).Encode(sessions)
 	}))
 	defer mockServer.Close()
-	
+
 	datacatClient = client.NewClient(mockServer.URL)
-	
+
 	// Use "all" time range to avoid filtering out test data
 	req := httptest.NewRequest("GET", "/api/metric-data/cpu_usage?time_range=all", nil)
 	w := httptest.NewRecorder()
 	handleMetricData(w, req)
-	
+
 	if w.Code != http.StatusOK {
 		t.Errorf("Expected status 200, got %d", w.Code)
 	}
-	
+
 	body := w.Body.String()
 	t.Logf("Response body: %s", body)
 	if !strings.Contains(body, "chart-") {
@@ -2219,20 +2218,19 @@ func TestHandleMetricDataNoData(t *testing.T) {
 		json.NewEncoder(w).Encode(sessions)
 	}))
 	defer mockServer.Close()
-	
+
 	datacatClient = client.NewClient(mockServer.URL)
-	
+
 	req := httptest.NewRequest("GET", "/api/metric-data/nonexistent_metric", nil)
 	w := httptest.NewRecorder()
 	handleMetricData(w, req)
-	
+
 	if w.Code != http.StatusOK {
 		t.Errorf("Expected status 200, got %d", w.Code)
 	}
-	
+
 	body := w.Body.String()
 	if !strings.Contains(body, "No data found") {
 		t.Error("Expected 'No data found' message")
 	}
 }
-

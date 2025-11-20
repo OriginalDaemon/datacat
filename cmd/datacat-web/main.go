@@ -103,13 +103,18 @@ func main() {
 	http.HandleFunc("/api/timeseries", handleTimeseriesAPI)
 	http.HandleFunc("/metrics", handleMetrics)
 	http.HandleFunc("/api/server-status", handleServerStatus)
-	
+
 	// HTMX live update endpoints
 	http.HandleFunc("/api/stats-cards", handleStatsCards)
 	http.HandleFunc("/api/sessions-table", handleSessionsTable)
 	http.HandleFunc("/api/session-info/", handleSessionInfo)
 	http.HandleFunc("/api/sessions-metrics", handleSessionsMetrics)
 	http.HandleFunc("/api/metric-data/", handleMetricData)
+	http.HandleFunc("/api/products-grid", handleProductsGrid)
+	http.HandleFunc("/api/session-timeline/", handleSessionTimeline)
+	http.HandleFunc("/api/session-metrics-list/", handleSessionMetricsList)
+	http.HandleFunc("/api/session-events/", handleSessionEvents)
+	http.HandleFunc("/api/session-metrics-table/", handleSessionMetricsTable)
 
 	port := ":8080"
 	log.Printf("Starting datacat web UI on %s", port)
@@ -252,7 +257,7 @@ func handleSessions(w http.ResponseWriter, r *http.Request) {
 	// Calculate time range boundaries
 	var startTime, endTime time.Time
 	now := time.Now()
-	
+
 	switch timeRange {
 	case "1d":
 		startTime = now.Add(-24 * time.Hour)
@@ -299,7 +304,7 @@ func handleSessions(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 		}
-		
+
 		if !matchesFilters(session, product, version, statusFilter, stateKey, stateValue, eventName) {
 			continue
 		}
@@ -982,10 +987,10 @@ func arrayContainsAll(stateArray, filterArray []interface{}) bool {
 // handleServerStatus checks if the server is online and returns status
 func handleServerStatus(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html")
-	
+
 	// Try to get sessions to check if server is online
 	_, err := datacatClient.GetAllSessions()
-	
+
 	if err != nil {
 		// Server is offline
 		w.Write([]byte(`<div id="server-status" class="alert alert-danger" hx-get="/api/server-status" hx-trigger="every 5s" hx-swap="outerHTML">
@@ -1002,7 +1007,7 @@ func handleServerStatus(w http.ResponseWriter, r *http.Request) {
 // handleStatsCards returns the stats cards with live session counts
 func handleStatsCards(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html")
-	
+
 	sessions, err := datacatClient.GetAllSessions()
 	if err != nil {
 		// Return error state
@@ -1014,13 +1019,13 @@ func handleStatsCards(w http.ResponseWriter, r *http.Request) {
 		</div>`))
 		return
 	}
-	
+
 	// Calculate stats
 	totalSessions := len(sessions)
 	activeSessions := 0
 	totalEvents := 0
 	totalMetrics := 0
-	
+
 	for _, session := range sessions {
 		if session.Active {
 			activeSessions++
@@ -1028,13 +1033,13 @@ func handleStatsCards(w http.ResponseWriter, r *http.Request) {
 		totalEvents += len(session.Events)
 		totalMetrics += len(session.Metrics)
 	}
-	
+
 	// Determine poll interval based on active sessions
 	pollInterval := "10s"
 	if activeSessions > 0 {
 		pollInterval = "5s"
 	}
-	
+
 	html := fmt.Sprintf(`<div class="stats-grid" id="stats-cards" hx-get="/api/stats-cards" hx-trigger="every %s" hx-swap="outerHTML">
 		<div class="stat-card">
 			<h3>Total Sessions</h3>
@@ -1053,14 +1058,14 @@ func handleStatsCards(w http.ResponseWriter, r *http.Request) {
 			<div class="value">%d</div>
 		</div>
 	</div>`, pollInterval, totalSessions, activeSessions, totalEvents, totalMetrics)
-	
+
 	w.Write([]byte(html))
 }
 
 // handleSessionsTable returns the sessions table for HTMX updates
 func handleSessionsTable(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html")
-	
+
 	sessions, err := datacatClient.GetAllSessions()
 	if err != nil {
 		w.Write([]byte(`<div id="sessions-table" hx-get="/api/sessions-table" hx-trigger="every 10s" hx-swap="outerHTML">
@@ -1068,12 +1073,12 @@ func handleSessionsTable(w http.ResponseWriter, r *http.Request) {
 		</div>`))
 		return
 	}
-	
+
 	// Sort sessions by created_at descending
 	sort.Slice(sessions, func(i, j int) bool {
 		return sessions[i].CreatedAt.After(sessions[j].CreatedAt)
 	})
-	
+
 	// Check if there are active sessions to determine poll interval
 	hasActiveSessions := false
 	for _, session := range sessions {
@@ -1082,12 +1087,12 @@ func handleSessionsTable(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 	}
-	
+
 	pollInterval := "30s"
 	if hasActiveSessions {
 		pollInterval = "10s"
 	}
-	
+
 	// Build the table HTML
 	var html strings.Builder
 	html.WriteString(fmt.Sprintf(`<div id="sessions-table" hx-get="/api/sessions-table" hx-trigger="every %s" hx-swap="outerHTML">`, pollInterval))
@@ -1104,7 +1109,7 @@ func handleSessionsTable(w http.ResponseWriter, r *http.Request) {
 			</tr>
 		</thead>
 		<tbody>`)
-	
+
 	if len(sessions) == 0 {
 		html.WriteString(`<tr>
 			<td colspan="7" style="text-align: center; padding: 40px; color: var(--text-secondary);">
@@ -1117,12 +1122,12 @@ func handleSessionsTable(w http.ResponseWriter, r *http.Request) {
 			if session.Active {
 				statusBadge = `<span class="badge badge-active">Active</span>`
 			}
-			
+
 			sessionIDShort := session.ID
 			if len(sessionIDShort) > 12 {
 				sessionIDShort = sessionIDShort[:12] + "..."
 			}
-			
+
 			html.WriteString(fmt.Sprintf(`<tr>
 				<td>
 					<a href="/session/%s" style="color: var(--accent-primary); text-decoration: none;">
@@ -1148,18 +1153,18 @@ func handleSessionsTable(w http.ResponseWriter, r *http.Request) {
 				session.ID))
 		}
 	}
-	
+
 	html.WriteString(`</tbody>
 	</table>
 	</div>`)
-	
+
 	w.Write([]byte(html.String()))
 }
 
 // handleSessionsMetrics returns the list of unique metrics for filtered sessions
 func handleSessionsMetrics(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html")
-	
+
 	// Parse same filters as handleSessions
 	product := r.URL.Query().Get("product")
 	version := r.URL.Query().Get("version")
@@ -1170,15 +1175,15 @@ func handleSessionsMetrics(w http.ResponseWriter, r *http.Request) {
 	timeRange := r.URL.Query().Get("time_range")
 	startTimeStr := r.URL.Query().Get("start_time")
 	endTimeStr := r.URL.Query().Get("end_time")
-	
+
 	// Calculate time range boundaries
 	var startTime, endTime time.Time
 	now := time.Now()
-	
+
 	if timeRange == "" {
 		timeRange = "2w"
 	}
-	
+
 	switch timeRange {
 	case "1d":
 		startTime = now.Add(-24 * time.Hour)
@@ -1209,13 +1214,13 @@ func handleSessionsMetrics(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	
+
 	sessions, err := datacatClient.GetAllSessions()
 	if err != nil {
 		w.Write([]byte(`<p style="color: var(--error-color);">Error loading sessions</p>`))
 		return
 	}
-	
+
 	// Apply filters
 	var filteredSessions []*client.Session
 	for _, session := range sessions {
@@ -1225,13 +1230,13 @@ func handleSessionsMetrics(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 		}
-		
+
 		if !matchesFilters(session, product, version, statusFilter, stateKey, stateValue, eventName) {
 			continue
 		}
 		filteredSessions = append(filteredSessions, session)
 	}
-	
+
 	// Extract unique metric names
 	metricNames := make(map[string]bool)
 	for _, session := range filteredSessions {
@@ -1239,14 +1244,14 @@ func handleSessionsMetrics(w http.ResponseWriter, r *http.Request) {
 			metricNames[metric.Name] = true
 		}
 	}
-	
+
 	// Sort metric names
 	var sortedMetrics []string
 	for name := range metricNames {
 		sortedMetrics = append(sortedMetrics, name)
 	}
 	sort.Strings(sortedMetrics)
-	
+
 	// Build query string
 	queryParams := url.Values{}
 	queryParams.Add("time_range", timeRange)
@@ -1273,12 +1278,12 @@ func handleSessionsMetrics(w http.ResponseWriter, r *http.Request) {
 		queryParams.Add("event_name", eventName)
 	}
 	queryString := queryParams.Encode()
-	
+
 	if len(sortedMetrics) == 0 {
 		w.Write([]byte(`<p style="text-align: center; padding: 20px; color: var(--text-secondary);">No metrics found in filtered sessions</p>`))
 		return
 	}
-	
+
 	// Build HTML for metric cards
 	var html strings.Builder
 	for _, metricName := range sortedMetrics {
@@ -1297,18 +1302,18 @@ func handleSessionsMetrics(w http.ResponseWriter, r *http.Request) {
 		</div>
 		`, metricName, metricName, metricName, metricName, url.PathEscape(metricName), queryString))
 	}
-	
+
 	w.Write([]byte(html.String()))
 }
 
 // handleMetricData returns the timeseries data and chart for a specific metric
 func handleMetricData(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html")
-	
+
 	// Extract metric name from URL path
 	metricName := strings.TrimPrefix(r.URL.Path, "/api/metric-data/")
 	metricName, _ = url.PathUnescape(metricName)
-	
+
 	// Parse same filters as handleSessions
 	product := r.URL.Query().Get("product")
 	version := r.URL.Query().Get("version")
@@ -1319,15 +1324,15 @@ func handleMetricData(w http.ResponseWriter, r *http.Request) {
 	timeRange := r.URL.Query().Get("time_range")
 	startTimeStr := r.URL.Query().Get("start_time")
 	endTimeStr := r.URL.Query().Get("end_time")
-	
+
 	// Calculate time range boundaries
 	var startTime, endTime time.Time
 	now := time.Now()
-	
+
 	if timeRange == "" {
 		timeRange = "2w"
 	}
-	
+
 	switch timeRange {
 	case "1d":
 		startTime = now.Add(-24 * time.Hour)
@@ -1358,13 +1363,13 @@ func handleMetricData(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	
+
 	sessions, err := datacatClient.GetAllSessions()
 	if err != nil {
 		w.Write([]byte(`<p style="color: var(--error-color);">Error loading sessions</p>`))
 		return
 	}
-	
+
 	// Apply filters
 	var filteredSessions []*client.Session
 	for _, session := range sessions {
@@ -1374,17 +1379,17 @@ func handleMetricData(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 		}
-		
+
 		if !matchesFilters(session, product, version, statusFilter, stateKey, stateValue, eventName) {
 			continue
 		}
 		filteredSessions = append(filteredSessions, session)
 	}
-	
+
 	// Collect all metric values
 	var allValues []float64
 	var points []TimeseriesPoint
-	
+
 	for _, session := range filteredSessions {
 		for _, metric := range session.Metrics {
 			if metric.Name == metricName {
@@ -1394,7 +1399,7 @@ func handleMetricData(w http.ResponseWriter, r *http.Request) {
 						continue
 					}
 				}
-				
+
 				allValues = append(allValues, metric.Value)
 				points = append(points, TimeseriesPoint{
 					Timestamp: metric.Timestamp,
@@ -1404,23 +1409,23 @@ func handleMetricData(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	
+
 	// Sort points by timestamp
 	sort.Slice(points, func(i, j int) bool {
 		return points[i].Timestamp.Before(points[j].Timestamp)
 	})
-	
+
 	if len(allValues) == 0 {
 		w.Write([]byte(`<p style="text-align: center; padding: 20px; color: var(--text-secondary);">No data found for this metric</p>`))
 		return
 	}
-	
+
 	// Calculate statistics
 	avg, max, min, median, stdDev := calculateStats(allValues)
-	
+
 	// Generate unique chart ID
 	chartID := fmt.Sprintf("chart-%s-%d", metricName, time.Now().UnixNano())
-	
+
 	// Build HTML with chart and stats
 	var html strings.Builder
 	html.WriteString(fmt.Sprintf(`
@@ -1509,7 +1514,7 @@ func handleMetricData(w http.ResponseWriter, r *http.Request) {
 		})();
 		</script>
 	`, chartID, avg, max, min, median, stdDev, chartID, toJSON(points), metricName))
-	
+
 	w.Write([]byte(html.String()))
 }
 
@@ -1518,12 +1523,12 @@ func calculateStats(values []float64) (avg, max, min, median, stdDev float64) {
 	if len(values) == 0 {
 		return 0, 0, 0, 0, 0
 	}
-	
+
 	// Average and sum for std dev
 	var sum float64
 	max = values[0]
 	min = values[0]
-	
+
 	for _, v := range values {
 		sum += v
 		if v > max {
@@ -1533,9 +1538,9 @@ func calculateStats(values []float64) (avg, max, min, median, stdDev float64) {
 			min = v
 		}
 	}
-	
+
 	avg = sum / float64(len(values))
-	
+
 	// Standard deviation
 	var variance float64
 	for _, v := range values {
@@ -1544,18 +1549,18 @@ func calculateStats(values []float64) (avg, max, min, median, stdDev float64) {
 	}
 	variance /= float64(len(values))
 	stdDev = math.Sqrt(variance)
-	
+
 	// Median
 	sortedValues := make([]float64, len(values))
 	copy(sortedValues, values)
 	sort.Float64s(sortedValues)
-	
+
 	if len(sortedValues)%2 == 0 {
 		median = (sortedValues[len(sortedValues)/2-1] + sortedValues[len(sortedValues)/2]) / 2
 	} else {
 		median = sortedValues[len(sortedValues)/2]
 	}
-	
+
 	return
 }
 
@@ -1571,9 +1576,9 @@ func toJSON(data interface{}) string {
 // handleSessionInfo returns updated session info for active sessions
 func handleSessionInfo(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html")
-	
+
 	sessionID := strings.TrimPrefix(r.URL.Path, "/api/session-info/")
-	
+
 	session, err := datacatClient.GetSession(sessionID)
 	if err != nil {
 		w.Write([]byte(`<div id="session-info">
@@ -1581,13 +1586,13 @@ func handleSessionInfo(w http.ResponseWriter, r *http.Request) {
 		</div>`))
 		return
 	}
-	
+
 	// Determine poll interval based on session status
 	pollInterval := ""
 	if session.Active {
 		pollInterval = fmt.Sprintf(` hx-get="/api/session-info/%s" hx-trigger="every 10s" hx-swap="outerHTML"`, sessionID)
 	}
-	
+
 	// Build session info HTML
 	var html strings.Builder
 	html.WriteString(fmt.Sprintf(`<div id="session-info"%s>`, pollInterval))
@@ -1600,19 +1605,19 @@ func handleSessionInfo(w http.ResponseWriter, r *http.Request) {
 			<th>Updated</th>
 			<td>` + session.UpdatedAt.Format("2006-01-02 15:04:05") + `</td>
 		</tr>`)
-	
+
 	if session.EndedAt != nil {
 		html.WriteString(`<tr>
 			<th>Ended</th>
 			<td>` + session.EndedAt.Format("2006-01-02 15:04:05") + `</td>
 		</tr>`)
 	}
-	
+
 	statusBadge := `<span class="badge badge-inactive">Ended</span>`
 	if session.Active {
 		statusBadge = `<span class="badge badge-active">Active</span>`
 	}
-	
+
 	html.WriteString(`<tr>
 		<th>Status</th>
 		<td>` + statusBadge + `</td>
@@ -1631,7 +1636,337 @@ func handleSessionInfo(w http.ResponseWriter, r *http.Request) {
 	</tr>
 	</table>
 	</div>`)
-	
+
 	w.Write([]byte(html.String()))
 }
 
+// handleProductsGrid returns the products grid with live session counts
+func handleProductsGrid(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html")
+
+	sessions, err := datacatClient.GetAllSessions()
+	if err != nil {
+		// Return error state with retry
+		w.Write([]byte(`<div id="products-grid-container" hx-get="/api/products-grid" hx-trigger="every 10s" hx-swap="outerHTML">
+<p style="color: var(--error-color); padding: 20px; text-align: center;">
+Error loading products. Retrying...
+</p>
+</div>`))
+		return
+	}
+
+	products := extractProductInfo(sessions)
+
+	// Check if there are any active sessions to adjust polling
+	hasActiveSessions := false
+	for _, session := range sessions {
+		if session.Active {
+			hasActiveSessions = true
+			break
+		}
+	}
+
+	pollInterval := "30s"
+	if hasActiveSessions {
+		pollInterval = "10s"
+	}
+
+	// Build HTML
+	var html strings.Builder
+	html.WriteString(fmt.Sprintf(`<div id="products-grid-container" hx-get="/api/products-grid" hx-trigger="every %s" hx-swap="outerHTML">`, pollInterval))
+
+	if len(products) == 0 {
+		html.WriteString(`<p style="color: var(--text-secondary); padding: 20px; text-align: center;">
+No sessions found. Start logging data to see products here.
+</p>`)
+	} else {
+		html.WriteString(`<div class="products-grid">`)
+		for _, product := range products {
+			html.WriteString(fmt.Sprintf(`
+<div class="product-card">
+<h3 class="product-name">%s</h3>
+<div class="versions-list">`, product.Name))
+
+			for _, version := range product.Versions {
+				html.WriteString(fmt.Sprintf(`
+<div class="version-item">
+<a href="/sessions?product=%s&version=%s" class="version-link">
+<span class="version-number">v%s</span>
+<span class="session-count">%d sessions</span>
+</a>
+<div class="version-stats">`,
+					url.QueryEscape(product.Name),
+					url.QueryEscape(version.Version),
+					version.Version,
+					version.SessionCount))
+
+				if version.ActiveCount > 0 {
+					html.WriteString(fmt.Sprintf(`<span class="stat-badge stat-active">%d active</span>`, version.ActiveCount))
+				}
+				if version.EndedCount > 0 {
+					html.WriteString(fmt.Sprintf(`<span class="stat-badge stat-ended">%d ended</span>`, version.EndedCount))
+				}
+				if version.CrashedCount > 0 {
+					html.WriteString(fmt.Sprintf(`<span class="stat-badge stat-crashed">%d crashed</span>`, version.CrashedCount))
+				}
+				if version.HungCount > 0 {
+					html.WriteString(fmt.Sprintf(`<span class="stat-badge stat-hung">%d hung</span>`, version.HungCount))
+				}
+
+				html.WriteString(`</div>
+</div>`)
+			}
+
+			html.WriteString(fmt.Sprintf(`
+<div class="version-item">
+<a href="/sessions?product=%s" class="version-link version-all">
+<span class="version-number">All Versions</span>
+<span class="session-count">View all →</span>
+</a>
+</div>
+</div>
+</div>`, url.QueryEscape(product.Name)))
+		}
+		html.WriteString(`</div>`)
+
+		html.WriteString(`
+<div style="margin-top: 30px; text-align: center;">
+<a href="/sessions" class="btn">View All Sessions</a>
+</div>`)
+	}
+
+	html.WriteString(`</div>`)
+	w.Write([]byte(html.String()))
+}
+
+// handleSessionTimeline returns the timeline HTML for a session with live updates
+func handleSessionTimeline(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html")
+
+	sessionID := strings.TrimPrefix(r.URL.Path, "/api/session-timeline/")
+
+	session, err := datacatClient.GetSession(sessionID)
+	if err != nil {
+		w.Write([]byte(`<div id="timeline-data">
+<p style="color: var(--error-color);">Error loading timeline</p>
+</div>`))
+		return
+	}
+
+	// Determine poll interval based on session status
+	pollInterval := ""
+	if session.Active {
+		pollInterval = ` hx-get="/api/session-timeline/` + sessionID + `" hx-trigger="every 5s" hx-swap="outerHTML"`
+	}
+
+	// Build timeline items JSON data
+	var timelineItems []map[string]interface{}
+
+	// Add state changes
+	for i, snapshot := range session.StateHistory {
+		timelineItems = append(timelineItems, map[string]interface{}{
+			"type":        "state",
+			"timestamp":   snapshot.Timestamp.Format("2006-01-02T15:04:05.000Z07:00"),
+			"displayTime": snapshot.Timestamp.Format("15:04:05.000"),
+			"index":       i,
+		})
+	}
+
+	// Add events
+	for _, event := range session.Events {
+		eventType := "event"
+		if event.Name == "exception" {
+			eventType = "exception"
+		}
+		timelineItems = append(timelineItems, map[string]interface{}{
+			"type":        eventType,
+			"timestamp":   event.Timestamp.Format("2006-01-02T15:04:05.000Z07:00"),
+			"displayTime": event.Timestamp.Format("15:04:05.000"),
+			"name":        event.Name,
+		})
+	}
+
+	timelineJSON, _ := json.Marshal(timelineItems)
+
+	var html strings.Builder
+	html.WriteString(fmt.Sprintf(`<div id="timeline-data"%s>`, pollInterval))
+	html.WriteString(fmt.Sprintf(`<script>
+// Update timeline with new data
+if (typeof updateTimelineData === 'function') {
+updateTimelineData(%s);
+}
+</script>`, string(timelineJSON)))
+	html.WriteString(`</div>`)
+
+	w.Write([]byte(html.String()))
+}
+
+// handleSessionMetricsList returns the metrics list with live updates
+func handleSessionMetricsList(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html")
+
+	sessionID := strings.TrimPrefix(r.URL.Path, "/api/session-metrics-list/")
+
+	session, err := datacatClient.GetSession(sessionID)
+	if err != nil {
+		w.Write([]byte(`<div id="metrics-data">
+<p style="color: var(--error-color);">Error loading metrics</p>
+</div>`))
+		return
+	}
+
+	// Determine poll interval based on session status
+	pollInterval := ""
+	if session.Active {
+		pollInterval = ` hx-get="/api/session-metrics-list/` + sessionID + `" hx-trigger="every 5s" hx-swap="outerHTML"`
+	}
+
+	// Build metrics JSON data
+	metricsJSON, _ := json.Marshal(session.Metrics)
+
+	var html strings.Builder
+	html.WriteString(fmt.Sprintf(`<div id="metrics-data"%s>`, pollInterval))
+	html.WriteString(fmt.Sprintf(`<script>
+// Update metrics with new data
+if (typeof updateMetricsData === 'function') {
+updateMetricsData(%s);
+}
+</script>`, string(metricsJSON)))
+	html.WriteString(`</div>`)
+
+	w.Write([]byte(html.String()))
+}
+
+// handleSessionEvents returns the events table with live updates
+func handleSessionEvents(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html")
+
+	sessionID := strings.TrimPrefix(r.URL.Path, "/api/session-events/")
+
+	session, err := datacatClient.GetSession(sessionID)
+	if err != nil {
+		w.Write([]byte(`<div id="events-container">
+<p style="color: var(--error-color);">Error loading events</p>
+</div>`))
+		return
+	}
+
+	// Determine poll interval based on session status
+	pollInterval := ""
+	if session.Active {
+		pollInterval = ` hx-get="/api/session-events/` + sessionID + `" hx-trigger="every 10s" hx-swap="outerHTML"`
+	}
+
+	var html strings.Builder
+	html.WriteString(fmt.Sprintf(`<div id="events-container"%s>`, pollInterval))
+
+	if len(session.Events) == 0 {
+		html.WriteString(`<p style="color: var(--text-secondary); padding: 20px;">No events recorded</p>`)
+	} else {
+		html.WriteString(`<table>
+<thead>
+<tr>
+<th style="width: 120px">Timestamp</th>
+<th style="width: 200px">Name</th>
+<th>Data</th>
+</tr>
+</thead>
+<tbody>`)
+
+		for i, event := range session.Events {
+			eventDataJSON, _ := json.Marshal(event.Data)
+			html.WriteString(fmt.Sprintf(`
+<tr>
+<td style="font-family: monospace">%s</td>
+<td>%s</td>
+<td>
+<div id="event-data-%d" class="json-viewer-container"></div>
+<script>
+(function() {
+const eventData = %s;
+new JSONViewer('event-data-%d', eventData, {
+collapsed: true,
+showCopyButton: true,
+showRawButton: true
+});
+})();
+</script>
+</td>
+</tr>`,
+				event.Timestamp.Format("15:04:05"),
+				event.Name,
+				i,
+				string(eventDataJSON),
+				i))
+		}
+
+		html.WriteString(`</tbody>
+</table>`)
+	}
+
+	html.WriteString(`</div>`)
+	w.Write([]byte(html.String()))
+}
+
+// handleSessionMetricsTable returns the metrics data table with live updates
+func handleSessionMetricsTable(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html")
+
+	sessionID := strings.TrimPrefix(r.URL.Path, "/api/session-metrics-table/")
+
+	session, err := datacatClient.GetSession(sessionID)
+	if err != nil {
+		w.Write([]byte(`<div id="metrics-table-container">
+<p style="color: var(--error-color);">Error loading metrics</p>
+</div>`))
+		return
+	}
+
+	// Determine poll interval based on session status
+	pollInterval := ""
+	if session.Active {
+		pollInterval = ` hx-get="/api/session-metrics-table/` + sessionID + `" hx-trigger="every 10s" hx-swap="outerHTML"`
+	}
+
+	var html strings.Builder
+	html.WriteString(fmt.Sprintf(`<div id="metrics-table-container"%s>`, pollInterval))
+
+	if len(session.Metrics) == 0 {
+		html.WriteString(`<p style="color: var(--text-secondary); padding: 20px;">No metrics recorded</p>`)
+	} else {
+		html.WriteString(`<table>
+<thead>
+<tr>
+<th>Timestamp</th>
+<th>Name</th>
+<th>Value</th>
+<th>Tags</th>
+</tr>
+</thead>
+<tbody>`)
+
+		for _, metric := range session.Metrics {
+			tags := ""
+			for _, tag := range metric.Tags {
+				tags += tag + " "
+			}
+			html.WriteString(fmt.Sprintf(`
+<tr>
+<td style="font-family: monospace">%s</td>
+<td>%s</td>
+<td>%f</td>
+<td>%s</td>
+</tr>`,
+				metric.Timestamp.Format("15:04:05"),
+				metric.Name,
+				metric.Value,
+				tags))
+		}
+
+		html.WriteString(`</tbody>
+</table>`)
+	}
+
+	html.WriteString(`</div>`)
+	w.Write([]byte(html.String()))
+}
