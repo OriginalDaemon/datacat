@@ -1,5 +1,38 @@
 # GitHub Copilot Instructions for datacat
 
+> **Quick Reference**: Start with [Working Philosophy](#working-philosophy) and [Development Workflow](#development-workflow) for key principles.
+
+## Table of Contents
+- [Working Philosophy](#working-philosophy)
+- [Project Overview](#project-overview)
+- [Repository Structure](#repository-structure)
+- [Architecture Principles](#architecture-principles)
+- [Code Standards](#code-standards)
+- [Testing Requirements](#testing-requirements)
+- [Development Workflow](#development-workflow)
+- [Common Pitfalls to Avoid](#common-pitfalls-to-avoid)
+- [File Organization](#file-organization)
+- [Tool Usage Patterns](#tool-usage-patterns)
+- [Key Features and Patterns](#key-features-and-patterns)
+- [API Design Guidelines](#api-design-guidelines)
+- [Build and Development](#build-and-development)
+- [Common Development Tasks](#common-development-tasks)
+- [Important Considerations](#important-considerations)
+- [CI/CD Pipeline](#cicd-pipeline)
+- [Documentation](#documentation)
+- [Common Patterns](#common-patterns)
+- [Security Considerations](#security-considerations)
+- [Performance Expectations](#performance-expectations)
+
+## Working Philosophy
+
+**Make the smallest possible changes to achieve your goals.** This is critical:
+- Only modify files that are directly related to your task
+- Preserve existing functionality unless explicitly changing it
+- Don't refactor unrelated code
+- Don't fix unrelated bugs or test failures unless they block your work
+- Use existing libraries and patterns - don't introduce new dependencies unless necessary
+
 ## Project Overview
 
 datacat is a complete data logging system with REST API service, client libraries, and web UI for tracking application sessions, state, events, and metrics. This is a Go and Python monorepo with multiple independent programs and libraries.
@@ -219,11 +252,134 @@ c.EndSession(sessionID)
 - BadgerDB provides fast reads/writes
 - Web UI should load sessions in <1s
 
-## When Making Changes
+## Development Workflow
 
-1. **Understand the architecture**: Read ARCHITECTURE.md before major changes
-2. **Maintain compatibility**: Don't break Python 2.7 or existing API contracts
-3. **Test thoroughly**: Run all tests locally before pushing
+### Before Making Changes
+1. **Understand the codebase**: Read ARCHITECTURE.md and CONTRIBUTING.md
+2. **Run existing tests**: Verify baseline state before making changes
+3. **Check for failures**: Note any pre-existing test failures (not your responsibility to fix)
+
+### Making Changes
+1. **Keep changes minimal**: Only modify what's necessary for your task
+2. **One change at a time**: Make incremental changes and test each one
+3. **Follow existing patterns**: Match the style and structure of surrounding code
+4. **Maintain compatibility**: Don't break Python 2.7 or existing API contracts
+5. **Test frequently**: Run relevant tests after each change
+
+### After Making Changes
+1. **Verify your changes**: Test the specific functionality you modified
+2. **Run linters and formatters**: Ensure code style compliance
+3. **Check coverage**: Ensure tests cover your changes (80% minimum)
 4. **Update documentation**: Keep docs in sync with code changes
-5. **Follow conventions**: Match existing code style and patterns
-6. **Keep it minimal**: Make smallest possible changes to achieve goals
+5. **Review commits**: Ensure only relevant files are committed (use .gitignore)
+
+## Common Pitfalls to Avoid
+
+### What NOT to Do
+- ❌ Don't remove or modify working code unrelated to your task
+- ❌ Don't fix unrelated bugs or test failures
+- ❌ Don't refactor code that isn't part of your changes
+- ❌ Don't add new dependencies without careful consideration
+- ❌ Don't commit temporary files, build artifacts, or dependencies
+- ❌ Don't break Python 2.7 compatibility (use `.format()` not f-strings)
+- ❌ Don't ignore errors in Go code (always handle explicitly)
+- ❌ Don't commit without running tests first
+
+### What TO Do
+- ✅ Make surgical, precise changes to accomplish your goal
+- ✅ Preserve existing functionality and behavior
+- ✅ Add tests for new functionality
+- ✅ Use existing libraries and utilities
+- ✅ Follow established code patterns
+- ✅ Run formatters (black for Python, go fmt for Go)
+- ✅ Check coverage before committing (80% minimum)
+- ✅ Update relevant documentation
+
+## File Organization
+
+### What to Commit
+- Source code changes in `cmd/`, `client/`, `python/`, `examples/`
+- Test changes in `tests/`, `*_test.go` files
+- Documentation updates in `docs/`, `*.md` files
+- Configuration changes (go.mod, requirements-dev.txt, etc.)
+
+### What NOT to Commit (already in .gitignore)
+- Compiled binaries: `datacat`, `datacat-server`, `datacat-web`, `datacat-daemon`
+- Test artifacts: `*.out`, `coverage*`, `*.test`
+- Database files: `badger_data/`, `datacat_db/`, `*.db`
+- Python artifacts: `__pycache__/`, `*.pyc`, `.venv/`, `dist/`, `build/`
+- Temporary files in `/tmp/`
+
+If you accidentally commit unwanted files, use `git rm --cached <file>` to unstage them and update `.gitignore`.
+
+## Tool Usage Patterns
+
+### Running Tests
+```bash
+# Test only what you changed - don't run full test suite unnecessarily
+go test -v ./client  # If you changed Go client
+pytest tests/test_unit.py -k "test_specific_function"  # If you changed specific functionality
+```
+
+### Formatting Code
+```bash
+# Always format before committing
+black python/ examples/ tests/  # Python formatting
+go fmt ./...  # Go formatting (automatically applied by go tooling)
+```
+
+### Building Components
+```bash
+# Only build what you need to test
+cd cmd/datacat-server && go build  # If testing server
+cd cmd/datacat-web && go build     # If testing web UI
+cd cmd/datacat-daemon && go build  # If testing daemon
+```
+
+### Incremental Development
+1. Make a small change
+2. Run relevant tests immediately
+3. Fix any issues
+4. Commit when tests pass
+5. Repeat
+
+This approach catches errors early and makes debugging easier.
+
+### Debugging and Troubleshooting
+
+**Build Failures**
+```bash
+# Go build errors
+go build -v ./...  # Verbose output to see what's failing
+go mod tidy        # Fix dependency issues
+
+# Python import errors
+pip install -e python/  # Reinstall package in development mode
+```
+
+**Test Failures**
+```bash
+# Run specific test with verbose output
+go test -v ./client -run TestSpecificFunction
+pytest tests/test_unit.py::test_specific_function -v -s
+
+# Check test coverage to find untested code
+go test -coverprofile=coverage.out ./client && go tool cover -html=coverage.out
+pytest tests/ --cov=python --cov-report=html
+```
+
+**Runtime Issues**
+- Check server is running: `curl http://localhost:9090/api/sessions`
+- Check daemon is running: `curl http://localhost:8079/health` (if using daemon mode)
+- Look for database locks: Remove `badger_data/` directory and restart if corrupted
+- Check logs: Server and daemon print detailed error messages to stdout
+
+**Type Checking Issues (Python)**
+```bash
+# Fix type errors
+mypy python/ --ignore-missing-imports --show-error-codes
+
+# Common fixes:
+# - Add type hints: def function(param: str) -> dict:
+# - Use # type: ignore comments for unavoidable issues
+```
