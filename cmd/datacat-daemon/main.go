@@ -14,16 +14,20 @@ import (
 
 // SessionBuffer holds pending updates for a session
 type SessionBuffer struct {
-	SessionID     string
-	StateUpdates  []map[string]interface{}
-	Events        []EventData
-	Metrics       []MetricData
-	LastHeartbeat time.Time
-	LastState     map[string]interface{}
-	HangLogged    bool
-	ParentPID     int  // Parent process ID
-	CrashLogged   bool // Whether crash has been logged
-	mu            sync.Mutex
+	SessionID        string
+	StateUpdates     []map[string]interface{}
+	Events           []EventData
+	Metrics          []MetricData
+	LastHeartbeat    time.Time
+	LastState        map[string]interface{}
+	HangLogged       bool
+	ParentPID        int       // Parent process ID
+	CrashLogged      bool      // Whether crash has been logged
+	CreatedAt        time.Time // When session was created
+	EndedAt          *time.Time // When session was ended
+	Active           bool      // Whether session is active
+	SyncedWithServer bool      // Whether this session exists on the server
+	mu               sync.Mutex
 }
 
 // EventData represents an event to be logged
@@ -39,18 +43,31 @@ type MetricData struct {
 	Tags  []string `json:"tags,omitempty"`
 }
 
+// QueuedOperation represents an operation that failed and needs retry
+type QueuedOperation struct {
+	SessionID string
+	OpType    string // "create_session", "state", "event", "metric", "end"
+	Data      interface{}
+	Timestamp time.Time
+}
+
 // Daemon manages batching and forwarding to the server
 type Daemon struct {
-	config   *Config
-	sessions map[string]*SessionBuffer
-	mu       sync.RWMutex
+	config         *Config
+	sessions       map[string]*SessionBuffer
+	mu             sync.RWMutex
+	failedQueue    []QueuedOperation
+	queueMu        sync.Mutex
+	sessionCounter int // Counter for generating local session IDs
 }
 
 // NewDaemon creates a new daemon instance
 func NewDaemon(config *Config) *Daemon {
 	return &Daemon{
-		config:   config,
-		sessions: make(map[string]*SessionBuffer),
+		config:         config,
+		sessions:       make(map[string]*SessionBuffer),
+		failedQueue:    make([]QueuedOperation, 0),
+		sessionCounter: 0,
 	}
 }
 
@@ -65,6 +82,9 @@ func (d *Daemon) Start() error {
 	// Start parent process monitor goroutine
 	go d.parentProcessMonitor()
 
+	// Start retry queue processor goroutine
+	go d.retryQueueProcessor()
+
 	// Setup HTTP handlers
 	http.HandleFunc("/register", d.handleRegister)
 	http.HandleFunc("/state", d.handleState)
@@ -73,6 +93,8 @@ func (d *Daemon) Start() error {
 	http.HandleFunc("/heartbeat", d.handleHeartbeat)
 	http.HandleFunc("/end", d.handleEnd)
 	http.HandleFunc("/health", d.handleHealth)
+	http.HandleFunc("/session", d.handleGetSession)
+	http.HandleFunc("/sessions", d.handleGetSessions)
 
 	addr := ":" + d.config.DaemonPort
 	log.Printf("Daemon listening on %s, forwarding to %s", addr, d.config.ServerURL)
@@ -92,45 +114,70 @@ func (d *Daemon) handleRegister(w http.ResponseWriter, r *http.Request) {
 	}
 	json.NewDecoder(r.Body).Decode(&req)
 
-	// Forward to server to create session
+	var sessionID string
+	syncedWithServer := false
+
+	// Try to forward to server to create session
 	resp, err := http.Post(d.config.ServerURL+"/api/sessions", "application/json", nil)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to create session: %v", err), http.StatusInternalServerError)
-		return
-	}
-	defer resp.Body.Close()
+		// Server is unavailable - create session locally
+		log.Printf("Server unavailable, creating session locally: %v", err)
+		d.mu.Lock()
+		d.sessionCounter++
+		sessionID = fmt.Sprintf("local-session-%d-%d", time.Now().Unix(), d.sessionCounter)
+		d.mu.Unlock()
+		
+		// Queue the session creation for retry
+		d.queueMu.Lock()
+		d.failedQueue = append(d.failedQueue, QueuedOperation{
+			SessionID: sessionID,
+			OpType:    "create_session",
+			Data:      nil,
+			Timestamp: time.Now(),
+		})
+		d.queueMu.Unlock()
+	} else {
+		defer resp.Body.Close()
 
-	var result map[string]interface{}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		http.Error(w, fmt.Sprintf("Failed to decode response: %v", err), http.StatusInternalServerError)
-		return
-	}
+		var result map[string]interface{}
+		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+			http.Error(w, fmt.Sprintf("Failed to decode response: %v", err), http.StatusInternalServerError)
+			return
+		}
 
-	sessionID, ok := result["session_id"].(string)
-	if !ok {
-		http.Error(w, "Invalid session ID in response", http.StatusInternalServerError)
-		return
+		id, ok := result["session_id"].(string)
+		if !ok {
+			http.Error(w, "Invalid session ID in response", http.StatusInternalServerError)
+			return
+		}
+		sessionID = id
+		syncedWithServer = true
 	}
 
 	// Create buffer for this session
 	d.mu.Lock()
 	d.sessions[sessionID] = &SessionBuffer{
-		SessionID:     sessionID,
-		StateUpdates:  make([]map[string]interface{}, 0),
-		Events:        make([]EventData, 0),
-		Metrics:       make([]MetricData, 0),
-		LastHeartbeat: time.Now(),
-		LastState:     make(map[string]interface{}),
-		HangLogged:    false,
-		ParentPID:     req.ParentPID,
-		CrashLogged:   false,
+		SessionID:        sessionID,
+		StateUpdates:     make([]map[string]interface{}, 0),
+		Events:           make([]EventData, 0),
+		Metrics:          make([]MetricData, 0),
+		LastHeartbeat:    time.Now(),
+		LastState:        make(map[string]interface{}),
+		HangLogged:       false,
+		ParentPID:        req.ParentPID,
+		CrashLogged:      false,
+		CreatedAt:        time.Now(),
+		Active:           true,
+		SyncedWithServer: syncedWithServer,
 	}
 	d.mu.Unlock()
 
-	log.Printf("Registered session: %s (parent PID: %d)", sessionID, req.ParentPID)
+	log.Printf("Registered session: %s (parent PID: %d, synced: %v)", sessionID, req.ParentPID, syncedWithServer)
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(result)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"session_id": sessionID,
+	})
 }
 
 // handleState handles state update requests
@@ -307,6 +354,15 @@ func (d *Daemon) handleEnd(w http.ResponseWriter, r *http.Request) {
 	// Flush any pending data for this session
 	d.flushSession(req.SessionID)
 
+	// Mark session as ended locally
+	d.mu.Lock()
+	if buffer, exists := d.sessions[req.SessionID]; exists {
+		now := time.Now()
+		buffer.EndedAt = &now
+		buffer.Active = false
+	}
+	d.mu.Unlock()
+
 	// Forward end request to server
 	endData, _ := json.Marshal(map[string]interface{}{})
 	resp, err := http.Post(
@@ -314,14 +370,24 @@ func (d *Daemon) handleEnd(w http.ResponseWriter, r *http.Request) {
 		"application/json",
 		bytes.NewBuffer(endData),
 	)
-	if err == nil {
+	if err != nil {
+		log.Printf("Failed to send end session to server, queueing for retry: %v", err)
+		// Queue for retry
+		d.queueMu.Lock()
+		d.failedQueue = append(d.failedQueue, QueuedOperation{
+			SessionID: req.SessionID,
+			OpType:    "end",
+			Data:      nil,
+			Timestamp: time.Now(),
+		})
+		d.queueMu.Unlock()
+	} else {
 		_ = resp.Body.Close()
+		// Remove session from daemon after successfully ending on server
+		d.mu.Lock()
+		delete(d.sessions, req.SessionID)
+		d.mu.Unlock()
 	}
-
-	// Remove session from daemon
-	d.mu.Lock()
-	delete(d.sessions, req.SessionID)
-	d.mu.Unlock()
 
 	log.Printf("Session ended: %s", req.SessionID)
 	w.WriteHeader(http.StatusOK)
@@ -399,10 +465,22 @@ func (d *Daemon) sendStateUpdate(sessionID string, state map[string]interface{})
 		bytes.NewBuffer(data),
 	)
 	if err != nil {
-		log.Printf("Failed to send state update: %v", err)
+		log.Printf("Failed to send state update, queueing for retry: %v", err)
+		// Queue for retry
+		d.queueMu.Lock()
+		d.failedQueue = append(d.failedQueue, QueuedOperation{
+			SessionID: sessionID,
+			OpType:    "state",
+			Data:      state,
+			Timestamp: time.Now(),
+		})
+		d.queueMu.Unlock()
 		return
 	}
 	_ = resp.Body.Close()
+	
+	// Mark session as synced with server on successful operation
+	d.markSessionSynced(sessionID)
 }
 
 // sendEvent sends an event to the server
@@ -414,10 +492,22 @@ func (d *Daemon) sendEvent(sessionID string, event EventData) {
 		bytes.NewBuffer(data),
 	)
 	if err != nil {
-		log.Printf("Failed to send event: %v", err)
+		log.Printf("Failed to send event, queueing for retry: %v", err)
+		// Queue for retry
+		d.queueMu.Lock()
+		d.failedQueue = append(d.failedQueue, QueuedOperation{
+			SessionID: sessionID,
+			OpType:    "event",
+			Data:      event,
+			Timestamp: time.Now(),
+		})
+		d.queueMu.Unlock()
 		return
 	}
 	_ = resp.Body.Close()
+	
+	// Mark session as synced with server on successful operation
+	d.markSessionSynced(sessionID)
 }
 
 // sendMetric sends a metric to the server
@@ -429,10 +519,22 @@ func (d *Daemon) sendMetric(sessionID string, metric MetricData) {
 		bytes.NewBuffer(data),
 	)
 	if err != nil {
-		log.Printf("Failed to send metric: %v", err)
+		log.Printf("Failed to send metric, queueing for retry: %v", err)
+		// Queue for retry
+		d.queueMu.Lock()
+		d.failedQueue = append(d.failedQueue, QueuedOperation{
+			SessionID: sessionID,
+			OpType:    "metric",
+			Data:      metric,
+			Timestamp: time.Now(),
+		})
+		d.queueMu.Unlock()
 		return
 	}
 	_ = resp.Body.Close()
+	
+	// Mark session as synced with server on successful operation
+	d.markSessionSynced(sessionID)
 }
 
 // heartbeatMonitor checks for hung applications
@@ -594,6 +696,282 @@ func isProcessRunning(pid int) bool {
 	// On Unix, FindProcess always succeeds, so we need to send signal 0
 	err = process.Signal(syscall.Signal(0))
 	return err == nil
+}
+
+// retryQueueProcessor periodically processes the failed queue
+func (d *Daemon) retryQueueProcessor() {
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		d.processFailedQueue()
+	}
+}
+
+// processFailedQueue attempts to retry failed operations
+func (d *Daemon) processFailedQueue() {
+	d.queueMu.Lock()
+	if len(d.failedQueue) == 0 {
+		d.queueMu.Unlock()
+		return
+	}
+
+	// Take a copy of the queue and clear it
+	queue := make([]QueuedOperation, len(d.failedQueue))
+	copy(queue, d.failedQueue)
+	d.failedQueue = make([]QueuedOperation, 0)
+	d.queueMu.Unlock()
+
+	log.Printf("Processing %d queued operations", len(queue))
+
+	for _, op := range queue {
+		success := false
+
+		switch op.OpType {
+		case "create_session":
+			success = d.retryCreateSession(op.SessionID)
+		case "state":
+			if state, ok := op.Data.(map[string]interface{}); ok {
+				success = d.retrySendState(op.SessionID, state)
+			}
+		case "event":
+			if event, ok := op.Data.(EventData); ok {
+				success = d.retrySendEvent(op.SessionID, event)
+			}
+		case "metric":
+			if metric, ok := op.Data.(MetricData); ok {
+				success = d.retrySendMetric(op.SessionID, metric)
+			}
+		case "end":
+			success = d.retryEndSession(op.SessionID)
+		}
+
+		// If retry failed, add it back to the queue
+		if !success {
+			d.queueMu.Lock()
+			d.failedQueue = append(d.failedQueue, op)
+			d.queueMu.Unlock()
+		}
+	}
+}
+
+// retryCreateSession attempts to create a session on the server
+func (d *Daemon) retryCreateSession(sessionID string) bool {
+	resp, err := http.Post(d.config.ServerURL+"/api/sessions", "application/json", nil)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+
+	var result map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return false
+	}
+
+	serverSessionID, ok := result["session_id"].(string)
+	if !ok {
+		return false
+	}
+
+	// Update the local session with the server-assigned ID
+	d.mu.Lock()
+	if buffer, exists := d.sessions[sessionID]; exists {
+		// Remove old entry and add with new ID
+		delete(d.sessions, sessionID)
+		buffer.SessionID = serverSessionID
+		buffer.SyncedWithServer = true
+		d.sessions[serverSessionID] = buffer
+		log.Printf("Session %s synced with server as %s", sessionID, serverSessionID)
+	}
+	d.mu.Unlock()
+
+	return true
+}
+
+// retrySendState attempts to send a state update to the server
+func (d *Daemon) retrySendState(sessionID string, state map[string]interface{}) bool {
+	data, _ := json.Marshal(state)
+	resp, err := http.Post(
+		d.config.ServerURL+"/api/sessions/"+sessionID+"/state",
+		"application/json",
+		bytes.NewBuffer(data),
+	)
+	if err != nil {
+		return false
+	}
+	_ = resp.Body.Close()
+	d.markSessionSynced(sessionID)
+	return true
+}
+
+// retrySendEvent attempts to send an event to the server
+func (d *Daemon) retrySendEvent(sessionID string, event EventData) bool {
+	data, _ := json.Marshal(event)
+	resp, err := http.Post(
+		d.config.ServerURL+"/api/sessions/"+sessionID+"/events",
+		"application/json",
+		bytes.NewBuffer(data),
+	)
+	if err != nil {
+		return false
+	}
+	_ = resp.Body.Close()
+	d.markSessionSynced(sessionID)
+	return true
+}
+
+// retrySendMetric attempts to send a metric to the server
+func (d *Daemon) retrySendMetric(sessionID string, metric MetricData) bool {
+	data, _ := json.Marshal(metric)
+	resp, err := http.Post(
+		d.config.ServerURL+"/api/sessions/"+sessionID+"/metrics",
+		"application/json",
+		bytes.NewBuffer(data),
+	)
+	if err != nil {
+		return false
+	}
+	_ = resp.Body.Close()
+	d.markSessionSynced(sessionID)
+	return true
+}
+
+// retryEndSession attempts to end a session on the server
+func (d *Daemon) retryEndSession(sessionID string) bool {
+	endData, _ := json.Marshal(map[string]interface{}{})
+	resp, err := http.Post(
+		d.config.ServerURL+"/api/sessions/"+sessionID+"/end",
+		"application/json",
+		bytes.NewBuffer(endData),
+	)
+	if err != nil {
+		return false
+	}
+	_ = resp.Body.Close()
+	
+	// Remove session from daemon after successfully ending on server
+	d.mu.Lock()
+	delete(d.sessions, sessionID)
+	d.mu.Unlock()
+	
+	log.Printf("Session %s successfully ended on server (from queue)", sessionID)
+	return true
+}
+
+// markSessionSynced marks a session as synced with the server
+func (d *Daemon) markSessionSynced(sessionID string) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	
+	if buffer, exists := d.sessions[sessionID]; exists {
+		buffer.SyncedWithServer = true
+	}
+}
+
+// handleGetSession handles session retrieval requests from clients
+func (d *Daemon) handleGetSession(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	sessionID := r.URL.Query().Get("session_id")
+	if sessionID == "" {
+		http.Error(w, "Missing session_id parameter", http.StatusBadRequest)
+		return
+	}
+
+	d.mu.RLock()
+	buffer, exists := d.sessions[sessionID]
+	d.mu.RUnlock()
+
+	if !exists {
+		// Try to fetch from server
+		resp, err := http.Get(d.config.ServerURL + "/api/sessions/" + sessionID)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Session not found: %v", err), http.StatusNotFound)
+			return
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			http.Error(w, "Session not found", http.StatusNotFound)
+			return
+		}
+
+		// Forward the response from server
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewDecoder(resp.Body).Decode(&map[string]interface{}{})
+		return
+	}
+
+	// Build response from local buffer
+	buffer.mu.Lock()
+	response := map[string]interface{}{
+		"id":         buffer.SessionID,
+		"created_at": buffer.CreatedAt.Format(time.RFC3339),
+		"updated_at": time.Now().Format(time.RFC3339),
+		"active":     buffer.Active,
+		"state":      buffer.LastState,
+	}
+	if buffer.EndedAt != nil {
+		response["ended_at"] = buffer.EndedAt.Format(time.RFC3339)
+	}
+	buffer.mu.Unlock()
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
+// handleGetSessions handles requests to get all sessions
+func (d *Daemon) handleGetSessions(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Try to fetch from server first
+	resp, err := http.Get(d.config.ServerURL + "/api/data/sessions")
+	if err != nil {
+		// Server unavailable, return local sessions only
+		log.Printf("Server unavailable for get sessions, returning local sessions: %v", err)
+		d.mu.RLock()
+		sessions := make([]map[string]interface{}, 0, len(d.sessions))
+		for _, buffer := range d.sessions {
+			buffer.mu.Lock()
+			session := map[string]interface{}{
+				"id":         buffer.SessionID,
+				"created_at": buffer.CreatedAt.Format(time.RFC3339),
+				"updated_at": time.Now().Format(time.RFC3339),
+				"active":     buffer.Active,
+				"state":      buffer.LastState,
+			}
+			if buffer.EndedAt != nil {
+				session["ended_at"] = buffer.EndedAt.Format(time.RFC3339)
+			}
+			sessions = append(sessions, session)
+			buffer.mu.Unlock()
+		}
+		d.mu.RUnlock()
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(sessions)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		http.Error(w, "Failed to retrieve sessions", http.StatusInternalServerError)
+		return
+	}
+
+	// Forward the response from server
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	var sessions []map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&sessions)
+	json.NewEncoder(w).Encode(sessions)
 }
 
 func main() {

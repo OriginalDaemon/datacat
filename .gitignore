@@ -55,8 +55,14 @@ __pycache__/
 *.egg
 dist/
 build/
+.venv/
+venv/
 
 # Editor/IDE
 # .idea/
 # .vscode/
 datacat-web-test
+
+# Screenshots
+screenshots/
+
