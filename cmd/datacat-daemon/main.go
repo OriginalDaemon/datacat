@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -108,17 +109,32 @@ func (d *Daemon) handleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Parse request body to get parent PID
+	// Parse request body to get parent PID, product, and version
 	var req struct {
-		ParentPID int `json:"parent_pid"`
+		ParentPID int    `json:"parent_pid"`
+		Product   string `json:"product"`
+		Version   string `json:"version"`
 	}
-	json.NewDecoder(r.Body).Decode(&req)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	// Validate that product and version are provided
+	if req.Product == "" || req.Version == "" {
+		http.Error(w, "Product and version are required fields", http.StatusBadRequest)
+		return
+	}
 
 	var sessionID string
 	syncedWithServer := false
 
 	// Try to forward to server to create session
-	resp, err := http.Post(d.config.ServerURL+"/api/sessions", "application/json", nil)
+	reqBody, _ := json.Marshal(map[string]string{
+		"product": req.Product,
+		"version": req.Version,
+	})
+	resp, err := http.Post(d.config.ServerURL+"/api/sessions", "application/json", bytes.NewBuffer(reqBody))
 	if err != nil {
 		// Server is unavailable - create session locally
 		log.Printf("Server unavailable, creating session locally: %v", err)
@@ -132,12 +148,21 @@ func (d *Daemon) handleRegister(w http.ResponseWriter, r *http.Request) {
 		d.failedQueue = append(d.failedQueue, QueuedOperation{
 			SessionID: sessionID,
 			OpType:    "create_session",
-			Data:      nil,
+			Data: map[string]string{
+				"product": req.Product,
+				"version": req.Version,
+			},
 			Timestamp: time.Now(),
 		})
 		d.queueMu.Unlock()
 	} else {
 		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			http.Error(w, fmt.Sprintf("Server returned error: %s", string(body)), resp.StatusCode)
+			return
+		}
 
 		var result map[string]interface{}
 		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
@@ -154,7 +179,11 @@ func (d *Daemon) handleRegister(w http.ResponseWriter, r *http.Request) {
 		syncedWithServer = true
 	}
 
-	// Create buffer for this session
+	// Create buffer for this session with initial state containing product and version
+	initialState := make(map[string]interface{})
+	initialState["product"] = req.Product
+	initialState["version"] = req.Version
+
 	d.mu.Lock()
 	d.sessions[sessionID] = &SessionBuffer{
 		SessionID:        sessionID,
@@ -162,7 +191,7 @@ func (d *Daemon) handleRegister(w http.ResponseWriter, r *http.Request) {
 		Events:           make([]EventData, 0),
 		Metrics:          make([]MetricData, 0),
 		LastHeartbeat:    time.Now(),
-		LastState:        make(map[string]interface{}),
+		LastState:        initialState,
 		HangLogged:       false,
 		ParentPID:        req.ParentPID,
 		CrashLogged:      false,
@@ -172,7 +201,8 @@ func (d *Daemon) handleRegister(w http.ResponseWriter, r *http.Request) {
 	}
 	d.mu.Unlock()
 
-	log.Printf("Registered session: %s (parent PID: %d, synced: %v)", sessionID, req.ParentPID, syncedWithServer)
+	log.Printf("Registered session: %s (product: %s, version: %s, parent PID: %d, synced: %v)", 
+		sessionID, req.Product, req.Version, req.ParentPID, syncedWithServer)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{

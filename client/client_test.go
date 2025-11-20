@@ -36,7 +36,7 @@ func TestCreateSession(t *testing.T) {
 	defer server.Close()
 
 	client := NewClient(server.URL)
-	sessionID, err := client.CreateSession()
+	sessionID, err := client.CreateSession("TestProduct", "1.0.0")
 
 	if err != nil {
 		t.Fatalf("CreateSession failed: %v", err)
@@ -330,7 +330,7 @@ func TestCreateSessionWithDaemon(t *testing.T) {
 		UseDaemon:  true,
 	}
 
-	sessionID, err := client.CreateSession()
+	sessionID, err := client.CreateSession("TestProduct", "1.0.0")
 	if err != nil {
 		t.Fatalf("CreateSession with daemon failed: %v", err)
 	}
@@ -467,7 +467,7 @@ func TestEndSessionWithDaemon(t *testing.T) {
 func TestErrorHandling(t *testing.T) {
 	// Test CreateSession error
 	client := NewClient("http://invalid-url-that-does-not-exist:99999")
-	_, err := client.CreateSession()
+	_, err := client.CreateSession("TestProduct", "1.0.0")
 	if err == nil {
 		t.Error("Expected error for invalid URL")
 	}
@@ -530,7 +530,7 @@ func TestHTTPErrorResponses(t *testing.T) {
 
 	client := NewClient(server.URL)
 
-	_, err := client.CreateSession()
+	_, err := client.CreateSession("TestProduct", "1.0.0")
 	if err == nil {
 		t.Error("Expected error for 500 response")
 	}
@@ -576,7 +576,7 @@ func TestInvalidJSONResponses(t *testing.T) {
 
 	client := NewClient(server.URL)
 
-	_, err := client.CreateSession()
+	_, err := client.CreateSession("TestProduct", "1.0.0")
 	if err == nil {
 		t.Error("Expected error for invalid JSON response in CreateSession")
 	}
@@ -624,7 +624,7 @@ func TestCreateSessionDaemonEmptyResponse(t *testing.T) {
 		UseDaemon:  true,
 	}
 
-	sessionID, err := client.CreateSession()
+	sessionID, err := client.CreateSession("TestProduct", "1.0.0")
 	if err != nil {
 		t.Fatalf("CreateSession should not fail: %v", err)
 	}

@@ -198,7 +198,11 @@ func (c *Client) Close() error {
 }
 
 // CreateSession creates a new session
-func (c *Client) CreateSession() (string, error) {
+func (c *Client) CreateSession(product, version string) (string, error) {
+	if product == "" || version == "" {
+		return "", fmt.Errorf("product and version are required to create a session")
+	}
+
 	var url string
 	var reqData []byte
 	var err error
@@ -208,6 +212,8 @@ func (c *Client) CreateSession() (string, error) {
 		// Send parent PID so daemon can monitor for crashes
 		data := map[string]interface{}{
 			"parent_pid": os.Getpid(),
+			"product":    product,
+			"version":    version,
 		}
 		reqData, err = json.Marshal(data)
 		if err != nil {
@@ -215,6 +221,14 @@ func (c *Client) CreateSession() (string, error) {
 		}
 	} else {
 		url = c.BaseURL + "/api/sessions"
+		data := map[string]interface{}{
+			"product": product,
+			"version": version,
+		}
+		reqData, err = json.Marshal(data)
+		if err != nil {
+			return "", fmt.Errorf("failed to marshal request: %w", err)
+		}
 	}
 
 	resp, err := c.HTTPClient.Post(url, "application/json", bytes.NewBuffer(reqData))
