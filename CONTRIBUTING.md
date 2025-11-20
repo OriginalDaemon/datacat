@@ -43,13 +43,32 @@ git clone https://github.com/YOUR_USERNAME/datacat.git
 cd datacat
 ```
 
-### 2. Create a Branch
+### 2. Setup Development Environment
+
+**On Windows (PowerShell):**
+```powershell
+.\scripts\setup.ps1
+```
+
+This will create a Python virtual environment at `.venv/` and install all dependencies.
+
+**On Linux/macOS:**
+```bash
+# Install Python dependencies
+pip install -r requirements-dev.txt
+pip install -e python/
+
+# Install Go dependencies
+go mod download
+```
+
+### 3. Create a Branch
 
 ```bash
 git checkout -b feature/your-feature-name
 ```
 
-### 3. Make Changes
+### 4. Make Changes
 
 Follow the structure:
 - **Server changes**: `cmd/datacat-server/`
@@ -58,8 +77,24 @@ Follow the structure:
 - **Python client changes**: `python/`
 - **Documentation**: `docs/`
 
-### 4. Run Tests Locally
+### 5. Run Tests Locally
 
+**On Windows (PowerShell):**
+```powershell
+# Format Python code
+.\scripts\format.ps1
+
+# Check code quality (Black + mypy)
+.\scripts\lint.ps1
+
+# Run all tests (Go + Python)
+.\scripts\test-all.ps1
+
+# Run tests with coverage
+.\scripts\test-all.ps1 -Coverage
+```
+
+**On Linux/macOS:**
 ```bash
 # Format Python code
 black python/ examples/ tests/
@@ -81,7 +116,7 @@ cd cmd/datacat-server && go build -o ../../datacat && cd ../..
 pytest tests/ -v --cov=python
 ```
 
-### 5. Commit and Push
+### 6. Commit and Push
 
 ```bash
 git add .
@@ -89,7 +124,7 @@ git commit -m "Brief description of changes"
 git push origin feature/your-feature-name
 ```
 
-### 6. Create Pull Request
+### 7. Create Pull Request
 
 - Go to GitHub and create a pull request
 - Fill out the PR template

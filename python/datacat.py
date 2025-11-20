@@ -51,17 +51,29 @@ class DaemonManager(object):
 
     def _find_daemon_binary(self):
         """Find the daemon binary in common locations"""
+        # Determine binary name based on platform
+        binary_name = (
+            "datacat-daemon.exe" if sys.platform == "win32" else "datacat-daemon"
+        )
+
         # Check common locations
         possible_paths = [
-            "datacat-daemon",  # In PATH
-            "./datacat-daemon",  # Current directory
-            "./cmd/datacat-daemon/datacat-daemon",  # Development
+            binary_name,  # In PATH
+            "./" + binary_name,  # Current directory
+            "./cmd/datacat-daemon/" + binary_name,  # Development
             os.path.join(
                 os.path.dirname(__file__),
                 "..",
                 "cmd",
                 "datacat-daemon",
-                "datacat-daemon",
+                binary_name,
+            ),
+            "./bin/" + binary_name,  # Built binaries
+            os.path.join(
+                os.path.dirname(__file__),
+                "..",
+                "bin",
+                binary_name,
             ),
         ]
 
@@ -70,7 +82,7 @@ class DaemonManager(object):
                 return path
 
         # Return default and let it fail if not found
-        return "datacat-daemon"
+        return binary_name
 
     def _is_in_path(self, binary):
         """Check if binary exists in PATH"""
