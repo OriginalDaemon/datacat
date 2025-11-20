@@ -227,12 +227,19 @@ When running the server with scripts (`run-server.ps1` or `run-both.ps1`), the d
 - **Data directory:** `./datacat_data/` (contains BadgerDB files)
 - **Config file:** `./config.json`
 
-To delete all session data:
+The scripts explicitly change to the repository root directory before executing the binaries to ensure data is stored in a consistent, predictable location.
+
+**To delete all session data:**
 
 ```powershell
 # Stop the server first (Ctrl+C), then:
 Remove-Item -Recurse -Force ./datacat_data
-Remove-Item config.json  # Optional - removes custom config
+Remove-Item -Force ./config.json  # Optional - removes custom config
+```
+
+Or use the cleanup script:
+```powershell
+.\scripts\clean.ps1
 ```
 
 See [FAQ in main README](../README.md#-faq) for more details on data management.

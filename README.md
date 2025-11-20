@@ -285,7 +285,7 @@ session.start_heartbeat_monitor(timeout=60)
 
 All session data is stored in a **BadgerDB database** on the server. The location is configurable in `config.json`:
 
-- **Default location:** `./datacat_data` (relative to where the server is run)
+- **Default location:** `./datacat_data` (relative to where the server binary is executed)
 - **Configurable via:** `data_path` setting in `config.json`
 
 **Important - Data Location Depends on How You Run the Server:**
@@ -293,10 +293,23 @@ All session data is stored in a **BadgerDB database** on the server. The locatio
 - **When using PowerShell scripts** (`.\scripts\run-server.ps1` or `.\scripts\run-both.ps1`):
   - Data is stored in the **repository root directory**: `./datacat_data`
   - Config file is in the **repository root**: `./config.json`
+  - (Scripts explicitly set the working directory to ensure consistent location)
 
 - **When running from cmd/datacat-server** (`cd cmd/datacat-server && go run main.go`):
   - Data is stored in **cmd/datacat-server/datacat_data**
   - Config file is in **cmd/datacat-server/config.json**
+
+- **When running the binary directly** without the scripts:
+  - Data is stored **relative to your current working directory** when you run the binary
+  - Check the server startup logs to see the exact path being used
+
+**To find your data directory:**
+- Check the server startup logs - they show the data path:
+  ```
+  Configuration loaded: Data path=./datacat_data, Retention=365 days, Port=9090
+  ```
+- Look in the directory where you ran the server from
+- Search your system for `datacat_data` directory
 
 The data directory contains BadgerDB files including MANIFEST, LOCK, .vlog, and .mem files.
 
@@ -304,36 +317,34 @@ The data directory contains BadgerDB files including MANIFEST, LOCK, .vlog, and 
 
 To completely reset the server and delete all session data:
 
-**If you're using PowerShell scripts** (`.\scripts\run-server.ps1` or `.\scripts\run-both.ps1`):
+**Step 1: Stop the server** 
 
+Stop the running server (Ctrl+C in the terminal/PowerShell window)
+
+**Step 2: Locate and delete the data**
+
+**If you used PowerShell scripts** (`.\scripts\run-server.ps1` or `.\scripts\run-both.ps1`):
 ```powershell
-# 1. Stop the server (Ctrl+C in the PowerShell window)
-
-# 2. Delete the data directory from repository root
+# Data is in repository root
 Remove-Item -Recurse -Force ./datacat_data
-
-# 3. Optionally delete the config to reset to defaults
-Remove-Item config.json
-
-# 4. Restart the server
-.\scripts\run-server.ps1
+Remove-Item -Force ./config.json  # Optional - removes custom config
 ```
 
-**If you're running the server manually** (`cd cmd/datacat-server && go run main.go`):
-
+**If you ran manually from cmd/datacat-server**:
 ```bash
-# 1. Stop the server (Ctrl+C or kill the process)
-
-# 2. Delete the data directory
 cd cmd/datacat-server
 rm -rf ./datacat_data
-
-# 3. Optionally delete the config to reset to defaults
-rm config.json
-
-# 4. Restart the server
-go run main.go config.go
+rm config.json  # Optional
 ```
+
+**If you're unsure where the data is:**
+1. Check the server logs when it started - they show the data path
+2. Search for `datacat_data` directory in your repository
+3. Use the clean script: `.\scripts\clean.ps1` (cleans repository directory)
+
+**Step 3: Restart the server**
+
+The server will create a fresh database on startup.
 
 **Important:** Always stop the server before deleting the data directory to prevent corruption.
 
