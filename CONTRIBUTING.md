@@ -106,8 +106,9 @@ mypy python/ --ignore-missing-imports
 go test -v -coverprofile=coverage.out ./client
 
 # Build all Go programs
-cd cmd/datacat-server && go build
-cd ../datacat-web && go build
+cd cmd/datacat-server && go build -v -o datacat-server
+cd ../datacat-web && go build -v -o datacat-web
+cd ../datacat-daemon && go build -v -o datacat-daemon
 
 # Run integration tests
 pip install -r requirements-dev.txt
