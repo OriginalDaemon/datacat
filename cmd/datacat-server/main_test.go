@@ -39,7 +39,7 @@ func TestCreateSession(t *testing.T) {
 	}
 	defer store.Close()
 
-	session := store.CreateSession()
+	session := store.CreateSession("TestProduct", "1.0.0")
 	if session == nil {
 		t.Fatal("CreateSession returned nil")
 	}
@@ -72,7 +72,7 @@ func TestGetSession(t *testing.T) {
 	}
 	defer store.Close()
 
-	session := store.CreateSession()
+	session := store.CreateSession("TestProduct", "1.0.0")
 
 	// Get existing session
 	retrieved, ok := store.GetSession(session.ID)
@@ -100,8 +100,8 @@ func TestGetAllSessions(t *testing.T) {
 	defer store.Close()
 
 	// Create multiple sessions
-	session1 := store.CreateSession()
-	session2 := store.CreateSession()
+	session1 := store.CreateSession("TestProduct", "1.0.0")
+	session2 := store.CreateSession("TestProduct", "1.0.0")
 
 	sessions := store.GetAllSessions()
 	if len(sessions) != 2 {
@@ -132,7 +132,7 @@ func TestUpdateState(t *testing.T) {
 	}
 	defer store.Close()
 
-	session := store.CreateSession()
+	session := store.CreateSession("TestProduct", "1.0.0")
 
 	newState := map[string]interface{}{
 		"key1": "value1",
@@ -169,7 +169,7 @@ func TestAddEvent(t *testing.T) {
 	}
 	defer store.Close()
 
-	session := store.CreateSession()
+	session := store.CreateSession("TestProduct", "1.0.0")
 
 	eventData := map[string]interface{}{
 		"message": "test event",
@@ -199,7 +199,7 @@ func TestAddMetric(t *testing.T) {
 	}
 	defer store.Close()
 
-	session := store.CreateSession()
+	session := store.CreateSession("TestProduct", "1.0.0")
 
 	err = store.AddMetric(session.ID, "cpu_usage", 75.5, []string{"tag1", "tag2"})
 	if err != nil {
@@ -228,7 +228,7 @@ func TestEndSession(t *testing.T) {
 	}
 	defer store.Close()
 
-	session := store.CreateSession()
+	session := store.CreateSession("TestProduct", "1.0.0")
 
 	err = store.EndSession(session.ID)
 	if err != nil {
@@ -361,7 +361,7 @@ func TestCleanupOldSessions(t *testing.T) {
 	defer store.Close()
 
 	// Create an old session
-	oldSession := store.CreateSession()
+	oldSession := store.CreateSession("TestProduct", "1.0.0")
 	oldTime := time.Now().AddDate(0, 0, -2)
 	store.mu.Lock()
 	oldSession.CreatedAt = oldTime
@@ -371,7 +371,7 @@ func TestCleanupOldSessions(t *testing.T) {
 	store.mu.Unlock()
 
 	// Create a recent session
-	recentSession := store.CreateSession()
+	recentSession := store.CreateSession("TestProduct", "1.0.0")
 
 	// Run cleanup
 	removed, err := store.CleanupOldSessions()
@@ -406,7 +406,7 @@ func TestPersistence(t *testing.T) {
 		t.Fatalf("NewStore failed: %v", err)
 	}
 
-	session := store1.CreateSession()
+	session := store1.CreateSession("TestProduct", "1.0.0")
 	sessionID := session.ID
 
 	// Update state
@@ -514,7 +514,12 @@ func TestHTTPHandlers(t *testing.T) {
 
 	// Test handleSessions POST - create session
 	t.Run("CreateSession", func(t *testing.T) {
-		req := httptest.NewRequest("POST", "/api/sessions", nil)
+		reqBody := map[string]string{
+			"product": "TestProduct",
+			"version": "1.0.0",
+		}
+		body, _ := json.Marshal(reqBody)
+		req := httptest.NewRequest("POST", "/api/sessions", bytes.NewReader(body))
 		w := httptest.NewRecorder()
 
 		handleSessions(w, req)
@@ -544,7 +549,7 @@ func TestHTTPHandlers(t *testing.T) {
 	})
 
 	// Create a session for subsequent tests
-	session := store.CreateSession()
+	session := store.CreateSession("TestProduct", "1.0.0")
 	sessionID := session.ID
 
 	// Test handleSessionOperations GET - get session
@@ -937,7 +942,7 @@ func TestStartCleanupRoutineExecution(t *testing.T) {
 	defer store.Close()
 
 	// Create an old session
-	session := store.CreateSession()
+	session := store.CreateSession("TestProduct", "1.0.0")
 	session.CreatedAt = time.Now().Add(-2 * 24 * time.Hour)
 
 	// Start cleanup routine
@@ -965,7 +970,7 @@ func TestUpdateHeartbeat(t *testing.T) {
 	}
 	defer store.Close()
 
-	session := store.CreateSession()
+	session := store.CreateSession("TestProduct", "1.0.0")
 
 	// Update heartbeat
 	err = store.UpdateHeartbeat(session.ID)
@@ -1009,7 +1014,7 @@ func TestActiveStatusBasedOnHeartbeat(t *testing.T) {
 	}
 	defer store.Close()
 
-	session := store.CreateSession()
+	session := store.CreateSession("TestProduct", "1.0.0")
 
 	// Send heartbeat
 	store.UpdateHeartbeat(session.ID)
@@ -1039,7 +1044,7 @@ func TestActiveStatusWithoutHeartbeat(t *testing.T) {
 	}
 	defer store.Close()
 
-	session := store.CreateSession()
+	session := store.CreateSession("TestProduct", "1.0.0")
 
 	// Session without heartbeat should still show initial active status
 	retrieved, _ := store.GetSession(session.ID)
@@ -1057,7 +1062,7 @@ func TestActiveStatusAfterEnd(t *testing.T) {
 	}
 	defer store.Close()
 
-	session := store.CreateSession()
+	session := store.CreateSession("TestProduct", "1.0.0")
 
 	// Send heartbeat
 	store.UpdateHeartbeat(session.ID)
@@ -1082,7 +1087,7 @@ func TestHeartbeatHTTPHandler(t *testing.T) {
 	}
 	defer store.Close()
 
-	session := store.CreateSession()
+	session := store.CreateSession("TestProduct", "1.0.0")
 	sessionID := session.ID
 
 	// Test heartbeat endpoint
