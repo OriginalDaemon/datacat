@@ -169,7 +169,9 @@ class JSONViewer {
 
           const childContainer = document.createElement("div");
           childContainer.style.display = isCollapsed ? "none" : "block";
-          childContainer.appendChild(this.renderTree(item, depth + 1, itemPath));
+          childContainer.appendChild(
+            this.renderTree(item, depth + 1, itemPath)
+          );
 
           header.onclick = () => {
             const isHidden = childContainer.style.display === "none";
@@ -250,7 +252,9 @@ class JSONViewer {
 
           const childContainer = document.createElement("div");
           childContainer.style.display = isCollapsed ? "none" : "block";
-          childContainer.appendChild(this.renderTree(value, depth + 1, itemPath));
+          childContainer.appendChild(
+            this.renderTree(value, depth + 1, itemPath)
+          );
 
           header.onclick = () => {
             const isHidden = childContainer.style.display === "none";
@@ -310,7 +314,33 @@ class JSONViewer {
           link.textContent = matchedText;
           link.style.cssText =
             "color: #667eea; text-decoration: underline; cursor: pointer;";
-          link.title = `Open ${filePath}:${lineNumber} in IDE\n\nClick to use: PyCharm | Ctrl+Click: VSCode | Shift+Click: File only`;
+          link.title = `Open ${filePath}:${lineNumber} in IDE\n\nClick: PyCharm\nCtrl+Click: VSCode\nShift+Click: File only\nRight-Click: Copy path`;
+
+          // Add right-click to copy path
+          link.oncontextmenu = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+
+            const copyText = `${filePath}:${lineNumber}`;
+            navigator.clipboard
+              .writeText(copyText)
+              .then(() => {
+                const originalText = link.textContent;
+                const originalColor = link.style.color;
+                link.textContent = "Path copied!";
+                link.style.color = "#48bb78";
+
+                setTimeout(() => {
+                  link.textContent = originalText;
+                  link.style.color = originalColor;
+                }, 1500);
+              })
+              .catch(() => {
+                alert(`Copy this path:\n${copyText}`);
+              });
+
+            return false;
+          };
 
           // Support multiple IDEs based on modifier keys
           link.onclick = (e) => {
@@ -318,20 +348,61 @@ class JSONViewer {
             e.stopPropagation();
 
             let url;
+            let ideName;
             if (e.ctrlKey || e.metaKey) {
               // VSCode
               url = `vscode://file${filePath}:${lineNumber}`;
+              ideName = "VSCode";
             } else if (e.shiftKey) {
               // Generic file:// protocol (opens file, but not at specific line)
               url = `file://${filePath}`;
+              ideName = "File Explorer";
             } else {
               // PyCharm (default)
               url = `pycharm://open?file=${encodeURIComponent(
                 filePath
               )}&line=${lineNumber}`;
+              ideName = "PyCharm";
             }
 
-            window.location.href = url;
+            // Try multiple methods to open the IDE URL
+            // Method 1: Try window.open (works on some browsers)
+            const newWindow = window.open(url, "_blank");
+
+            // Method 2: If that didn't work, try creating a hidden iframe
+            if (
+              !newWindow ||
+              newWindow.closed ||
+              typeof newWindow.closed == "undefined"
+            ) {
+              const iframe = document.createElement("iframe");
+              iframe.style.display = "none";
+              iframe.src = url;
+              document.body.appendChild(iframe);
+
+              // Clean up after a short delay
+              setTimeout(() => {
+                document.body.removeChild(iframe);
+              }, 1000);
+            }
+
+            // Give user feedback
+            const originalText = link.textContent;
+            const originalColor = link.style.color;
+            link.textContent = `Opening in ${ideName}...`;
+            link.style.color = "#48bb78";
+
+            // After a delay, check if user might need help
+            setTimeout(() => {
+              link.textContent = originalText;
+              link.style.color = originalColor;
+
+              // Show a subtle hint after first click
+              if (!link.dataset.clicked) {
+                link.dataset.clicked = "true";
+                link.title = `${link.title}\n\n💡 Not working? Right-click to copy path, or enable IDE protocol handlers in your IDE settings.`;
+              }
+            }, 2000);
           };
 
           span.appendChild(link);

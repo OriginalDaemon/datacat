@@ -74,7 +74,7 @@
   <div
     id="session-info"
     hx-get="/api/session-info/{{.Session.ID}}"
-    hx-trigger="load"
+    hx-trigger="load{{if .Session.Active}}, every 3s{{end}}"
     hx-swap="outerHTML"
   >
     <table style="margin-bottom: 20px">
@@ -613,78 +613,70 @@
 {{end}}
 
 <!-- Events -->
+{{if .Session.Events}}
 <div class="card">
-  <h2>Events (<span id="events-count">{{len .Session.Events}}</span>)</h2>
-  <div id="events-container" hx-get="/api/session-events/{{.Session.ID}}" hx-trigger="load" hx-swap="outerHTML">
-    {{if .Session.Events}}
-    <table>
-      <thead>
-        <tr>
-          <th style="width: 120px">Timestamp</th>
-          <th style="width: 200px">Name</th>
-          <th>Data</th>
-        </tr>
-      </thead>
-      <tbody>
-        {{range $index, $event := .Session.Events}}
-        <tr>
-          <td style="font-family: monospace">
-            {{$event.Timestamp.Format "15:04:05"}}
-          </td>
-          <td>{{$event.Name}}</td>
-          <td>
-            <div id="event-data-{{$index}}" class="json-viewer-container"></div>
-            <script>
-              (function() {
-                  const eventData = {{$event.Data | toJSONSafe}};
-                  new JSONViewer('event-data-{{$index}}', eventData, {
-                      collapsed: true,
-                      showCopyButton: true,
-                      showRawButton: true
-                  });
-              })();
-            </script>
-          </td>
-        </tr>
-        {{end}}
-      </tbody>
-    </table>
-    {{else}}
-    <p style="color: var(--text-secondary); padding: 20px;">No events recorded</p>
-    {{end}}
-  </div>
+  <h2>Events ({{len .Session.Events}})</h2>
+  <table>
+    <thead>
+      <tr>
+        <th style="width: 120px">Timestamp</th>
+        <th style="width: 200px">Name</th>
+        <th>Data</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{range $index, $event := .Session.Events}}
+      <tr>
+        <td style="font-family: monospace">
+          {{$event.Timestamp.Format "15:04:05"}}
+        </td>
+        <td>{{$event.Name}}</td>
+        <td>
+          <div id="event-data-{{$index}}" class="json-viewer-container"></div>
+          <script>
+            (function() {
+                const eventData = {{$event.Data | toJSONSafe}};
+                new JSONViewer('event-data-{{$index}}', eventData, {
+                    collapsed: true,
+                    showCopyButton: true,
+                    showRawButton: true
+                });
+            })();
+          </script>
+        </td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
 </div>
+{{end}}
 
 <!-- Metrics Data -->
+{{if .Session.Metrics}}
 <div class="card">
-  <h2>Metrics Data (<span id="metrics-count">{{len .Session.Metrics}}</span>)</h2>
-  <div id="metrics-table-container" hx-get="/api/session-metrics-table/{{.Session.ID}}" hx-trigger="load" hx-swap="outerHTML">
-    {{if .Session.Metrics}}
-    <table>
-      <thead>
-        <tr>
-          <th>Timestamp</th>
-          <th>Name</th>
-          <th>Value</th>
-          <th>Tags</th>
-        </tr>
-      </thead>
-      <tbody>
-        {{range .Session.Metrics}}
-        <tr>
-          <td style="font-family: monospace">{{.Timestamp.Format "15:04:05"}}</td>
-          <td>{{.Name}}</td>
-          <td>{{.Value}}</td>
-          <td>{{range .Tags}}{{.}} {{end}}</td>
-        </tr>
-        {{end}}
-      </tbody>
-    </table>
-    {{else}}
-    <p style="color: var(--text-secondary); padding: 20px;">No metrics recorded</p>
-    {{end}}
-  </div>
+  <h2>Metrics Data ({{len .Session.Metrics}})</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Timestamp</th>
+        <th>Name</th>
+        <th>Value</th>
+        <th>Tags</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{range .Session.Metrics}}
+      <tr>
+        <td style="font-family: monospace">{{.Timestamp.Format "15:04:05"}}</td>
+        <td>{{.Name}}</td>
+        <td>{{.Value}}</td>
+        <td>{{range .Tags}}{{.}} {{end}}</td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
 </div>
+{{end}}
 
 <div style="margin: 20px 0">
   <a href="/" class="btn btn-secondary">Back to Dashboard</a>
