@@ -65,7 +65,7 @@ class TestProgramWorkflow(unittest.TestCase):
         # Verify service is running
         try:
             client = DatacatClient(cls.base_url)
-            client.register_session()
+            client.register_session("WorkflowTest", "1.0.0")
         except Exception as e:
             cls.tearDownClass()
             raise Exception(f"Service failed to start: {e}")
@@ -89,7 +89,7 @@ class TestProgramWorkflow(unittest.TestCase):
         5. Exception logging
         6. Metrics collection
         """
-        session = create_session(self.base_url, use_daemon=False)
+        session = create_session(self.base_url, use_daemon=False, product="GraphiteWorkflow", version="2025.10.1")
 
         # === STARTUP PHASE ===
         # 1. Log startup event
@@ -278,7 +278,7 @@ class TestProgramWorkflow(unittest.TestCase):
         Test that state history creates a proper timeline that can be
         used to reconstruct application state at any point in time.
         """
-        session = create_session(self.base_url, use_daemon=False)
+        session = create_session(self.base_url, use_daemon=False, product="StateHistoryTest", version="1.0")
 
         # Create a series of state updates
         updates = [

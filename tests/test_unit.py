@@ -53,7 +53,7 @@ class TestDatacatClientErrorHandling(unittest.TestCase):
 
         # Verify exception is raised with proper message
         with self.assertRaises(Exception) as context:
-            self.client.register_session()
+            self.client.register_session("TestProduct", "1.0.0")
 
         self.assertIn("HTTP Error 404", str(context.exception))
         self.assertIn("Not Found", str(context.exception))
@@ -67,7 +67,7 @@ class TestDatacatClientErrorHandling(unittest.TestCase):
 
         # Verify exception is raised with proper message
         with self.assertRaises(Exception) as context:
-            self.client.register_session()
+            self.client.register_session("TestProduct", "1.0.0")
 
         self.assertIn("URL Error", str(context.exception))
         self.assertIn("Connection refused", str(context.exception))
@@ -80,7 +80,7 @@ class TestDatacatClientErrorHandling(unittest.TestCase):
 
         # Verify exception is raised with proper message
         with self.assertRaises(Exception) as context:
-            self.client.register_session()
+            self.client.register_session("TestProduct", "1.0.0")
 
         self.assertIn("Request failed", str(context.exception))
         self.assertIn("Unexpected error", str(context.exception))
@@ -443,15 +443,15 @@ class TestCreateSessionFactory(unittest.TestCase):
         mock_client_class.return_value = mock_client
 
         # Create session
-        session = create_session("http://test.example.com:8080")
+        session = create_session("http://test.example.com:8080", product="TestProduct", version="1.0.0")
 
         # Verify client was created with correct URL and default parameters
         mock_client_class.assert_called_once_with(
             "http://test.example.com:8080", use_daemon=True, daemon_port="8079"
         )
 
-        # Verify session was registered
-        mock_client.register_session.assert_called_once()
+        # Verify session was registered with product and version
+        mock_client.register_session.assert_called_once_with("TestProduct", "1.0.0")
 
         # Verify Session object has correct properties
         self.assertEqual(session.client, mock_client)
@@ -848,16 +848,18 @@ class TestDatacatClientWithDaemon(unittest.TestCase):
         mock_urlopen.return_value = mock_response
 
         client = DatacatClient(use_daemon=True)
-        session_id = client.register_session()
+        session_id = client.register_session("TestProduct", "1.0.0")
 
         # Verify correct endpoint was called
         call_args = mock_urlopen.call_args
         request = call_args[0][0]
         self.assertTrue(request.get_full_url().endswith("/register"))
 
-        # Verify parent PID was sent
+        # Verify parent PID, product, and version were sent
         sent_data = json.loads(request.data.decode("utf-8"))
         self.assertIn("parent_pid", sent_data)
+        self.assertEqual(sent_data["product"], "TestProduct")
+        self.assertEqual(sent_data["version"], "1.0.0")
         self.assertEqual(sent_data["parent_pid"], os.getpid())
 
         self.assertEqual(session_id, "test-123")
@@ -1082,6 +1084,50 @@ class TestSessionConvenienceMethods(unittest.TestCase):
 
         mock_client.get_session.assert_called_once_with("session-123")
         self.assertEqual(result, {"id": "session-123", "state": {}})
+
+
+class TestProductVersionValidation(unittest.TestCase):
+    """Test that product and version are required for session creation"""
+
+    def test_register_session_requires_product(self):
+        """Test that register_session requires product parameter"""
+        client = DatacatClient("http://localhost:9090", use_daemon=False)
+        with self.assertRaises(Exception) as context:
+            client.register_session(None, "1.0.0")
+        self.assertIn("Product and version are required", str(context.exception))
+
+    def test_register_session_requires_version(self):
+        """Test that register_session requires version parameter"""
+        client = DatacatClient("http://localhost:9090", use_daemon=False)
+        with self.assertRaises(Exception) as context:
+            client.register_session("TestProduct", None)
+        self.assertIn("Product and version are required", str(context.exception))
+
+    def test_register_session_rejects_empty_product(self):
+        """Test that register_session rejects empty product string"""
+        client = DatacatClient("http://localhost:9090", use_daemon=False)
+        with self.assertRaises(Exception) as context:
+            client.register_session("", "1.0.0")
+        self.assertIn("Product and version are required", str(context.exception))
+
+    def test_register_session_rejects_empty_version(self):
+        """Test that register_session rejects empty version string"""
+        client = DatacatClient("http://localhost:9090", use_daemon=False)
+        with self.assertRaises(Exception) as context:
+            client.register_session("TestProduct", "")
+        self.assertIn("Product and version are required", str(context.exception))
+
+    def test_create_session_requires_product(self):
+        """Test that create_session factory requires product parameter"""
+        with self.assertRaises(Exception) as context:
+            create_session("http://localhost:9090", product=None, version="1.0.0")
+        self.assertIn("Product and version are required", str(context.exception))
+
+    def test_create_session_requires_version(self):
+        """Test that create_session factory requires version parameter"""
+        with self.assertRaises(Exception) as context:
+            create_session("http://localhost:9090", product="TestProduct", version=None)
+        self.assertIn("Product and version are required", str(context.exception))
 
 
 if __name__ == "__main__":

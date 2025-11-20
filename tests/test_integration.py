@@ -59,7 +59,7 @@ class TestDatacatIntegration(unittest.TestCase):
         # Verify service is running
         try:
             client = DatacatClient(cls.base_url)
-            client.register_session()
+            client.register_session("IntegrationTest", "1.0.0")
         except Exception as e:
             cls.tearDownClass()
             raise Exception(f"Service failed to start: {e}")
@@ -74,7 +74,7 @@ class TestDatacatIntegration(unittest.TestCase):
     def setUp(self):
         """Create a fresh session for each test"""
         self.client = DatacatClient(self.base_url)
-        self.session_id = self.client.register_session()
+        self.session_id = self.client.register_session("IntegrationTest", "1.0.0")
 
     def test_session_creation(self):
         """Test that sessions can be created and retrieved"""
@@ -174,7 +174,7 @@ class TestDatacatIntegration(unittest.TestCase):
 
     def test_convenience_session_class(self):
         """Test the convenience Session class"""
-        session = create_session(self.base_url, use_daemon=False)
+        session = create_session(self.base_url, use_daemon=False, product="IntegrationTest", version="1.0.0")
 
         # Test state update
         session.update_state({"test": "value"})
@@ -242,7 +242,7 @@ class TestDatacatPersistence(unittest.TestCase):
         try:
             # Create session and log data
             client = DatacatClient(self.base_url)
-            session_id = client.register_session()
+            session_id = client.register_session("PersistenceTest", "1.0.0")
 
             client.update_state(session_id, {"test": "persistent_data"})
             client.log_event(session_id, "before_restart", {"data": "test"})
