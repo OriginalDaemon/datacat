@@ -40,6 +40,18 @@ try {
 }
 Write-Host ""
 
+# Build daemon
+Write-Host "Building datacat-daemon..." -ForegroundColor Green
+Push-Location $PSScriptRoot/../cmd/datacat-daemon
+try {
+    $daemonBin = Join-Path $binDir "datacat-daemon.exe"
+    go build -o $daemonBin main.go
+    Write-Host "  Output: $daemonBin" -ForegroundColor Gray
+} finally {
+    Pop-Location
+}
+Write-Host ""
+
 # Build Go example
 Write-Host "Building go-client-example..." -ForegroundColor Green
 Push-Location $PSScriptRoot/../examples/go-client-example
