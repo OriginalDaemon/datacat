@@ -1740,3 +1740,238 @@ if len(products[0].Versions) != 2 {
 t.Errorf("Expected 2 versions, got %d", len(products[0].Versions))
 }
 }
+
+// Test handleSessionDetail template execution error
+func TestHandleSessionDetailTemplateExecutionError(t *testing.T) {
+mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+// Return a session that might cause template issues
+session := &client.Session{
+ID:        "test",
+Active:    true,
+CreatedAt: time.Now(),
+UpdatedAt: time.Now(),
+State:     map[string]interface{}{"key": "value"},
+Events:    []client.Event{},
+Metrics:   []client.Metric{},
+}
+json.NewEncoder(w).Encode(session)
+}))
+defer mockServer.Close()
+
+datacatClient = client.NewClient(mockServer.URL)
+
+req := httptest.NewRequest("GET", "/session/test", nil)
+w := httptest.NewRecorder()
+
+handleSessionDetail(w, req)
+
+// Should succeed despite the short ID
+if w.Code != http.StatusOK {
+t.Errorf("Expected status 200, got %d", w.Code)
+}
+}
+
+// Test handleSessions with product and version filters
+func TestHandleSessionsProductVersionFilters(t *testing.T) {
+mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+sessions := []*client.Session{
+{
+ID:        "session1",
+Active:    true,
+CreatedAt: time.Now(),
+UpdatedAt: time.Now(),
+State: map[string]interface{}{
+"product": "app1",
+"version": "1.0.0",
+},
+},
+}
+json.NewEncoder(w).Encode(sessions)
+}))
+defer mockServer.Close()
+
+datacatClient = client.NewClient(mockServer.URL)
+
+// Test with product and version filter
+req := httptest.NewRequest("GET", "/sessions?product=app1&version=1.0.0", nil)
+w := httptest.NewRecorder()
+
+handleSessions(w, req)
+
+if w.Code != http.StatusOK {
+t.Errorf("Expected status 200, got %d", w.Code)
+}
+}
+
+// Test handleIndex with different filter modes
+func TestHandleIndexDifferentFilterModes(t *testing.T) {
+mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+sessions := []*client.Session{
+{
+ID:        "session1",
+Active:    true,
+CreatedAt: time.Now(),
+UpdatedAt: time.Now(),
+State: map[string]interface{}{
+"status": "running",
+"tags":   []interface{}{"tag1", "tag2"},
+},
+Events: []client.Event{{Name: "startup"}},
+},
+}
+json.NewEncoder(w).Encode(sessions)
+}))
+defer mockServer.Close()
+
+datacatClient = client.NewClient(mockServer.URL)
+
+// Test with state_array_contains filter
+req := httptest.NewRequest("GET", "/?filterMode=state_array_contains&filterKey=tags&filterValue=tag1", nil)
+w := httptest.NewRecorder()
+
+handleIndex(w, req)
+
+if w.Code != http.StatusOK {
+t.Errorf("Expected status 200, got %d", w.Code)
+}
+}
+
+// Test matchesFilters with all filter types
+func TestMatchesFiltersAllTypes(t *testing.T) {
+session := &client.Session{
+ID:     "test-session",
+Active: true,
+State: map[string]interface{}{
+"product": "test-product",
+"version": "1.0.0",
+"status":  "running",
+},
+Events: []client.Event{
+{Name: "startup"},
+},
+}
+
+// Test with no filters (should match)
+if !matchesFilters(session, "", "", "", "", "", "") {
+t.Error("Expected session to match with no filters")
+}
+
+// Test status filter - hung with inactive session
+session.Active = false
+if matchesFilters(session, "", "", "hung", "", "", "") {
+t.Error("Expected inactive session to not match hung filter")
+}
+
+// Test status filter - crashed with inactive session
+if matchesFilters(session, "", "", "crashed", "", "", "") {
+t.Error("Expected inactive session to not match crashed filter")
+}
+}
+
+// Test handleSessionsTable with state filter
+func TestHandleSessionsTableStateFilter(t *testing.T) {
+mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+sessions := []*client.Session{
+{
+ID:        "session1",
+Active:    true,
+CreatedAt: time.Now(),
+UpdatedAt: time.Now(),
+State: map[string]interface{}{
+"status": "running",
+"env":    "production",
+},
+},
+}
+json.NewEncoder(w).Encode(sessions)
+}))
+defer mockServer.Close()
+
+datacatClient = client.NewClient(mockServer.URL)
+
+// Test with state filter JSON
+stateFilter := `{"env":"production"}`
+req := httptest.NewRequest("GET", "/api/sessions-table?stateFilter="+stateFilter, nil)
+w := httptest.NewRecorder()
+
+handleSessionsTable(w, req)
+
+if w.Code != http.StatusOK {
+t.Errorf("Expected status 200, got %d", w.Code)
+}
+}
+
+// Test stateContainsAllNestedMapsEdgeCases
+func TestStateContainsAllNestedMapsEdgeCases(t *testing.T) {
+state := map[string]interface{}{
+"nested": map[string]interface{}{
+"deep": map[string]interface{}{
+"value": "test",
+},
+},
+}
+
+// Test deep nested match
+filter := map[string]interface{}{
+"nested": map[string]interface{}{
+"deep": map[string]interface{}{
+"value": "test",
+},
+},
+}
+if !stateContainsAll(state, filter) {
+t.Error("Expected state to contain deeply nested filter")
+}
+
+// Test mismatch in nested value
+filter2 := map[string]interface{}{
+"nested": map[string]interface{}{
+"deep": map[string]interface{}{
+"value": "wrong",
+},
+},
+}
+if stateContainsAll(state, filter2) {
+t.Error("Expected state to not match incorrect nested value")
+}
+}
+
+// Test handleSessionInfo with various session states
+func TestHandleSessionInfoVariousStates(t *testing.T) {
+mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+session := &client.Session{
+ID:        "session1",
+Active:    true,
+CreatedAt: time.Now().Add(-1 * time.Hour),
+UpdatedAt: time.Now(),
+State: map[string]interface{}{
+"status": "running",
+},
+Events: []client.Event{
+{Name: "startup", Timestamp: time.Now()},
+},
+Metrics: []client.Metric{
+{Name: "cpu", Value: 50.0, Timestamp: time.Now()},
+},
+}
+json.NewEncoder(w).Encode(session)
+}))
+defer mockServer.Close()
+
+datacatClient = client.NewClient(mockServer.URL)
+
+req := httptest.NewRequest("GET", "/api/session-info/session1", nil)
+w := httptest.NewRecorder()
+
+handleSessionInfo(w, req)
+
+if w.Code != http.StatusOK {
+t.Errorf("Expected status 200, got %d", w.Code)
+}
+
+// Check response contains session info
+body := w.Body.String()
+if !strings.Contains(body, "session1") {
+t.Error("Expected response to contain session ID")
+}
+}
