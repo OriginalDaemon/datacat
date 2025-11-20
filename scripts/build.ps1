@@ -13,7 +13,8 @@ Write-Host "======================================" -ForegroundColor Cyan
 Write-Host ""
 
 # Create output directory
-$binDir = Join-Path $PSScriptRoot ".." $Output
+$repoRoot = Join-Path $PSScriptRoot ".."
+$binDir = Join-Path $repoRoot $Output
 New-Item -ItemType Directory -Force -Path $binDir | Out-Null
 
 # Build server
