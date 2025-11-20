@@ -64,7 +64,7 @@
 <div class="card">
     <h2>Interactive Session Timeline</h2>
     <p style="margin-bottom: 20px; color: var(--text-secondary);">
-        Complete session lifecycle. Click and drag to zoom into a time range. Click points to see details.
+        Complete session lifecycle. Click to view state at a point in time, or click and drag to zoom into a time range. Click points to see details.
     </p>
     
     <!-- Legend and Controls -->
@@ -97,6 +97,11 @@
         <!-- Selection overlay -->
         <div id="selection-overlay" style="position: absolute; top: 0; bottom: 0; background: rgba(102, 126, 234, 0.2); border: 1px solid #667eea; display: none;"></div>
         
+        <!-- Time marker (vertical bar) -->
+        <div id="time-marker" style="position: absolute; top: 0; bottom: 0; width: 2px; background: #f56565; display: none; z-index: 5; pointer-events: none;">
+            <div style="position: absolute; top: -20px; left: 50%; transform: translateX(-50%); background: #f56565; color: white; padding: 2px 6px; border-radius: 3px; font-size: 11px; white-space: nowrap;"></div>
+        </div>
+        
         <!-- Timeline points container -->
         <div id="timeline-container" style="position: relative; height: 150px;"></div>
     </div>
@@ -113,7 +118,8 @@
 
 <!-- Current State -->
 <div class="card">
-    <h2>Current State</h2>
+    <h2 id="current-state-title">{{if .Session.Active}}Current State{{else}}Final State{{end}}</h2>
+    <p id="current-state-subtitle" style="color: var(--text-secondary); font-size: 13px; margin-bottom: 10px; display: none;"></p>
     <div id="current-state-json" class="json-viewer-container"></div>
     <script>
         (function() {
@@ -432,7 +438,7 @@ const sessionEndTime = new Date("{{.Session.UpdatedAt.Format "2006-01-02T15:04:0
 {{range $index, $snapshot := .Session.StateHistory}}
 timelineItems.push({
     type: 'state',
-    timestamp: new Date("{{$snapshot.Timestamp.Format "2006-01-02T15:04:05Z07:00"}}"),
+    timestamp: new Date("{{$snapshot.Timestamp.Format "2006-01-02T15:04:05.000Z07:00"}}"),
     displayTime: "{{$snapshot.Timestamp.Format "15:04:05.000"}}",
     index: {{$index}},
     state: {{$snapshot.State | printf "%#v"}}
@@ -443,7 +449,7 @@ timelineItems.push({
 {{range $event := .Session.Events}}
 timelineItems.push({
     type: '{{if eq $event.Name "exception"}}exception{{else}}event{{end}}',
-    timestamp: new Date("{{$event.Timestamp.Format "2006-01-02T15:04:05Z07:00"}}"),
+    timestamp: new Date("{{$event.Timestamp.Format "2006-01-02T15:04:05.000Z07:00"}}"),
     displayTime: "{{$event.Timestamp.Format "15:04:05.000"}}",
     name: "{{$event.Name}}",
     data: {{$event.Data | printf "%#v"}}
@@ -453,7 +459,7 @@ timelineItems.push({
 // Add metrics for time range tracking
 {{range $metric := .Session.Metrics}}
 metricItems.push({
-    timestamp: new Date("{{$metric.Timestamp.Format "2006-01-02T15:04:05Z07:00"}}"),
+    timestamp: new Date("{{$metric.Timestamp.Format "2006-01-02T15:04:05.000Z07:00"}}"),
     name: "{{$metric.Name}}",
     value: {{$metric.Value}}
 });
@@ -469,6 +475,8 @@ let zoomStart = null;
 let zoomEnd = null;
 let isDragging = false;
 let dragStartX = 0;
+let dragStartTime = 0; // Track when drag started to distinguish click from drag
+let selectedTime = null; // Track selected time for state display
 
 // Metrics state (used if metrics exist)
 const metricsByName = {};
@@ -546,6 +554,11 @@ function applyTimeRange() {
     zoomStart = globalTimeRangeStart;
     zoomEnd = globalTimeRangeEnd;
     
+    // Clear time marker when changing time range
+    selectedTime = null;
+    hideTimeMarker();
+    updateCurrentStateDisplay(null);
+    
     updateTimeRangeInfo();
     renderTimeline();
     updateAllMetricCharts();
@@ -555,6 +568,9 @@ function applyTimeRange() {
 function resetTimeRange() {
     zoomStart = null;
     zoomEnd = null;
+    selectedTime = null;
+    hideTimeMarker();
+    updateCurrentStateDisplay(null);
     initializeTimeRange();
     renderTimeline();
     updateAllMetricCharts();
@@ -793,6 +809,62 @@ const findStateAtTime = (timestamp) => {
     return stateChanges[stateChanges.length - 1].state;
 };
 
+// Update current state display based on selected time
+const updateCurrentStateDisplay = (timestamp, timeString) => {
+    const titleElement = document.getElementById('current-state-title');
+    const subtitleElement = document.getElementById('current-state-subtitle');
+    const containerElement = document.getElementById('current-state-json');
+    
+    if (timestamp) {
+        // Show state at selected time
+        const stateAtTime = findStateAtTime(timestamp);
+        titleElement.textContent = 'State at Selected Time';
+        subtitleElement.textContent = timeString;
+        subtitleElement.style.display = 'block';
+        
+        // Clear and re-render with state at time
+        containerElement.innerHTML = '';
+        if (stateAtTime) {
+            new JSONViewer('current-state-json', stateAtTime, {
+                collapsed: false,
+                maxHeight: '500px'
+            });
+        } else {
+            containerElement.textContent = 'No state data available at this time';
+        }
+    } else {
+        // Reset to final/current state
+        titleElement.textContent = {{if .Session.Active}}'Current State'{{else}}'Final State'{{end}};
+        subtitleElement.style.display = 'none';
+        
+        // Clear and re-render with final state
+        containerElement.innerHTML = '';
+        const stateData = {{.Session.State | toJSONSafe}};
+        new JSONViewer('current-state-json', stateData, {
+            collapsed: false,
+            maxHeight: '500px'
+        });
+    }
+};
+
+// Show time marker at a specific position
+const showTimeMarker = (xPercent, timestamp) => {
+    const marker = document.getElementById('time-marker');
+    const label = marker.querySelector('div');
+    
+    marker.style.left = xPercent + '%';
+    marker.style.display = 'block';
+    
+    // Format timestamp for display
+    const date = new Date(timestamp);
+    label.textContent = date.toLocaleTimeString();
+};
+
+// Hide time marker
+const hideTimeMarker = () => {
+    document.getElementById('time-marker').style.display = 'none';
+};
+
 // Close timeline details
 const closeTimelineDetails = () => {
     document.getElementById('timeline-details').style.display = 'none';
@@ -802,10 +874,13 @@ const closeTimelineDetails = () => {
 const zoomOut = () => {
     zoomStart = null;
     zoomEnd = null;
+    selectedTime = null;
+    hideTimeMarker();
+    updateCurrentStateDisplay(null);
     resetTimeRange();
 };
 
-// Mouse events for selection
+// Mouse events for selection and time marker
 const wrapper = document.getElementById('timeline-wrapper');
 const selectionOverlay = document.getElementById('selection-overlay');
 
@@ -813,6 +888,7 @@ wrapper.addEventListener('mousedown', (e) => {
     if (e.target === wrapper || e.target === document.getElementById('timeline-line')) {
         isDragging = true;
         dragStartX = e.offsetX;
+        dragStartTime = Date.now();
         selectionOverlay.style.left = dragStartX + 'px';
         selectionOverlay.style.width = '0px';
         selectionOverlay.style.display = 'block';
@@ -834,8 +910,23 @@ wrapper.addEventListener('mouseup', (e) => {
         isDragging = false;
         const currentX = e.offsetX;
         const width = Math.abs(currentX - dragStartX);
+        const dragDuration = Date.now() - dragStartTime;
         
-        if (width > 20) { // Minimum selection width
+        // If drag width is small and duration is short, treat as click
+        if (width < 10 && dragDuration < 300) {
+            // Click behavior - set time marker
+            const containerWidth = wrapper.offsetWidth;
+            const clickPercent = currentX / containerWidth;
+            
+            const timeRange = getTimeRange();
+            const totalDuration = timeRange.end - timeRange.start;
+            const clickedTime = new Date(timeRange.start.getTime() + (totalDuration * clickPercent));
+            
+            selectedTime = clickedTime;
+            showTimeMarker(clickPercent * 100, clickedTime);
+            updateCurrentStateDisplay(clickedTime, clickedTime.toLocaleString());
+        } else if (width > 20) {
+            // Drag behavior - zoom to selection
             const containerWidth = wrapper.offsetWidth;
             const startPercent = Math.min(dragStartX, currentX) / containerWidth;
             const endPercent = Math.max(dragStartX, currentX) / containerWidth;
@@ -848,6 +939,11 @@ wrapper.addEventListener('mouseup', (e) => {
             
             // Update the time range controls
             updateTimeRangeFromZoom(zoomStart, zoomEnd);
+            
+            // Clear time marker when zooming
+            selectedTime = null;
+            hideTimeMarker();
+            updateCurrentStateDisplay(null);
             
             renderTimeline();
         }
