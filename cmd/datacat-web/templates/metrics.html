@@ -1,4 +1,27 @@
 {{define "content"}}
+<!-- Time Range Picker -->
+<div class="card">
+    <h2>Time Range</h2>
+    <p style="color: var(--text-secondary); margin-bottom: 15px;">
+        Select a time range to filter metrics data. Click and drag on charts to select a sub-range.
+    </p>
+    <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
+        <div style="display: flex; flex-direction: column; gap: 5px;">
+            <label style="font-size: 12px; color: var(--text-secondary);">Start Time</label>
+            <input type="datetime-local" id="time-range-start" style="padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-secondary); color: var(--text-primary);">
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 5px;">
+            <label style="font-size: 12px; color: var(--text-secondary);">End Time</label>
+            <input type="datetime-local" id="time-range-end" style="padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-secondary); color: var(--text-primary);">
+        </div>
+        <div style="display: flex; gap: 10px; margin-top: 18px;">
+            <button onclick="applyTimeRange()" class="btn" style="padding: 8px 16px;">Apply</button>
+            <button onclick="resetTimeRange()" class="btn btn-secondary" style="padding: 8px 16px;">Reset</button>
+        </div>
+        <div id="time-range-info" style="margin-top: 18px; font-size: 13px; color: var(--text-secondary);"></div>
+    </div>
+</div>
+
 <div class="card">
     <h2>Metrics Visualization</h2>
     <p style="margin-bottom: 20px; color: #666;">
@@ -103,6 +126,103 @@
 
 <script>
 let chart = null;
+let globalTimeRangeStart = null;
+let globalTimeRangeEnd = null;
+let allDataPoints = null; // Store all fetched data
+
+// Format date for datetime-local input
+function formatDateTimeLocal(date) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    const seconds = String(date.getSeconds()).padStart(2, '0');
+    return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
+}
+
+// Initialize time range based on current data
+function initializeTimeRangeFromData(data) {
+    if (!data || !data.points || data.points.length === 0) return;
+    
+    const timestamps = data.points.map(p => new Date(p.timestamp));
+    const minTime = new Date(Math.min(...timestamps));
+    const maxTime = new Date(Math.max(...timestamps));
+    
+    globalTimeRangeStart = minTime;
+    globalTimeRangeEnd = maxTime;
+    
+    document.getElementById('time-range-start').value = formatDateTimeLocal(minTime);
+    document.getElementById('time-range-end').value = formatDateTimeLocal(maxTime);
+    updateTimeRangeInfo();
+}
+
+// Update time range info text
+function updateTimeRangeInfo() {
+    const info = document.getElementById('time-range-info');
+    if (globalTimeRangeStart && globalTimeRangeEnd) {
+        const durationMs = globalTimeRangeEnd - globalTimeRangeStart;
+        const durationSec = (durationMs / 1000).toFixed(1);
+        info.textContent = `Showing ${durationSec}s range`;
+    }
+}
+
+// Apply time range filter
+function applyTimeRange() {
+    const startInput = document.getElementById('time-range-start').value;
+    const endInput = document.getElementById('time-range-end').value;
+    
+    if (!startInput || !endInput) {
+        alert('Please select both start and end times');
+        return;
+    }
+    
+    globalTimeRangeStart = new Date(startInput);
+    globalTimeRangeEnd = new Date(endInput);
+    
+    if (globalTimeRangeStart >= globalTimeRangeEnd) {
+        alert('Start time must be before end time');
+        return;
+    }
+    
+    updateTimeRangeInfo();
+    
+    // Re-render chart with filtered data
+    if (allDataPoints) {
+        renderChartWithTimeRange(allDataPoints);
+    }
+}
+
+// Reset time range
+function resetTimeRange() {
+    if (allDataPoints) {
+        initializeTimeRangeFromData(allDataPoints);
+        renderChartWithTimeRange(allDataPoints);
+    }
+}
+
+// Render chart with time range filtering
+function renderChartWithTimeRange(data) {
+    const filteredData = {
+        ...data,
+        points: data.points.filter(p => {
+            const timestamp = new Date(p.timestamp);
+            return (!globalTimeRangeStart || timestamp >= globalTimeRangeStart) &&
+                   (!globalTimeRangeEnd || timestamp <= globalTimeRangeEnd);
+        })
+    };
+    
+    // Recalculate stats for filtered data
+    if (filteredData.points.length > 0) {
+        const values = filteredData.points.map(p => p.value);
+        filteredData.peak = Math.max(...values);
+        filteredData.min = Math.min(...values);
+        filteredData.average = values.reduce((a, b) => a + b, 0) / values.length;
+    }
+    
+    renderChart(filteredData);
+    updateStats(filteredData);
+}
 
 function toggleFilterInputs() {
     const filterMode = document.getElementById('filter_mode').value;
@@ -175,6 +295,12 @@ document.getElementById('metrics-form').addEventListener('submit', async functio
     try {
         const response = await fetch(`/api/timeseries?${params}`);
         const data = await response.json();
+        
+        // Store the data globally
+        allDataPoints = data;
+        
+        // Initialize time range from data
+        initializeTimeRangeFromData(data);
         
         renderChart(data);
         updateStats(data);
@@ -255,11 +381,74 @@ function renderChart(data) {
                 x: {
                     title: {
                         display: true,
-                        text: 'Time'
+                        text: 'Time (drag to zoom)'
                     }
+                }
+            },
+            onClick: (event, activeElements) => {
+                // Double-click to reset zoom
+                if (event.native && event.native.detail === 2) {
+                    resetTimeRange();
                 }
             }
         }
+    });
+    
+    // Add drag-to-zoom functionality
+    const canvas = document.getElementById('metricsChart');
+    let isDragging = false;
+    let dragStart = null;
+    
+    canvas.addEventListener('mousedown', (e) => {
+        isDragging = true;
+        const rect = canvas.getBoundingClientRect();
+        dragStart = e.clientX - rect.left;
+    });
+    
+    canvas.addEventListener('mousemove', (e) => {
+        if (!isDragging) return;
+        // Could add visual feedback here
+    });
+    
+    canvas.addEventListener('mouseup', (e) => {
+        if (!isDragging) return;
+        isDragging = false;
+        
+        const rect = canvas.getBoundingClientRect();
+        const dragEnd = e.clientX - rect.left;
+        const width = Math.abs(dragEnd - dragStart);
+        
+        // Only process if drag is significant
+        if (width < 20) return;
+        
+        // Calculate which data points are in the drag range
+        const chartArea = chart.chartArea;
+        const chartWidth = chartArea.right - chartArea.left;
+        
+        const startPercent = Math.min(dragStart - chartArea.left, dragEnd - chartArea.left) / chartWidth;
+        const endPercent = Math.max(dragStart - chartArea.left, dragEnd - chartArea.left) / chartWidth;
+        
+        // Map to data indices
+        const startIndex = Math.max(0, Math.floor(startPercent * data.points.length));
+        const endIndex = Math.min(data.points.length - 1, Math.ceil(endPercent * data.points.length));
+        
+        if (startIndex < endIndex && data.points[startIndex] && data.points[endIndex]) {
+            const newStart = new Date(data.points[startIndex].timestamp);
+            const newEnd = new Date(data.points[endIndex].timestamp);
+            
+            globalTimeRangeStart = newStart;
+            globalTimeRangeEnd = newEnd;
+            
+            document.getElementById('time-range-start').value = formatDateTimeLocal(newStart);
+            document.getElementById('time-range-end').value = formatDateTimeLocal(newEnd);
+            updateTimeRangeInfo();
+            
+            renderChartWithTimeRange(allDataPoints);
+        }
+    });
+    
+    canvas.addEventListener('mouseleave', () => {
+        isDragging = false;
     });
 }
 </script>

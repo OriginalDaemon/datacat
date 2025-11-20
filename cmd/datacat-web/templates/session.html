@@ -1,4 +1,27 @@
 {{define "content"}}
+<!-- Time Range Picker -->
+<div class="card">
+    <h2>Time Range</h2>
+    <p style="color: var(--text-secondary); margin-bottom: 15px;">
+        Select a time range to filter all data shown on this page. Click and drag on charts or timeline to select a sub-range.
+    </p>
+    <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
+        <div style="display: flex; flex-direction: column; gap: 5px;">
+            <label style="font-size: 12px; color: var(--text-secondary);">Start Time</label>
+            <input type="datetime-local" id="time-range-start" style="padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-secondary); color: var(--text-primary);">
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 5px;">
+            <label style="font-size: 12px; color: var(--text-secondary);">End Time</label>
+            <input type="datetime-local" id="time-range-end" style="padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-secondary); color: var(--text-primary);">
+        </div>
+        <div style="display: flex; gap: 10px; margin-top: 18px;">
+            <button onclick="applyTimeRange()" class="btn" style="padding: 8px 16px;">Apply</button>
+            <button onclick="resetTimeRange()" class="btn btn-secondary" style="padding: 8px 16px;">Reset</button>
+        </div>
+        <div id="time-range-info" style="margin-top: 18px; font-size: 13px; color: var(--text-secondary);"></div>
+    </div>
+</div>
+
 <div class="card">
     <h2>Session: {{slice .Session.ID 0 16}}...</h2>
     <p style="color: var(--text-secondary); margin-bottom: 20px; font-family: monospace; font-size: 12px;">Full ID: {{.Session.ID}}</p>
@@ -185,67 +208,132 @@ function toggleMetric(safeMetricName) {
         
         // Create chart if not already created
         if (!chartInstances[safeMetricName]) {
-            const metrics = metricsByName[Object.keys(metricsByName).find(k => k.replace(/\./g, '_') === safeMetricName)];
-            const ctx = document.getElementById(`chart-${safeMetricName}`).getContext('2d');
-            
-            chartInstances[safeMetricName] = new Chart(ctx, {
-                type: 'line',
-                data: {
-                    labels: metrics.map(m => m.timestamp.toLocaleTimeString()),
-                    datasets: [{
-                        label: safeMetricName.replace(/_/g, '.'),
-                        data: metrics.map(m => m.value),
-                        borderColor: '#667eea',
-                        backgroundColor: 'rgba(102, 126, 234, 0.1)',
-                        tension: 0.4,
-                        fill: true,
-                        pointRadius: 4,
-                        pointHoverRadius: 6
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: {
-                            display: true,
-                            labels: {
-                                color: 'var(--text-primary)'
-                            }
-                        },
-                        tooltip: {
-                            mode: 'index',
-                            intersect: false
-                        }
-                    },
-                    scales: {
-                        y: {
-                            beginAtZero: true,
-                            grid: {
-                                color: 'rgba(160, 174, 192, 0.1)'
-                            },
-                            ticks: {
-                                color: '#a0aec0'
-                            }
-                        },
-                        x: {
-                            grid: {
-                                color: 'rgba(160, 174, 192, 0.1)'
-                            },
-                            ticks: {
-                                color: '#a0aec0',
-                                maxRotation: 45,
-                                minRotation: 0
-                            }
-                        }
-                    }
-                }
-            });
+            createMetricChart(safeMetricName);
+        } else {
+            // Update existing chart with current time range
+            updateMetricChart(safeMetricName);
         }
     } else {
         chartContainer.style.display = 'none';
         arrow.style.transform = 'rotate(0deg)';
     }
+}
+
+// Create a metric chart
+function createMetricChart(safeMetricName) {
+    const metrics = metricsByName[Object.keys(metricsByName).find(k => k.replace(/\./g, '_') === safeMetricName)];
+    const ctx = document.getElementById(`chart-${safeMetricName}`).getContext('2d');
+    
+    // Filter metrics by time range
+    const timeRange = getTimeRange();
+    const filteredMetrics = metrics.filter(m => 
+        m.timestamp >= timeRange.start && m.timestamp <= timeRange.end
+    );
+    
+    chartInstances[safeMetricName] = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: filteredMetrics.map(m => m.timestamp.toLocaleTimeString()),
+            datasets: [{
+                label: safeMetricName.replace(/_/g, '.'),
+                data: filteredMetrics.map(m => m.value),
+                borderColor: '#667eea',
+                backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                tension: 0.4,
+                fill: true,
+                pointRadius: 4,
+                pointHoverRadius: 6
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: true,
+                    labels: {
+                        color: 'var(--text-primary)'
+                    }
+                },
+                tooltip: {
+                    mode: 'index',
+                    intersect: false
+                },
+                zoom: {
+                    zoom: {
+                        drag: {
+                            enabled: true,
+                            backgroundColor: 'rgba(102, 126, 234, 0.2)'
+                        },
+                        mode: 'x',
+                        onZoomComplete: function({chart}) {
+                            // Get the new time range from the chart
+                            const xScale = chart.scales.x;
+                            const minIndex = Math.max(0, Math.floor(xScale.min));
+                            const maxIndex = Math.min(filteredMetrics.length - 1, Math.ceil(xScale.max));
+                            
+                            if (minIndex < filteredMetrics.length && maxIndex >= 0) {
+                                const newStart = filteredMetrics[minIndex].timestamp;
+                                const newEnd = filteredMetrics[maxIndex].timestamp;
+                                
+                                // Update global time range
+                                zoomStart = newStart;
+                                zoomEnd = newEnd;
+                                updateTimeRangeFromZoom(newStart, newEnd);
+                                
+                                // Update timeline
+                                renderTimeline();
+                            }
+                        }
+                    }
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    grid: {
+                        color: 'rgba(160, 174, 192, 0.1)'
+                    },
+                    ticks: {
+                        color: '#a0aec0'
+                    }
+                },
+                x: {
+                    grid: {
+                        color: 'rgba(160, 174, 192, 0.1)'
+                    },
+                    ticks: {
+                        color: '#a0aec0',
+                        maxRotation: 45,
+                        minRotation: 0
+                    }
+                }
+            }
+        }
+    });
+}
+
+// Update a metric chart with current time range
+function updateMetricChart(safeMetricName) {
+    const chart = chartInstances[safeMetricName];
+    if (!chart) return;
+    
+    const metrics = metricsByName[Object.keys(metricsByName).find(k => k.replace(/\./g, '_') === safeMetricName)];
+    const timeRange = getTimeRange();
+    const filteredMetrics = metrics.filter(m => 
+        m.timestamp >= timeRange.start && m.timestamp <= timeRange.end
+    );
+    
+    chart.data.labels = filteredMetrics.map(m => m.timestamp.toLocaleTimeString());
+    chart.data.datasets[0].data = filteredMetrics.map(m => m.value);
+    chart.update();
+}
+
+// Update all metric charts
+function updateAllMetricCharts() {
+    Object.keys(chartInstances).forEach(safeMetricName => {
+        updateMetricChart(safeMetricName);
+    });
 }
 </script>
 {{end}}
@@ -309,6 +397,15 @@ function toggleMetric(safeMetricName) {
 <script>
 // Enhanced Timeline with Zoom Functionality
 const timelineItems = [];
+const metricItems = [];
+
+// Session start and end times from server
+const sessionStartTime = new Date("{{.Session.CreatedAt.Format "2006-01-02T15:04:05Z07:00"}}");
+{{if .Session.EndedAt}}
+const sessionEndTime = new Date("{{.Session.EndedAt.Format "2006-01-02T15:04:05Z07:00"}}");
+{{else}}
+const sessionEndTime = new Date("{{.Session.UpdatedAt.Format "2006-01-02T15:04:05Z07:00"}}");
+{{end}}
 
 // Add state changes
 {{range $index, $snapshot := .Session.StateHistory}}
@@ -332,21 +429,131 @@ timelineItems.push({
 });
 {{end}}
 
+// Add metrics for time range tracking
+{{range $metric := .Session.Metrics}}
+metricItems.push({
+    timestamp: new Date("{{$metric.Timestamp.Format "2006-01-02T15:04:05Z07:00"}}"),
+    name: "{{$metric.Name}}",
+    value: {{$metric.Value}}
+});
+{{end}}
+
 // Sort by timestamp
 timelineItems.sort((a, b) => a.timestamp - b.timestamp);
 
-// Timeline state
+// Global time range state
+let globalTimeRangeStart = null;
+let globalTimeRangeEnd = null;
 let zoomStart = null;
 let zoomEnd = null;
 let isDragging = false;
 let dragStartX = 0;
 
-// Calculate time range
+// Format date for datetime-local input
+function formatDateTimeLocal(date) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    const seconds = String(date.getSeconds()).padStart(2, '0');
+    return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
+}
+
+// Initialize time range controls
+function initializeTimeRange() {
+    // Calculate default time range based on session data
+    let defaultStart = sessionStartTime;
+    let defaultEnd = sessionEndTime;
+    
+    // If we have timeline items, use their range
+    if (timelineItems.length > 0) {
+        defaultStart = new Date(Math.min(defaultStart, timelineItems[0].timestamp));
+        defaultEnd = new Date(Math.max(defaultEnd, timelineItems[timelineItems.length - 1].timestamp));
+    }
+    
+    // If we have metrics, consider their range too
+    if (metricItems.length > 0) {
+        const metricStart = metricItems.reduce((min, m) => m.timestamp < min ? m.timestamp : min, metricItems[0].timestamp);
+        const metricEnd = metricItems.reduce((max, m) => m.timestamp > max ? m.timestamp : max, metricItems[0].timestamp);
+        defaultStart = new Date(Math.min(defaultStart, metricStart));
+        defaultEnd = new Date(Math.max(defaultEnd, metricEnd));
+    }
+    
+    globalTimeRangeStart = defaultStart;
+    globalTimeRangeEnd = defaultEnd;
+    
+    document.getElementById('time-range-start').value = formatDateTimeLocal(defaultStart);
+    document.getElementById('time-range-end').value = formatDateTimeLocal(defaultEnd);
+    
+    updateTimeRangeInfo();
+}
+
+// Update time range info text
+function updateTimeRangeInfo() {
+    const info = document.getElementById('time-range-info');
+    if (globalTimeRangeStart && globalTimeRangeEnd) {
+        const durationMs = globalTimeRangeEnd - globalTimeRangeStart;
+        const durationSec = (durationMs / 1000).toFixed(1);
+        info.textContent = `Showing ${durationSec}s range`;
+    }
+}
+
+// Apply time range from controls
+function applyTimeRange() {
+    const startInput = document.getElementById('time-range-start').value;
+    const endInput = document.getElementById('time-range-end').value;
+    
+    if (!startInput || !endInput) {
+        alert('Please select both start and end times');
+        return;
+    }
+    
+    globalTimeRangeStart = new Date(startInput);
+    globalTimeRangeEnd = new Date(endInput);
+    
+    if (globalTimeRangeStart >= globalTimeRangeEnd) {
+        alert('Start time must be before end time');
+        return;
+    }
+    
+    // Update zoom state for timeline
+    zoomStart = globalTimeRangeStart;
+    zoomEnd = globalTimeRangeEnd;
+    
+    updateTimeRangeInfo();
+    renderTimeline();
+    updateAllMetricCharts();
+}
+
+// Reset time range to default
+function resetTimeRange() {
+    zoomStart = null;
+    zoomEnd = null;
+    initializeTimeRange();
+    renderTimeline();
+    updateAllMetricCharts();
+}
+
+// Update time range controls from zoom
+function updateTimeRangeFromZoom(start, end) {
+    globalTimeRangeStart = start;
+    globalTimeRangeEnd = end;
+    document.getElementById('time-range-start').value = formatDateTimeLocal(start);
+    document.getElementById('time-range-end').value = formatDateTimeLocal(end);
+    updateTimeRangeInfo();
+}
+
+// Calculate time range (uses global time range if set, otherwise zoom, otherwise all data)
 const getTimeRange = () => {
     if (timelineItems.length === 0) return { start: new Date(), end: new Date() };
     
     if (zoomStart !== null && zoomEnd !== null) {
         return { start: zoomStart, end: zoomEnd };
+    }
+    
+    if (globalTimeRangeStart !== null && globalTimeRangeEnd !== null) {
+        return { start: globalTimeRangeStart, end: globalTimeRangeEnd };
     }
     
     return {
@@ -534,7 +741,7 @@ const closeTimelineDetails = () => {
 const zoomOut = () => {
     zoomStart = null;
     zoomEnd = null;
-    renderTimeline();
+    resetTimeRange();
 };
 
 // Mouse events for selection
@@ -578,6 +785,9 @@ wrapper.addEventListener('mouseup', (e) => {
             zoomStart = new Date(timeRange.start.getTime() + (totalDuration * startPercent));
             zoomEnd = new Date(timeRange.start.getTime() + (totalDuration * endPercent));
             
+            // Update the time range controls
+            updateTimeRangeFromZoom(zoomStart, zoomEnd);
+            
             renderTimeline();
         }
         
@@ -591,6 +801,9 @@ wrapper.addEventListener('mouseleave', () => {
         selectionOverlay.style.display = 'none';
     }
 });
+
+// Initialize time range controls
+initializeTimeRange();
 
 // Initial render
 renderTimeline();
