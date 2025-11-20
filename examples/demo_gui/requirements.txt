@@ -1,0 +1,9 @@
+# Requirements for datacat Demo GUI
+# Install with: pip install -r requirements.txt
+
+# Main UI framework - modern, web-based interface
+gradio>=4.0.0
+
+# The datacat client is installed from the parent directory
+# Install with: pip install -e ../../python
+
