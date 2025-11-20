@@ -709,12 +709,19 @@ func handleTimeseriesAPI(w http.ResponseWriter, r *http.Request) {
 	var overallSum float64
 	var overallCount int
 
+	// Build a session lookup map for timestamps
+	sessionLookup := make(map[string]*client.Session)
+	for _, session := range filteredSessions {
+		sessionLookup[session.ID] = session
+	}
+
 	switch aggregation {
 	case "peak":
 		// One point per session with peak value
 		for _, sessionMetrics := range sessionMetricsMap {
+			session := sessionLookup[sessionMetrics.SessionID]
 			points = append(points, TimeseriesPoint{
-				Timestamp: time.Now(), // Could use session created time
+				Timestamp: session.CreatedAt,
 				Value:     sessionMetrics.Peak,
 				SessionID: sessionMetrics.SessionID,
 			})
@@ -732,8 +739,9 @@ func handleTimeseriesAPI(w http.ResponseWriter, r *http.Request) {
 	case "average":
 		// One point per session with average value
 		for _, sessionMetrics := range sessionMetricsMap {
+			session := sessionLookup[sessionMetrics.SessionID]
 			points = append(points, TimeseriesPoint{
-				Timestamp: time.Now(),
+				Timestamp: session.CreatedAt,
 				Value:     sessionMetrics.Average,
 				SessionID: sessionMetrics.SessionID,
 			})
@@ -751,8 +759,9 @@ func handleTimeseriesAPI(w http.ResponseWriter, r *http.Request) {
 	case "min":
 		// One point per session with min value
 		for _, sessionMetrics := range sessionMetricsMap {
+			session := sessionLookup[sessionMetrics.SessionID]
 			points = append(points, TimeseriesPoint{
-				Timestamp: time.Now(),
+				Timestamp: session.CreatedAt,
 				Value:     sessionMetrics.Min,
 				SessionID: sessionMetrics.SessionID,
 			})
@@ -1293,9 +1302,9 @@ func handleSessionsMetrics(w http.ResponseWriter, r *http.Request) {
 				<h4 style="margin: 0; color: var(--text-primary);">%s</h4>
 				<span class="collapse-icon collapsed" id="metric-%s-icon">▼</span>
 			</div>
-			<div class="collapsible-content collapsed" id="metric-%s-content" 
-				 hx-get="/api/metric-data/%s?%s" 
-				 hx-trigger="loadMetric" 
+			<div class="collapsible-content collapsed" id="metric-%s-content"
+				 hx-get="/api/metric-data/%s?%s"
+				 hx-trigger="loadMetric"
 				 hx-swap="innerHTML">
 				<p style="text-align: center; padding: 20px; color: var(--text-secondary);">Click to expand and load data...</p>
 			</div>
@@ -1458,7 +1467,7 @@ func handleMetricData(w http.ResponseWriter, r *http.Request) {
 		(function() {
 			const ctx = document.getElementById('%s').getContext('2d');
 			const data = %s;
-			
+
 			new Chart(ctx, {
 				type: 'line',
 				data: {
