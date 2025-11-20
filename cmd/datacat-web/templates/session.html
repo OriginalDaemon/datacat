@@ -125,7 +125,6 @@
 
 <script>
 // Group metrics by name
-const metricsByName = {};
 {{range .Session.Metrics}}
 const metricName_{{.Name | replace "." "_"}} = "{{.Name}}";
 if (!metricsByName[metricName_{{.Name | replace "." "_"}}]) {
@@ -140,7 +139,6 @@ metricsByName[metricName_{{.Name | replace "." "_"}}].push({
 
 // Create expandable metric summaries
 const summaryContainer = document.getElementById('metrics-summary');
-let chartInstances = {}; // Store chart instances
 
 Object.keys(metricsByName).forEach(metricName => {
     const metrics = metricsByName[metricName];
@@ -448,6 +446,10 @@ let zoomStart = null;
 let zoomEnd = null;
 let isDragging = false;
 let dragStartX = 0;
+
+// Metrics state (used if metrics exist)
+const metricsByName = {};
+let chartInstances = {};
 
 // Format date for datetime-local input
 function formatDateTimeLocal(date) {
