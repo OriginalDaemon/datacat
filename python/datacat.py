@@ -244,7 +244,10 @@ class DatacatClient(object):
         Raises:
             Exception: If the request fails
         """
-        url = "{0}/api/sessions/{1}".format(self.base_url, session_id)
+        if self.use_daemon:
+            url = "{0}/session?session_id={1}".format(self.base_url, session_id)
+        else:
+            url = "{0}/api/sessions/{1}".format(self.base_url, session_id)
         return self._make_request(url, method="GET")
 
     def update_state(self, session_id, state):
@@ -388,7 +391,10 @@ class DatacatClient(object):
         Raises:
             Exception: If the request fails
         """
-        url = "{0}/api/data/sessions".format(self.base_url)
+        if self.use_daemon:
+            url = "{0}/sessions".format(self.base_url)
+        else:
+            url = "{0}/api/data/sessions".format(self.base_url)
         return self._make_request(url, method="GET")
 
 
