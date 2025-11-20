@@ -14,7 +14,7 @@ func main() {
 	c := client.NewClient("http://localhost:9090")
 
 	// Create session
-	sessionID, err := c.CreateSession()
+	sessionID, err := c.CreateSession("GoClientExample", "1.0.0")
 	if err != nil {
 		log.Fatalf("Failed to create session: %v", err)
 	}

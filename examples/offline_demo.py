@@ -35,6 +35,8 @@ def main():
         base_url="http://localhost:19999",  # Invalid server
         use_daemon=True,
         daemon_port="8079",
+        product="OfflineDemo",
+        version="1.0.0",
     )
     print("   Session created: {}".format(session.session_id))
     print(

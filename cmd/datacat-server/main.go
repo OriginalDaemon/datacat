@@ -136,8 +136,8 @@ func (s *Store) loadFromDB() error {
 	return nil
 }
 
-// CreateSession creates a new session
-func (s *Store) CreateSession() *Session {
+// CreateSession creates a new session with product and version
+func (s *Store) CreateSession(product, version string) *Session {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -150,6 +150,14 @@ func (s *Store) CreateSession() *Session {
 		StateHistory: []StateSnapshot{},
 		Events:       []Event{},
 		Metrics:      []Metric{},
+	}
+
+	// Set product and version in the initial state
+	if product != "" {
+		session.State["product"] = product
+	}
+	if version != "" {
+		session.State["version"] = version
 	}
 
 	s.sessions[session.ID] = session
@@ -482,7 +490,24 @@ func main() {
 // handleSessions handles POST /api/sessions to create a new session
 func handleSessions(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "POST" {
-		session := store.CreateSession()
+		// Parse request body to get product and version
+		var req struct {
+			Product string `json:"product"`
+			Version string `json:"version"`
+		}
+		
+		// Try to decode the request body
+		if r.Body != nil {
+			json.NewDecoder(r.Body).Decode(&req)
+		}
+
+		// Validate that product and version are provided
+		if req.Product == "" || req.Version == "" {
+			http.Error(w, "Product and version are required fields", http.StatusBadRequest)
+			return
+		}
+
+		session := store.CreateSession(req.Product, req.Version)
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"session_id": session.ID})
 		return

@@ -22,7 +22,9 @@ def run_test(name, duration):
 
 def main():
     # Create a session for this test run
-    session = create_session("http://localhost:9090")
+    session = create_session(
+        "http://localhost:9090", product="TestingExample", version="1.0.0"
+    )
     print("Test Run Session:", session.session_id)
 
     # Initialize test suite

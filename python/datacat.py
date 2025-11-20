@@ -223,23 +223,30 @@ class DatacatClient(object):
             error_msg = "Request failed: {0}".format(str(e))
             raise Exception(error_msg)
 
-    def register_session(self):
+    def register_session(self, product, version):
         """
         Register a new session with the datacat service or daemon
+
+        Args:
+            product (str): Product name (required)
+            version (str): Product version (required)
 
         Returns:
             str: Session ID
 
         Raises:
-            Exception: If registration fails
+            Exception: If registration fails or if product/version are empty
         """
+        if not product or not version:
+            raise Exception("Product and version are required to create a session")
+
         if self.use_daemon:
             url = "{0}/register".format(self.base_url)
             # Send parent PID so daemon can monitor for crashes
-            data = {"parent_pid": os.getpid()}
+            data = {"parent_pid": os.getpid(), "product": product, "version": version}
         else:
             url = "{0}/api/sessions".format(self.base_url)
-            data = None
+            data = {"product": product, "version": version}
         response = self._make_request(url, method="POST", data=data)
         return response.get("session_id")
 
@@ -626,7 +633,11 @@ class Session(object):
 
 # Factory function for convenience
 def create_session(
-    base_url="http://localhost:9090", use_daemon=True, daemon_port="8079"
+    base_url="http://localhost:9090",
+    use_daemon=True,
+    daemon_port="8079",
+    product=None,
+    version=None,
 ):
     """
     Create a new session and return a Session object
@@ -635,13 +646,18 @@ def create_session(
         base_url (str): Base URL of the datacat service (or server URL if using daemon)
         use_daemon (bool): If True, start and use a local daemon subprocess (recommended)
         daemon_port (str): Port for the local daemon (only used if use_daemon=True)
+        product (str): Product name (required)
+        version (str): Product version (required)
 
     Returns:
         Session: Session object ready to use
 
     Raises:
-        Exception: If session creation fails
+        Exception: If session creation fails or if product/version are not provided
     """
+    if not product or not version:
+        raise Exception("Product and version are required to create a session")
+
     client = DatacatClient(base_url, use_daemon=use_daemon, daemon_port=daemon_port)
-    session_id = client.register_session()
+    session_id = client.register_session(product, version)
     return Session(client, session_id)
