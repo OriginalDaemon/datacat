@@ -109,7 +109,7 @@
                                │ HTTP/JSON
                                │
 ┌──────────────────────────────▼────────────────────────────────────┐
-│                      Web UI / Grafana                             │
+│                      Web UI / Dashboards                             │
 │                                                                   │
 │  Queries via JSON API data source:                               │
 │  • Active sessions (never ended)                                 │

@@ -152,7 +152,7 @@ if __name__ == "__main__":
     simulate_recovering_application()
 
     print("\n=== Summary ===")
-    print("You can now query Grafana to find:")
+    print("You can now query the API to find:")
     print("1. Sessions that started but never ended (active=true)")
     print("2. Sessions with 'application_appears_hung' as the last event")
     print("3. Sessions that recovered after hanging")

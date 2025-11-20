@@ -155,4 +155,4 @@ All examples will:
 You can view the logged data:
 - Via the web UI at `http://localhost:8080`
 - By querying the API at `http://localhost:9090/api/sessions/{session_id}`
-- Through Grafana using the `/api/data/sessions` endpoint
+- Through external tools using the `/api/data/sessions` endpoint

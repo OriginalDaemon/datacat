@@ -795,25 +795,6 @@ func TestHTTPHandlers(t *testing.T) {
 			t.Errorf("Expected status 405, got %d", w.Code)
 		}
 	})
-
-	// Test legacy Grafana endpoint still works
-	t.Run("LegacyGrafanaEndpoint", func(t *testing.T) {
-		req := httptest.NewRequest("GET", "/api/grafana/sessions", nil)
-		w := httptest.NewRecorder()
-
-		handleGetAllSessions(w, req)
-
-		if w.Code != http.StatusOK {
-			t.Errorf("Expected status 200, got %d", w.Code)
-		}
-
-		var sessions []*Session
-		json.NewDecoder(w.Body).Decode(&sessions)
-
-		if len(sessions) == 0 {
-			t.Error("Expected at least one session")
-		}
-	})
 }
 
 func TestStartCleanupRoutine(t *testing.T) {
