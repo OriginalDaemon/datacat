@@ -15,7 +15,7 @@ Write-Host "Starting datacat server for testing..." -ForegroundColor Green
 # Start server in background
 $serverJob = Start-Job -ScriptBlock {
     Set-Location $using:PSScriptRoot/../cmd/datacat-server
-    go run main.go
+    go run .
 }
 
 # Wait for server to start

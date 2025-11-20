@@ -9,7 +9,7 @@ Write-Host ""
 
 Push-Location $PSScriptRoot/../cmd/datacat-web
 try {
-    go run main.go
+    go run .
 } finally {
     Pop-Location
 }
