@@ -1,47 +1,19 @@
 {{define "content"}}
-<div class="stats-grid">
-    <div class="stat-card">
-        <h3>Total Sessions</h3>
-        <div class="value">{{len .Sessions}}</div>
-    </div>
-    <div class="stat-card">
-        <h3>Active Sessions</h3>
-        <div class="value">
-            {{$active := 0}}
-            {{range .Sessions}}
-                {{if .Active}}{{$active = add $active 1}}{{end}}
-            {{end}}
-            {{$active}}
-        </div>
-    </div>
-    <div class="stat-card">
-        <h3>Total Events</h3>
-        <div class="value">
-            {{$events := 0}}
-            {{range .Sessions}}
-                {{$events = add $events (len .Events)}}
-            {{end}}
-            {{$events}}
-        </div>
-    </div>
-    <div class="stat-card">
-        <h3>Total Metrics</h3>
-        <div class="value">
-            {{$metrics := 0}}
-            {{range .Sessions}}
-                {{$metrics = add $metrics (len .Metrics)}}
-            {{end}}
-            {{$metrics}}
+<div id="stats-cards" hx-get="/api/stats-cards" hx-trigger="load" hx-swap="outerHTML">
+    <div class="stats-grid">
+        <div class="stat-card">
+            <h3>Loading...</h3>
+            <div class="value">-</div>
         </div>
     </div>
 </div>
 
 <div class="card">
     <h2>Sessions</h2>
-    <p style="margin-bottom: 15px; color: #666;">
+    <p style="margin-bottom: 15px; color: var(--text-secondary);">
         Use the controls below to sort and filter sessions. You can filter by state using JSON format.
     </p>
-    <div id="sessions-container" hx-get="/sessions" hx-trigger="load" hx-swap="innerHTML">
+    <div id="sessions-table" hx-get="/api/sessions-table" hx-trigger="load" hx-swap="outerHTML">
         <p>Loading sessions...</p>
     </div>
 </div>
