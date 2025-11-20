@@ -1,4 +1,6 @@
-# Examples
+<div align="center">
+
+# DataCat Examples
 
 ```
 ██████╗  █████╗ ████████╗ █████╗  ██████╗ █████╗ ████████╗
@@ -8,6 +10,8 @@
 ██████╔╝██║  ██║   ██║   ██║  ██║╚██████╗██║  ██║   ██║
 ╚═════╝ ╚═╝  ╚═╝   ╚═╝   ╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝   ╚═╝
 ```
+
+</div>
 
 This directory contains example applications demonstrating various features of DataCat.
 

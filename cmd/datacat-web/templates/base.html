@@ -3,7 +3,9 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>{{.Title}} - Datacat</title>
+    <title>{{.Title}} - DataCat</title>
+    <link rel="icon" type="image/png" href="/static/favicon.png" />
+    <link rel="icon" type="image/x-icon" href="/static/favicon.ico" />
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
@@ -64,6 +66,14 @@
       h1 {
         font-size: 28px;
         font-weight: 600;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .logo {
+        height: 40px;
+        width: 40px;
       }
 
       nav a {
@@ -330,7 +340,10 @@
   <body>
     <header>
       <div class="container">
-        <h1>📊 Datacat Dashboard</h1>
+        <h1>
+          <img src="/static/logo-small.png" alt="DataCat Logo" class="logo" />
+          DataCat Dashboard
+        </h1>
         <nav>
           <a href="/">Home</a>
           <a href="/metrics">Metrics</a>

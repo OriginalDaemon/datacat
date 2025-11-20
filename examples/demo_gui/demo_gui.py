@@ -487,7 +487,7 @@ function() {
 # Build the Gradio interface
 def create_ui():
     with gr.Blocks(
-        title="datacat Demo GUI",
+        title="DataCat Demo GUI",
         theme=gr.themes.Soft(
             primary_hue="blue",
             secondary_hue="slate",
@@ -496,7 +496,7 @@ def create_ui():
     ) as demo:
         gr.Markdown(
             """
-            # 🐱 datacat Demo GUI
+            # 🐱 DataCat Demo GUI
 
             A modern demonstration of the datacat Python client features.
             """
@@ -788,6 +788,7 @@ if __name__ == "__main__":
         server_name="127.0.0.1",
         server_port=7860,
         share=False,
-        inbrowser=True
+        inbrowser=True,
+        favicon_path="logo-small.png"  # DataCat favicon
     )
 
