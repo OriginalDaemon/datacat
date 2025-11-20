@@ -1,6 +1,10 @@
 #!/usr/bin/env pwsh
 # Clean build artifacts and temporary files
 
+param(
+    [switch]$All
+)
+
 Write-Host "Cleaning build artifacts..." -ForegroundColor Green
 
 # Remove bin directory
@@ -52,4 +56,15 @@ if (Test-Path "python/dist") {
     Remove-Item -Recurse -Force python/dist
 }
 
+# Remove virtual environment if -All flag is specified
+if ($All -and (Test-Path ".venv")) {
+    Write-Host "  Removing .venv/ (virtual environment)" -ForegroundColor Gray
+    Remove-Item -Recurse -Force .venv
+}
+
 Write-Host "Clean complete!" -ForegroundColor Green
+
+if ($All) {
+    Write-Host ""
+    Write-Host "Note: Virtual environment was removed. Run '.\scripts\setup.ps1' to recreate it." -ForegroundColor Yellow
+}

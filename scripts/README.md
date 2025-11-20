@@ -18,9 +18,12 @@ First, set up your development environment:
 
 This will:
 - Check Go and Python installations
-- Install Python dependencies
+- Create a Python virtual environment at `.venv/`
+- Install Python dependencies in the virtual environment
 - Install the Python client in development mode
 - Download Go dependencies
+
+**Note:** All Python-related scripts automatically use the virtual environment at `.venv/`. If the virtual environment is not found, scripts will fall back to system Python with a warning.
 
 ## Running Services
 
@@ -154,6 +157,17 @@ This removes:
 - Coverage reports
 - Python cache files (`__pycache__`, `*.egg-info`)
 
+### Remove Everything Including Virtual Environment
+
+```powershell
+.\scripts\clean.ps1 -All
+```
+
+This removes all of the above plus:
+- `.venv/` - Python virtual environment
+
+**Note:** After using `-All`, you'll need to run `.\scripts\setup.ps1` again to recreate the virtual environment.
+
 ## Example Workflow
 
 1. **Initial setup:**
@@ -204,8 +218,16 @@ If port 9090 or 8080 is already in use, you'll need to:
 If you encounter Python dependency issues, try:
 
 ```powershell
-pip install --upgrade pip
-pip install -r requirements-dev.txt --force-reinstall
+# Delete the virtual environment and recreate it
+Remove-Item -Recurse -Force .venv
+.\scripts\setup.ps1
+```
+
+Alternatively, you can manually reinstall dependencies in the virtual environment:
+
+```powershell
+.\.venv\Scripts\pip.exe install --upgrade pip
+.\.venv\Scripts\pip.exe install -r requirements-dev.txt --force-reinstall
 ```
 
 ## Script Reference
