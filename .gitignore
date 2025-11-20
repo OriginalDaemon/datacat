@@ -65,3 +65,7 @@ venv/
 # .idea/
 # .vscode/
 datacat-web-test
+
+# Screenshots
+screenshots/
+
