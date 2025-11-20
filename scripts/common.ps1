@@ -18,8 +18,14 @@ function Get-VenvScriptsDir {
 function Get-PythonExe {
     $repoRoot = Get-RepoRoot
     $scriptsDir = Get-VenvScriptsDir
-    $venvPython = Join-Path $repoRoot ".venv/$scriptsDir/python"
-    
+
+    # Add .exe extension on Windows
+    if ($IsWindows -or $env:OS -eq "Windows_NT") {
+        $venvPython = Join-Path $repoRoot ".venv/$scriptsDir/python.exe"
+    } else {
+        $venvPython = Join-Path $repoRoot ".venv/$scriptsDir/python"
+    }
+
     if (Test-Path $venvPython) {
         return $venvPython
     } else {
@@ -35,8 +41,14 @@ function Get-PythonExe {
 function Get-PipExe {
     $repoRoot = Get-RepoRoot
     $scriptsDir = Get-VenvScriptsDir
-    $venvPip = Join-Path $repoRoot ".venv/$scriptsDir/pip"
-    
+
+    # Add .exe extension on Windows
+    if ($IsWindows -or $env:OS -eq "Windows_NT") {
+        $venvPip = Join-Path $repoRoot ".venv/$scriptsDir/pip.exe"
+    } else {
+        $venvPip = Join-Path $repoRoot ".venv/$scriptsDir/pip"
+    }
+
     if (Test-Path $venvPip) {
         return $venvPip
     } else {
@@ -52,8 +64,14 @@ function Get-PipExe {
 function Get-PytestExe {
     $repoRoot = Get-RepoRoot
     $scriptsDir = Get-VenvScriptsDir
-    $venvPytest = Join-Path $repoRoot ".venv/$scriptsDir/pytest"
-    
+
+    # Add .exe extension on Windows
+    if ($IsWindows -or $env:OS -eq "Windows_NT") {
+        $venvPytest = Join-Path $repoRoot ".venv/$scriptsDir/pytest.exe"
+    } else {
+        $venvPytest = Join-Path $repoRoot ".venv/$scriptsDir/pytest"
+    }
+
     if (Test-Path $venvPytest) {
         return $venvPytest
     } else {
@@ -69,8 +87,14 @@ function Get-PytestExe {
 function Get-BlackExe {
     $repoRoot = Get-RepoRoot
     $scriptsDir = Get-VenvScriptsDir
-    $venvBlack = Join-Path $repoRoot ".venv/$scriptsDir/black"
-    
+
+    # Add .exe extension on Windows
+    if ($IsWindows -or $env:OS -eq "Windows_NT") {
+        $venvBlack = Join-Path $repoRoot ".venv/$scriptsDir/black.exe"
+    } else {
+        $venvBlack = Join-Path $repoRoot ".venv/$scriptsDir/black"
+    }
+
     if (Test-Path $venvBlack) {
         return $venvBlack
     } else {
@@ -86,8 +110,14 @@ function Get-BlackExe {
 function Get-MypyExe {
     $repoRoot = Get-RepoRoot
     $scriptsDir = Get-VenvScriptsDir
-    $venvMypy = Join-Path $repoRoot ".venv/$scriptsDir/mypy"
-    
+
+    # Add .exe extension on Windows
+    if ($IsWindows -or $env:OS -eq "Windows_NT") {
+        $venvMypy = Join-Path $repoRoot ".venv/$scriptsDir/mypy.exe"
+    } else {
+        $venvMypy = Join-Path $repoRoot ".venv/$scriptsDir/mypy"
+    }
+
     if (Test-Path $venvMypy) {
         return $venvMypy
     } else {

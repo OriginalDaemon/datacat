@@ -37,7 +37,11 @@ func TestHandleRegister(t *testing.T) {
 	config.ServerURL = mockServer.URL
 	daemon := NewDaemon(config)
 
-	reqBody := map[string]int{"parent_pid": 1234}
+	reqBody := map[string]interface{}{
+		"parent_pid": 1234,
+		"product":    "TestProduct",
+		"version":    "1.0.0",
+	}
 	body, _ := json.Marshal(reqBody)
 	req := httptest.NewRequest("POST", "/register", bytes.NewReader(body))
 	w := httptest.NewRecorder()
@@ -645,9 +649,9 @@ func TestHandleRegisterInvalidJSON(t *testing.T) {
 
 	daemon.handleRegister(w, req)
 
-	// Should get an error due to invalid response
-	if w.Code != http.StatusInternalServerError {
-		t.Errorf("Expected status 500, got %d", w.Code)
+	// Should get a 400 error due to missing product/version
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400, got %d", w.Code)
 	}
 }
 
@@ -668,8 +672,9 @@ func TestHandleRegisterInvalidSessionID(t *testing.T) {
 
 	daemon.handleRegister(w, req)
 
-	if w.Code != http.StatusInternalServerError {
-		t.Errorf("Expected status 500, got %d", w.Code)
+	// Should get a 400 error due to missing product/version
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400, got %d", w.Code)
 	}
 }
 

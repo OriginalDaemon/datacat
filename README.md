@@ -94,7 +94,7 @@ The core service providing session management, state tracking, and data persiste
 Intelligent local subprocess that reduces network traffic through batching and smart filtering.
 
 - **Technology:** Go HTTP server subprocess
-- **Features:** 
+- **Features:**
   - **10-100x network reduction** through intelligent batching
   - **Smart state filtering** (only sends changed state)
   - **Parent process monitoring** (detects crashes/abnormal exits)
@@ -130,6 +130,37 @@ Python 2.7+ and 3.x compatible client with advanced features.
 - **[Full Documentation](python/README.md)**
 
 ## 💡 Usage Examples
+
+### 🎨 Try the Interactive Demo
+
+Want to try datacat before diving into code? Check out the **Demo GUI**!
+
+```bash
+# Install requirements
+cd examples/demo_gui
+pip install -r requirements.txt
+pip install -e ../../python
+
+# Run the demo
+python demo_gui.py
+```
+
+Or use the PowerShell script (Windows):
+```powershell
+.\scripts\run-demo-gui.ps1
+```
+
+Opens a modern web interface at http://127.0.0.1:7860 with:
+- 🌙 Dark mode by default (Gradio's native theme)
+- 📝 State updates with JSON editor
+- 📢 Event logging
+- 📈 Metrics tracking
+- ⚠️ Custom logging handler for errors
+- 💥 Exception generation with full stack traces
+
+**[Full Demo Documentation](examples/demo_gui/README.md)** | **[Quick Start](examples/demo_gui/QUICKSTART.md)**
+
+---
 
 ### Python Client
 
@@ -222,7 +253,7 @@ c.EndSession(sessionID)
 The REST API provides the following endpoints:
 
 - `POST /api/sessions` - Create new session
-- `GET /api/sessions/{id}` - Get session details  
+- `GET /api/sessions/{id}` - Get session details
 - `POST /api/sessions/{id}/state` - Update state (deep merge)
 - `POST /api/sessions/{id}/events` - Log event
 - `POST /api/sessions/{id}/metrics` - Log metric
@@ -317,7 +348,7 @@ The data directory contains BadgerDB files including MANIFEST, LOCK, .vlog, and 
 
 To completely reset the server and delete all session data:
 
-**Step 1: Stop the server** 
+**Step 1: Stop the server**
 
 Stop the running server (Ctrl+C in the terminal/PowerShell window)
 
