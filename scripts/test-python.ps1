@@ -5,6 +5,11 @@ param(
     [switch]$Coverage
 )
 
+# Import common functions
+. "$PSScriptRoot\common.ps1"
+
+$pytest = Get-PytestExe
+
 Write-Host "Starting datacat server for testing..." -ForegroundColor Green
 
 # Start server in background
@@ -23,9 +28,9 @@ try {
     Push-Location $PSScriptRoot/..
     try {
         if ($Coverage) {
-            pytest tests/ -v --cov=python --cov-report=term --cov-report=html
+            & $pytest tests/ -v --cov=python --cov-report=term --cov-report=html
         } else {
-            pytest tests/ -v
+            & $pytest tests/ -v
         }
         $exitCode = $LASTEXITCODE
     } finally {

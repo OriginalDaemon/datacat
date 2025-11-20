@@ -5,6 +5,11 @@ param(
     [switch]$Coverage
 )
 
+# Import common functions
+. "$PSScriptRoot\common.ps1"
+
+$pytest = Get-PytestExe
+
 $ErrorActionPreference = "Stop"
 $exitCode = 0
 
@@ -34,10 +39,10 @@ Write-Host "Testing Python integration..." -ForegroundColor Green
 Push-Location $PSScriptRoot/..
 try {
     if ($Coverage) {
-        pytest tests/ -v --cov=python --cov-report=term --cov-report=html
+        & $pytest tests/ -v --cov=python --cov-report=term --cov-report=html
         if ($LASTEXITCODE -ne 0) { $exitCode = $LASTEXITCODE }
     } else {
-        pytest tests/ -v
+        & $pytest tests/ -v
         if ($LASTEXITCODE -ne 0) { $exitCode = $LASTEXITCODE }
     }
 } finally {

@@ -15,6 +15,11 @@ param(
     [string]$Example
 )
 
+# Import common functions
+. "$PSScriptRoot\common.ps1"
+
+$python = Get-PythonExe
+
 Write-Host "======================================" -ForegroundColor Cyan
 Write-Host "Running example: $Example" -ForegroundColor Cyan
 Write-Host "======================================" -ForegroundColor Cyan
@@ -36,22 +41,22 @@ Push-Location $PSScriptRoot/../examples
 try {
     switch ($Example) {
         "basic" {
-            python basic_example.py
+            & $python basic_example.py
         }
         "window_tracking" {
-            python window_tracking_example.py
+            & $python window_tracking_example.py
         }
         "heartbeat" {
-            python heartbeat_example.py
+            & $python heartbeat_example.py
         }
         "testing" {
-            python testing_example.py
+            & $python testing_example.py
         }
         "complete" {
-            python complete_example.py
+            & $python complete_example.py
         }
         "exception_logging" {
-            python exception_logging_example.py
+            & $python exception_logging_example.py
         }
         "go-client" {
             Push-Location go-client-example
