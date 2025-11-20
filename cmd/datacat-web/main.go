@@ -29,6 +29,37 @@ type PageData struct {
 	ErrorMessage  string
 }
 
+// ProductVersion represents a unique product and version combination
+type ProductVersion struct {
+	Product      string
+	Version      string
+	SessionCount int
+}
+
+// ProductsPageData represents data for the products listing page
+type ProductsPageData struct {
+	Title         string
+	Products      []ProductInfo
+	ServerOffline bool
+	ErrorMessage  string
+}
+
+// ProductInfo represents aggregated info about a product
+type ProductInfo struct {
+	Name     string
+	Versions []VersionInfo
+}
+
+// VersionInfo represents info about a specific version
+type VersionInfo struct {
+	Version      string
+	SessionCount int
+	ActiveCount  int
+	EndedCount   int
+	CrashedCount int
+	HungCount    int
+}
+
 // TimeseriesPoint represents a single point in a time series
 type TimeseriesPoint struct {
 	Timestamp time.Time `json:"timestamp"`
@@ -77,18 +108,14 @@ func main() {
 }
 
 func handleIndex(w http.ResponseWriter, r *http.Request) {
-	funcMap := template.FuncMap{
-		"add": func(a, b int) int { return a + b },
-		"sub": func(a, b int) int { return a - b },
-	}
-	tmpl, err := template.New("base.html").Funcs(funcMap).ParseFS(content, "templates/base.html", "templates/index.html")
+	tmpl, err := template.ParseFS(content, "templates/base.html", "templates/products.html")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	sessions, err := datacatClient.GetAllSessions()
-	data := PageData{
+	data := ProductsPageData{
 		Title: "Datacat Dashboard",
 	}
 
@@ -96,19 +123,88 @@ func handleIndex(w http.ResponseWriter, r *http.Request) {
 		// Server is offline - render UI anyway but with warning
 		data.ServerOffline = true
 		data.ErrorMessage = "Cannot connect to datacat server. Please start the server."
-		data.Sessions = []*client.Session{}
+		data.Products = []ProductInfo{}
 	} else {
-		// Sort sessions by created_at descending
-		sort.Slice(sessions, func(i, j int) bool {
-			return sessions[i].CreatedAt.After(sessions[j].CreatedAt)
-		})
-		data.Sessions = sessions
+		// Extract unique products and versions
+		data.Products = extractProductInfo(sessions)
 	}
 
-	err = tmpl.Execute(w, data)
+	err = tmpl.ExecuteTemplate(w, "base.html", data)
 	if err != nil {
 		log.Printf("Template execution error: %v", err)
 	}
+}
+
+// extractProductInfo extracts unique products and versions from sessions
+func extractProductInfo(sessions []*client.Session) []ProductInfo {
+	productMap := make(map[string]map[string]*VersionInfo)
+
+	for _, session := range sessions {
+		// Extract product and version from state
+		product, _ := session.State["product"].(string)
+		version, _ := session.State["version"].(string)
+
+		if product == "" {
+			product = "Unknown"
+		}
+		if version == "" {
+			version = "Unknown"
+		}
+
+		// Initialize product map if needed
+		if productMap[product] == nil {
+			productMap[product] = make(map[string]*VersionInfo)
+		}
+
+		// Initialize version info if needed
+		if productMap[product][version] == nil {
+			productMap[product][version] = &VersionInfo{
+				Version: version,
+			}
+		}
+
+		vi := productMap[product][version]
+		vi.SessionCount++
+
+		// Categorize session status
+		if session.Active {
+			// Check for hung/crashed status in state or via heartbeat
+			status, _ := session.State["status"].(string)
+			if status == "crashed" {
+				vi.CrashedCount++
+			} else if status == "hung" {
+				vi.HungCount++
+			} else {
+				vi.ActiveCount++
+			}
+		} else {
+			vi.EndedCount++
+		}
+	}
+
+	// Convert to sorted list
+	var products []ProductInfo
+	for productName, versions := range productMap {
+		var versionList []VersionInfo
+		for _, vi := range versions {
+			versionList = append(versionList, *vi)
+		}
+		// Sort versions
+		sort.Slice(versionList, func(i, j int) bool {
+			return versionList[i].Version < versionList[j].Version
+		})
+		products = append(products, ProductInfo{
+			Name:     productName,
+			Versions: versionList,
+		})
+	}
+
+	// Sort products by name
+	sort.Slice(products, func(i, j int) bool {
+		return products[i].Name < products[j].Name
+	})
+
+	return products
 }
 
 func handleSessions(w http.ResponseWriter, r *http.Request) {
@@ -117,7 +213,12 @@ func handleSessions(w http.ResponseWriter, r *http.Request) {
 	perPage := 20
 	sortBy := r.URL.Query().Get("sort")
 	sortOrder := r.URL.Query().Get("order")
-	stateFilter := r.URL.Query().Get("state_filter")
+	product := r.URL.Query().Get("product")
+	version := r.URL.Query().Get("version")
+	statusFilter := r.URL.Query().Get("status")
+	stateKey := r.URL.Query().Get("state_key")
+	stateValue := r.URL.Query().Get("state_value")
+	eventName := r.URL.Query().Get("event_name")
 
 	if sortBy == "" {
 		sortBy = "created_at"
@@ -139,17 +240,24 @@ func handleSessions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Apply state filter if provided
-	if stateFilter != "" {
-		sessions = filterSessionsByState(sessions, stateFilter)
+	// Apply filters
+	var filteredSessions []*client.Session
+	for _, session := range sessions {
+		if !matchesFilters(session, product, version, statusFilter, stateKey, stateValue, eventName) {
+			continue
+		}
+		filteredSessions = append(filteredSessions, session)
 	}
 
 	// Sort sessions
-	sortSessions(sessions, sortBy, sortOrder)
+	sortSessions(filteredSessions, sortBy, sortOrder)
 
 	// Paginate
-	totalSessions := len(sessions)
+	totalSessions := len(filteredSessions)
 	totalPages := (totalSessions + perPage - 1) / perPage
+	if totalPages == 0 {
+		totalPages = 1
+	}
 	start := (page - 1) * perPage
 	end := start + perPage
 	if end > totalSessions {
@@ -159,31 +267,52 @@ func handleSessions(w http.ResponseWriter, r *http.Request) {
 		start = totalSessions
 	}
 
-	paginatedSessions := sessions[start:end]
+	paginatedSessions := []*client.Session{}
+	if start < end {
+		paginatedSessions = filteredSessions[start:end]
+	}
+
+	// Extract unique products and versions for filter dropdowns
+	uniqueProducts := extractUniqueProducts(sessions)
+	uniqueVersions := extractUniqueVersions(sessions, product)
 
 	// Prepare pagination data
 	type SessionsData struct {
-		Sessions    []*client.Session
-		CurrentPage int
-		TotalPages  int
-		TotalCount  int
-		SortBy      string
-		SortOrder   string
-		StateFilter string
-		HasPrev     bool
-		HasNext     bool
+		Sessions       []*client.Session
+		CurrentPage    int
+		TotalPages     int
+		TotalCount     int
+		SortBy         string
+		SortOrder      string
+		Product        string
+		Version        string
+		StatusFilter   string
+		StateKey       string
+		StateValue     string
+		EventName      string
+		HasPrev        bool
+		HasNext        bool
+		Products       []string
+		Versions       []string
 	}
 
 	data := SessionsData{
-		Sessions:    paginatedSessions,
-		CurrentPage: page,
-		TotalPages:  totalPages,
-		TotalCount:  totalSessions,
-		SortBy:      sortBy,
-		SortOrder:   sortOrder,
-		StateFilter: stateFilter,
-		HasPrev:     page > 1,
-		HasNext:     page < totalPages,
+		Sessions:       paginatedSessions,
+		CurrentPage:    page,
+		TotalPages:     totalPages,
+		TotalCount:     totalSessions,
+		SortBy:         sortBy,
+		SortOrder:      sortOrder,
+		Product:        product,
+		Version:        version,
+		StatusFilter:   statusFilter,
+		StateKey:       stateKey,
+		StateValue:     stateValue,
+		EventName:      eventName,
+		HasPrev:        page > 1,
+		HasNext:        page < totalPages,
+		Products:       uniqueProducts,
+		Versions:       uniqueVersions,
 	}
 
 	funcMap := template.FuncMap{
@@ -191,7 +320,7 @@ func handleSessions(w http.ResponseWriter, r *http.Request) {
 		"sub": func(a, b int) int { return a - b },
 		"eq":  func(a, b string) bool { return a == b },
 	}
-	t, err := template.New("sessions_enhanced.html").Funcs(funcMap).ParseFS(content, "templates/sessions_enhanced.html")
+	t, err := template.New("sessions_filtered.html").Funcs(funcMap).ParseFS(content, "templates/sessions_filtered.html")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -201,6 +330,139 @@ func handleSessions(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Template execution error: %v", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 	}
+}
+
+// matchesFilters checks if a session matches all specified filters
+func matchesFilters(session *client.Session, product, version, statusFilter, stateKey, stateValue, eventName string) bool {
+	// Product filter
+	if product != "" {
+		sessionProduct, _ := session.State["product"].(string)
+		if sessionProduct != product {
+			return false
+		}
+	}
+
+	// Version filter
+	if version != "" {
+		sessionVersion, _ := session.State["version"].(string)
+		if sessionVersion != version {
+			return false
+		}
+	}
+
+	// Status filter
+	if statusFilter != "" {
+		switch statusFilter {
+		case "active":
+			if !session.Active {
+				return false
+			}
+		case "ended":
+			if session.Active {
+				return false
+			}
+		case "crashed":
+			if !session.Active {
+				return false
+			}
+			status, _ := session.State["status"].(string)
+			if status != "crashed" {
+				return false
+			}
+		case "hung":
+			if !session.Active {
+				return false
+			}
+			status, _ := session.State["status"].(string)
+			if status != "hung" {
+				return false
+			}
+		}
+	}
+
+	// State key/value filter
+	if stateKey != "" && stateValue != "" {
+		if !hasStateValue(session, stateKey, stateValue) {
+			return false
+		}
+	}
+
+	// Event name filter
+	if eventName != "" {
+		if !hasEvent(session, eventName) {
+			return false
+		}
+	}
+
+	return true
+}
+
+// hasStateValue checks if the session ever had a specific state value
+func hasStateValue(session *client.Session, key, value string) bool {
+	// Check current state
+	if val, ok := session.State[key]; ok {
+		if fmt.Sprintf("%v", val) == value {
+			return true
+		}
+	}
+
+	// Check state history
+	for _, snapshot := range session.StateHistory {
+		if val, ok := snapshot.State[key]; ok {
+			if fmt.Sprintf("%v", val) == value {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+// hasEvent checks if the session has a specific event
+func hasEvent(session *client.Session, eventName string) bool {
+	for _, event := range session.Events {
+		if event.Name == eventName {
+			return true
+		}
+	}
+	return false
+}
+
+// extractUniqueProducts extracts unique product names from sessions
+func extractUniqueProducts(sessions []*client.Session) []string {
+	productSet := make(map[string]bool)
+	for _, session := range sessions {
+		if product, ok := session.State["product"].(string); ok && product != "" {
+			productSet[product] = true
+		}
+	}
+
+	var products []string
+	for product := range productSet {
+		products = append(products, product)
+	}
+	sort.Strings(products)
+	return products
+}
+
+// extractUniqueVersions extracts unique versions for a given product
+func extractUniqueVersions(sessions []*client.Session, product string) []string {
+	versionSet := make(map[string]bool)
+	for _, session := range sessions {
+		sessionProduct, _ := session.State["product"].(string)
+		if product == "" || sessionProduct == product {
+			if version, ok := session.State["version"].(string); ok && version != "" {
+				versionSet[version] = true
+			}
+		}
+	}
+
+	var versions []string
+	for version := range versionSet {
+		versions = append(versions, version)
+	}
+	sort.Strings(versions)
+	return versions
 }
 
 func handleSessionDetail(w http.ResponseWriter, r *http.Request) {
