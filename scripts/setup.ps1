@@ -12,6 +12,13 @@ Write-Host ""
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $venvPath = Join-Path $repoRoot ".venv"
 
+# Determine venv scripts directory based on platform
+if ($IsWindows -or $env:OS -eq "Windows_NT") {
+    $venvScriptsDir = "Scripts"
+} else {
+    $venvScriptsDir = "bin"
+}
+
 # Check Go installation
 Write-Host "Checking Go installation..." -ForegroundColor Green
 try {
@@ -46,7 +53,7 @@ Write-Host ""
 
 # Activate virtual environment and install dependencies
 Write-Host "Installing Python dependencies in virtual environment..." -ForegroundColor Green
-$pipPath = Join-Path $venvPath "Scripts\pip.exe"
+$pipPath = Join-Path $venvPath "$venvScriptsDir/pip"
 & $pipPath install --upgrade pip
 & $pipPath install -r (Join-Path $repoRoot "requirements-dev.txt")
 Write-Host ""

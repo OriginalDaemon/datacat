@@ -5,10 +5,20 @@ function Get-RepoRoot {
     return Split-Path -Parent $PSScriptRoot
 }
 
+# Get the venv scripts directory based on platform
+function Get-VenvScriptsDir {
+    if ($IsWindows -or $env:OS -eq "Windows_NT") {
+        return "Scripts"
+    } else {
+        return "bin"
+    }
+}
+
 # Get Python executable from venv, or system Python if venv doesn't exist
 function Get-PythonExe {
     $repoRoot = Get-RepoRoot
-    $venvPython = Join-Path $repoRoot ".venv\Scripts\python.exe"
+    $scriptsDir = Get-VenvScriptsDir
+    $venvPython = Join-Path $repoRoot ".venv/$scriptsDir/python"
     
     if (Test-Path $venvPython) {
         return $venvPython
@@ -24,7 +34,8 @@ function Get-PythonExe {
 # Get pip executable from venv, or system pip if venv doesn't exist
 function Get-PipExe {
     $repoRoot = Get-RepoRoot
-    $venvPip = Join-Path $repoRoot ".venv\Scripts\pip.exe"
+    $scriptsDir = Get-VenvScriptsDir
+    $venvPip = Join-Path $repoRoot ".venv/$scriptsDir/pip"
     
     if (Test-Path $venvPip) {
         return $venvPip
@@ -40,7 +51,8 @@ function Get-PipExe {
 # Get pytest executable from venv, or system pytest if venv doesn't exist
 function Get-PytestExe {
     $repoRoot = Get-RepoRoot
-    $venvPytest = Join-Path $repoRoot ".venv\Scripts\pytest.exe"
+    $scriptsDir = Get-VenvScriptsDir
+    $venvPytest = Join-Path $repoRoot ".venv/$scriptsDir/pytest"
     
     if (Test-Path $venvPytest) {
         return $venvPytest
@@ -56,7 +68,8 @@ function Get-PytestExe {
 # Get black executable from venv, or system black if venv doesn't exist
 function Get-BlackExe {
     $repoRoot = Get-RepoRoot
-    $venvBlack = Join-Path $repoRoot ".venv\Scripts\black.exe"
+    $scriptsDir = Get-VenvScriptsDir
+    $venvBlack = Join-Path $repoRoot ".venv/$scriptsDir/black"
     
     if (Test-Path $venvBlack) {
         return $venvBlack
@@ -72,7 +85,8 @@ function Get-BlackExe {
 # Get mypy executable from venv, or system mypy if venv doesn't exist
 function Get-MypyExe {
     $repoRoot = Get-RepoRoot
-    $venvMypy = Join-Path $repoRoot ".venv\Scripts\mypy.exe"
+    $scriptsDir = Get-VenvScriptsDir
+    $venvMypy = Join-Path $repoRoot ".venv/$scriptsDir/mypy"
     
     if (Test-Path $venvMypy) {
         return $venvMypy
