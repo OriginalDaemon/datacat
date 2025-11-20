@@ -63,10 +63,10 @@ jobs:
         pip install -e python/
     
     - name: Build datacat-server
-      run: cd cmd/datacat-server && go build -v
+      run: cd cmd/datacat-server && go build -v -o datacat-server
     
     - name: Build datacat-web
-      run: cd cmd/datacat-web && go build -v
+      run: cd cmd/datacat-web && go build -v -o datacat-web
     
     - name: Build datacat for Python tests
       run: cd cmd/datacat-server && go build -o ../../datacat
