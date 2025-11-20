@@ -55,6 +55,8 @@ __pycache__/
 *.egg
 dist/
 build/
+.venv/
+venv/
 
 # Editor/IDE
 # .idea/

@@ -8,6 +8,17 @@ Write-Host "Setting up datacat development environment" -ForegroundColor Cyan
 Write-Host "======================================" -ForegroundColor Cyan
 Write-Host ""
 
+# Define venv path relative to repository root
+$repoRoot = Split-Path -Parent $PSScriptRoot
+$venvPath = Join-Path $repoRoot ".venv"
+
+# Determine venv scripts directory based on platform
+if ($IsWindows -or $env:OS -eq "Windows_NT") {
+    $venvScriptsDir = "Scripts"
+} else {
+    $venvScriptsDir = "bin"
+}
+
 # Check Go installation
 Write-Host "Checking Go installation..." -ForegroundColor Green
 try {
@@ -30,16 +41,28 @@ try {
 }
 Write-Host ""
 
-# Install Python dependencies
-Write-Host "Installing Python dependencies..." -ForegroundColor Green
-pip install -r requirements-dev.txt
+# Create Python virtual environment if it doesn't exist
+if (-not (Test-Path $venvPath)) {
+    Write-Host "Creating Python virtual environment at .venv..." -ForegroundColor Green
+    python -m venv $venvPath
+    Write-Host "  Virtual environment created successfully!" -ForegroundColor Gray
+} else {
+    Write-Host "Python virtual environment already exists at .venv" -ForegroundColor Green
+}
+Write-Host ""
+
+# Activate virtual environment and install dependencies
+Write-Host "Installing Python dependencies in virtual environment..." -ForegroundColor Green
+$pipPath = Join-Path $venvPath "$venvScriptsDir/pip"
+& $pipPath install --upgrade pip
+& $pipPath install -r (Join-Path $repoRoot "requirements-dev.txt")
 Write-Host ""
 
 # Install Python client in development mode
 Write-Host "Installing Python client in development mode..." -ForegroundColor Green
-Push-Location $PSScriptRoot/../python
+Push-Location (Join-Path $repoRoot "python")
 try {
-    pip install -e .
+    & $pipPath install -e .
 } finally {
     Pop-Location
 }
@@ -59,3 +82,5 @@ Write-Host "  1. Run the server: .\scripts\run-server.ps1" -ForegroundColor Gray
 Write-Host "  2. Run the web UI: .\scripts\run-web.ps1" -ForegroundColor Gray
 Write-Host "  3. Run tests: .\scripts\test-all.ps1" -ForegroundColor Gray
 Write-Host "  4. Build binaries: .\scripts\build.ps1" -ForegroundColor Gray
+Write-Host ""
+Write-Host "Note: All Python commands will automatically use the virtual environment at .venv" -ForegroundColor Yellow
