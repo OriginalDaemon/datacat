@@ -432,7 +432,7 @@ const sessionEndTime = new Date("{{.Session.UpdatedAt.Format "2006-01-02T15:04:0
 {{range $index, $snapshot := .Session.StateHistory}}
 timelineItems.push({
     type: 'state',
-    timestamp: new Date("{{$snapshot.Timestamp.Format "2006-01-02T15:04:05Z07:00"}}"),
+    timestamp: new Date("{{$snapshot.Timestamp.Format "2006-01-02T15:04:05.000Z07:00"}}"),
     displayTime: "{{$snapshot.Timestamp.Format "15:04:05.000"}}",
     index: {{$index}},
     state: {{$snapshot.State | printf "%#v"}}
@@ -443,7 +443,7 @@ timelineItems.push({
 {{range $event := .Session.Events}}
 timelineItems.push({
     type: '{{if eq $event.Name "exception"}}exception{{else}}event{{end}}',
-    timestamp: new Date("{{$event.Timestamp.Format "2006-01-02T15:04:05Z07:00"}}"),
+    timestamp: new Date("{{$event.Timestamp.Format "2006-01-02T15:04:05.000Z07:00"}}"),
     displayTime: "{{$event.Timestamp.Format "15:04:05.000"}}",
     name: "{{$event.Name}}",
     data: {{$event.Data | printf "%#v"}}
@@ -453,7 +453,7 @@ timelineItems.push({
 // Add metrics for time range tracking
 {{range $metric := .Session.Metrics}}
 metricItems.push({
-    timestamp: new Date("{{$metric.Timestamp.Format "2006-01-02T15:04:05Z07:00"}}"),
+    timestamp: new Date("{{$metric.Timestamp.Format "2006-01-02T15:04:05.000Z07:00"}}"),
     name: "{{$metric.Name}}",
     value: {{$metric.Value}}
 });
