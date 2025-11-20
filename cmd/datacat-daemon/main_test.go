@@ -1105,3 +1105,5 @@ func TestCheckParentProcessNoPID(t *testing.T) {
 	}
 	buffer.mu.Unlock()
 }
+
+// Test handleRegister with invalid JSON

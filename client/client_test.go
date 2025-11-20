@@ -723,3 +723,5 @@ func TestLogMetricWithTags(t *testing.T) {
 		t.Errorf("LogMetric failed: %v", err)
 	}
 }
+
+// Tests for GetAllSessions
