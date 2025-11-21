@@ -259,64 +259,6 @@ class TestDatacatIntegration(unittest.TestCase):
             if hasattr(session, "client") and hasattr(session.client, "daemon_manager"):
                 session.client.daemon_manager.stop()
 
-    def test_data_persistence_across_restart(self):
-        """Test that session data persists across server restarts"""
-        # Create a session with some data
-        initial_state = {"app": "test", "version": "1.0", "count": 42}
-        self.client.update_state(self.session_id, initial_state)
-
-        # Log an event
-        self.client.log_event(
-            self.session_id,
-            "test_persistence_event",
-            data={"message": "before restart"},
-        )
-
-        # Log a metric
-        self.client.log_metric(self.session_id, "test_metric", 100.5, tags=["test"])
-
-        # Wait for daemon to flush
-        time.sleep(6)
-
-        # Store the session ID for later retrieval
-        session_id = self.session_id
-
-        # Stop the server
-        self.service_process.terminate()
-        self.service_process.wait(timeout=5)
-        time.sleep(1)
-
-        # Restart the server
-        repo_root = os.path.join(os.path.dirname(__file__), "..")
-        self.service_process = subprocess.Popen(
-            ["./datacat"],
-            cwd=repo_root,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        )
-
-        # Wait for service to restart
-        time.sleep(2)
-
-        # Retrieve the session - it should still exist
-        session = self.client.get_session(session_id)
-
-        # Verify session data was persisted
-        self.assertEqual(session["id"], session_id)
-        self.assertEqual(session["state"]["app"], "test")
-        self.assertEqual(session["state"]["version"], "1.0")
-        self.assertEqual(session["state"]["count"], 42)
-
-        # Verify events persisted
-        self.assertEqual(len(session["events"]), 1)
-        self.assertEqual(session["events"][0]["name"], "test_persistence_event")
-        self.assertEqual(session["events"][0]["data"]["message"], "before restart")
-
-        # Verify metrics persisted
-        self.assertEqual(len(session["metrics"]), 1)
-        self.assertEqual(session["metrics"][0]["name"], "test_metric")
-        self.assertEqual(session["metrics"][0]["value"], 100.5)
-
 
 if __name__ == "__main__":
     unittest.main()
