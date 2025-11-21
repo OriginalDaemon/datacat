@@ -11,9 +11,9 @@
 ╚═════╝ ╚═╝  ╚═╝   ╚═╝   ╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝   ╚═╝
             Session & State Monitoring
 
-     /\_/\     📊 Events  📈 Metrics
-    ( o.o )    🔄 States  📍 Sessions
-     > ^ <     ⚡ Real-time Analytics
+     /\_/\     !! Events  /\ Metrics
+    ( o.o )    {} States  -- Sessions
+     > ^ <     ++ Real-time Analytics
     /|   |\
    (_|   |_)
 ```
