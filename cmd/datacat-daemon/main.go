@@ -1281,7 +1281,13 @@ func (d *Daemon) handleGetSessions(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	config := LoadConfig("daemon_config.json")
+	// Support instance-specific config files via environment variable
+	configPath := os.Getenv("DATACAT_CONFIG")
+	if configPath == "" {
+		configPath = "daemon_config.json"
+	}
+
+	config := LoadConfig(configPath)
 	daemon := NewDaemon(config)
 
 	log.Fatal(daemon.Start())

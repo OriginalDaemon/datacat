@@ -5,17 +5,17 @@
 ```python
 ██████╗  █████╗ ████████╗ █████╗  ██████╗ █████╗ ████████╗
 ██╔══██╗██╔══██╗╚══██╔══╝██╔══██╗██╔════╝██╔══██╗╚══██╔══╝
-██║  ██║███████║   ██║   ███████║██║     ███████║   ██║   
-██║  ██║██╔══██║   ██║   ██╔══██║██║     ██╔══██║   ██║   
-██████╔╝██║  ██║   ██║   ██║  ██║╚██████╗██║  ██║   ██║   
-╚═════╝ ╚═╝  ╚═╝   ╚═╝   ╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝   ╚═╝   
-                Session & State Monitoring                
+██║  ██║███████║   ██║   ███████║██║     ███████║   ██║
+██║  ██║██╔══██║   ██║   ██╔══██║██║     ██╔══██║   ██║
+██████╔╝██║  ██║   ██║   ██║  ██║╚██████╗██║  ██║   ██║
+╚═════╝ ╚═╝  ╚═╝   ╚═╝   ╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝   ╚═╝
+                Session & State Monitoring
 
-        /\_/\     📊 Events  📈 Metrics                  
-       ( o.o )    🔄 States  📍 Sessions                 
-        > ^ <     ⚡ Real-time Analytics                  
-       /|   |\                                            
-      (_|   |_)                                           
+        /\_/\     📊 Events  📈 Metrics
+       ( o.o )    🔄 States  📍 Sessions
+        > ^ <     ⚡ Real-time Analytics
+       /|   |\
+      (_|   |_)
 ```
 
 [![Tests](https://github.com/OriginalDaemon/datacat/workflows/Tests/badge.svg)](https://github.com/OriginalDaemon/datacat/actions)
@@ -192,7 +192,7 @@ Opens a modern web interface at http://127.0.0.1:7860 with:
 ```python
 from datacat import create_session
 
-# Create session (always uses local daemon for batching and crash detection)
+# Standard mode - blocking (typical applications)
 session = create_session(
     "http://localhost:9090",
     product="MyApp",
@@ -227,6 +227,29 @@ session.resume_heartbeat_monitoring()
 
 session.end()
 ```
+
+**⚡ For Games & Real-Time Apps (Non-Blocking):**
+
+```python
+# Async mode - all calls return in < 0.01ms!
+session = create_session(
+    "http://localhost:9090",
+    product="MyGame",
+    version="1.0.0",
+    async_mode=True,      # Non-blocking logging
+    queue_size=10000      # Buffer 10K events
+)
+
+# In game loop (60 FPS) - returns immediately!
+session.log_event("player_moved", data={"x": 10, "y": 20})
+session.log_metric("fps", 60.0)
+session.update_state({"level": 1, "health": 100})
+
+# Graceful shutdown - flushes remaining logs
+session.shutdown()
+```
+
+**🎮 Game Developers**: See **[docs/GAME_LOGGING.md](docs/GAME_LOGGING.md)** for complete guide.
 
 ### Go Client
 

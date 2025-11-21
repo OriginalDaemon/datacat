@@ -33,21 +33,22 @@ class DaemonManager(object):
     """Manages the local datacat daemon subprocess"""
 
     def __init__(
-        self, daemon_port="8079", server_url="http://localhost:9090", daemon_binary=None
+        self, daemon_port="auto", server_url="http://localhost:9090", daemon_binary=None
     ):
         """
         Initialize the daemon manager
 
         Args:
-            daemon_port (str): Port for the daemon to listen on
+            daemon_port (str): Port for the daemon to listen on ("auto" finds available port)
             server_url (str): URL of the datacat server
             daemon_binary (str): Path to the daemon binary (auto-detected if None)
         """
-        self.daemon_port = daemon_port
+        self.daemon_port = daemon_port  # Will be resolved in start()
         self.server_url = server_url
         self.daemon_binary = daemon_binary or self._find_daemon_binary()
         self.process = None
         self._started = False
+        self.config_path = None  # Will be set in start()
 
     def _find_daemon_binary(self):
         """Find the daemon binary in common locations"""
@@ -107,12 +108,29 @@ class DaemonManager(object):
         except Exception:
             return False
 
+    def _find_available_port(self):
+        """Find an available port for the daemon"""
+        import socket
+        # Create a socket to find an available port
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.bind(('', 0))  # Bind to port 0 to get an available port
+            s.listen(1)
+            port = s.getsockname()[1]
+        return str(port)
+
     def start(self):
         """Start the daemon subprocess"""
         if self._started and self.process and self.process.poll() is None:
             return  # Already running
 
-        # Create config for daemon
+        # Find an available port if using auto mode
+        if self.daemon_port == "auto" or self.daemon_port == "8079":
+            self.daemon_port = self._find_available_port()
+
+        # Set config path now that we have the port
+        self.config_path = "daemon_config_{}.json".format(self.daemon_port)
+
+        # Create config for daemon with this instance's unique port
         config = {
             "daemon_port": self.daemon_port,
             "server_url": self.server_url,
@@ -121,18 +139,19 @@ class DaemonManager(object):
             "heartbeat_timeout_seconds": 60,
         }
 
-        # Write config to temporary file
-        config_path = "daemon_config.json"
-        with open(config_path, "w") as f:
+        # Write config to instance-specific file
+        with open(self.config_path, "w") as f:
             json.dump(config, f, indent=2)
 
-        # Start daemon process
+        # Start daemon process with instance-specific config
         try:
+            # Change directory to where config file is, then run daemon
             self.process = subprocess.Popen(
                 [self.daemon_binary],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 stdin=subprocess.PIPE,
+                env=dict(os.environ, DATACAT_CONFIG=self.config_path)
             )
             self._started = True
 
@@ -175,6 +194,13 @@ class DaemonManager(object):
                 self.process.kill()
         self._started = False
 
+        # Clean up instance-specific config file
+        try:
+            if os.path.exists(self.config_path):
+                os.remove(self.config_path)
+        except Exception:
+            pass  # Best effort cleanup
+
     def is_running(self):
         """Check if daemon is running"""
         return self._started and self.process and self.process.poll() is None
@@ -183,21 +209,21 @@ class DaemonManager(object):
 class DatacatClient(object):
     """Client for interacting with the datacat daemon (daemon mode only)"""
 
-    def __init__(self, base_url="http://localhost:9090", daemon_port="8079"):
+    def __init__(self, base_url="http://localhost:9090", daemon_port="auto"):
         """
         Initialize the datacat client
 
         Args:
             base_url (str): Base URL of the datacat server (used as daemon's upstream)
-            daemon_port (str): Port for the local daemon
+            daemon_port (str): Port for the local daemon ("auto" finds available port)
         """
         self.use_daemon = True  # Always use daemon
         self.daemon_manager = DaemonManager(
             daemon_port=daemon_port, server_url=base_url
         )
         self.daemon_manager.start()
-        # Point to daemon instead of server
-        self.base_url = "http://localhost:{}".format(daemon_port)
+        # Point to daemon instead of server (port determined after start)
+        self.base_url = "http://localhost:{}".format(self.daemon_manager.daemon_port)
 
     def _make_request(self, url, method="GET", data=None):
         """
@@ -743,7 +769,246 @@ try:
 
 except ImportError:
     # logging module not available (shouldn't happen in modern Python)
-    __all__ = ["DatacatClient", "Session", "HeartbeatMonitor"]
+    __all__ = ["DatacatClient", "Session", "AsyncSession", "HeartbeatMonitor"]
+
+
+# Async logging support for real-time applications (games, etc.)
+try:
+    import queue  # Python 3
+except ImportError:
+    import Queue as queue  # Python 2
+
+
+class AsyncSession(object):
+    """
+    Non-blocking session wrapper for real-time applications (e.g., games).
+
+    All logging operations return immediately (< 0.01ms) by queueing them
+    for processing in a background thread. This prevents blocking the main
+    thread during network I/O.
+
+    Ideal for applications with strict frame timing requirements where
+    logging overhead must be minimal.
+
+    Example usage:
+        session = create_session("http://localhost:9090")
+        async_session = AsyncSession(session, queue_size=10000)
+
+        # In game loop - returns immediately!
+        async_session.log_event("player_moved", data={"x": 10, "y": 20})
+        async_session.log_metric("fps", 60.0)
+
+        # Graceful shutdown - flushes remaining logs
+        async_session.shutdown()
+    """
+
+    def __init__(self, session, queue_size=10000, drop_on_full=True):
+        """
+        Initialize async session wrapper
+
+        Args:
+            session (Session): The underlying Session to wrap
+            queue_size (int): Maximum queue size (default: 10000)
+            drop_on_full (bool): If True, drop logs when queue is full.
+                                 If False, block until space available.
+        """
+        self.session = session
+        self.drop_on_full = drop_on_full
+        self.queue = queue.Queue(maxsize=queue_size)
+        self.running = True
+
+        # Statistics
+        self.sent_count = 0
+        self.dropped_count = 0
+
+        # Start background sender thread
+        self.thread = threading.Thread(target=self._background_sender)
+        self.thread.daemon = True
+        self.thread.start()
+
+    def log_event(self, name, level=None, category=None, labels=None, message=None, data=None):
+        """
+        Log an event (non-blocking, returns immediately)
+
+        Args:
+            name (str): Event name
+            level (str): Optional event level
+            category (str): Optional category
+            labels (list): Optional labels
+            message (str): Optional message
+            data (dict): Optional event data
+        """
+        self._queue_item('event', {
+            'name': name,
+            'level': level,
+            'category': category,
+            'labels': labels,
+            'message': message,
+            'data': data
+        })
+
+    def log_metric(self, name, value, tags=None):
+        """
+        Log a metric (non-blocking, returns immediately)
+
+        Args:
+            name (str): Metric name
+            value (float): Metric value
+            tags (list): Optional tags
+        """
+        self._queue_item('metric', {
+            'name': name,
+            'value': value,
+            'tags': tags
+        })
+
+    def update_state(self, state):
+        """
+        Update session state (non-blocking, returns immediately)
+
+        Args:
+            state (dict): State data to update
+        """
+        self._queue_item('state', {'state': state})
+
+    def log_exception(self, exc_info=None, extra_data=None):
+        """
+        Log an exception (non-blocking, returns immediately)
+
+        Args:
+            exc_info (tuple): Exception info from sys.exc_info()
+            extra_data (dict): Optional additional data
+        """
+        self._queue_item('exception', {
+            'exc_info': exc_info,
+            'extra_data': extra_data
+        })
+
+    def heartbeat(self):
+        """Send heartbeat (non-blocking, returns immediately)"""
+        if self.session._heartbeat_monitor:
+            self.session._heartbeat_monitor.heartbeat()
+
+    def _queue_item(self, item_type, data):
+        """Internal method to queue an item for async processing"""
+        try:
+            if self.drop_on_full:
+                self.queue.put_nowait({'type': item_type, 'data': data})
+            else:
+                self.queue.put({'type': item_type, 'data': data})
+        except queue.Full:
+            self.dropped_count += 1
+
+    def _background_sender(self):
+        """Background thread that processes queued items"""
+        while self.running:
+            try:
+                # Get item with small timeout for batching
+                item = self.queue.get(timeout=0.01)
+
+                # Process based on type
+                item_type = item['type']
+                data = item['data']
+
+                try:
+                    if item_type == 'event':
+                        self.session.log_event(
+                            data['name'],
+                            level=data.get('level'),
+                            category=data.get('category'),
+                            labels=data.get('labels'),
+                            message=data.get('message'),
+                            data=data.get('data')
+                        )
+                    elif item_type == 'metric':
+                        self.session.log_metric(
+                            data['name'],
+                            data['value'],
+                            tags=data.get('tags')
+                        )
+                    elif item_type == 'state':
+                        self.session.update_state(data['state'])
+                    elif item_type == 'exception':
+                        self.session.log_exception(
+                            exc_info=data.get('exc_info'),
+                            extra_data=data.get('extra_data')
+                        )
+
+                    self.sent_count += 1
+
+                except Exception as e:
+                    # Don't crash background thread on logging errors
+                    print("AsyncSession error: {0}".format(str(e)))
+
+            except queue.Empty:
+                continue
+
+    def get_stats(self):
+        """
+        Get logging statistics
+
+        Returns:
+            dict: Statistics including sent, dropped, and queued counts
+        """
+        return {
+            'sent': self.sent_count,
+            'dropped': self.dropped_count,
+            'queued': self.queue.qsize()
+        }
+
+    def flush(self, timeout=2.0):
+        """
+        Wait for queue to drain (blocks until queue is empty or timeout)
+
+        Args:
+            timeout (float): Maximum seconds to wait
+        """
+        deadline = time.time() + timeout
+        while not self.queue.empty() and time.time() < deadline:
+            time.sleep(0.01)
+
+    def shutdown(self, timeout=2.0):
+        """
+        Gracefully shutdown async logging
+
+        Flushes remaining logs, stops background thread, and ends session.
+
+        Args:
+            timeout (float): Maximum seconds to wait for queue to drain
+        """
+        # Flush remaining items
+        self.flush(timeout)
+
+        # Stop background thread
+        self.running = False
+        if self.thread.is_alive():
+            self.thread.join(timeout=1.0)
+
+        # End underlying session
+        return self.session.end()
+
+    def end(self):
+        """Alias for shutdown() for consistency with Session API"""
+        return self.shutdown()
+
+    # Forward other methods to underlying session
+    def get_details(self):
+        """Get session details"""
+        return self.session.get_details()
+
+    def start_heartbeat_monitor(self, timeout=60, check_interval=5):
+        """Start heartbeat monitor"""
+        return self.session.start_heartbeat_monitor(timeout, check_interval)
+
+    @property
+    def session_id(self):
+        """Get session ID"""
+        return self.session.session_id
+
+    @property
+    def client(self):
+        """Get underlying client"""
+        return self.session.client
 
 
 # Convenience class for session management
@@ -875,9 +1140,11 @@ class Session(object):
 # Factory function for convenience
 def create_session(
     base_url="http://localhost:9090",
-    daemon_port="8079",
+    daemon_port="auto",
     product=None,
     version=None,
+    async_mode=False,
+    queue_size=10000
 ):
     """
     Create a new session and return a Session object
@@ -886,19 +1153,39 @@ def create_session(
 
     Args:
         base_url (str): Base URL of the datacat server (daemon's upstream)
-        daemon_port (str): Port for the local daemon
+        daemon_port (str): Port for the local daemon ("auto" finds available port)
         product (str): Product name (required)
         version (str): Product version (required)
+        async_mode (bool): If True, return AsyncSession for non-blocking logging
+                           (recommended for games and real-time applications)
+        queue_size (int): Queue size for async mode (default: 10000)
 
     Returns:
-        Session: Session object ready to use
+        Session or AsyncSession: Session object (or AsyncSession if async_mode=True)
 
     Raises:
         Exception: If session creation fails or if product/version are not provided
+
+    Examples:
+        # Standard blocking mode
+        session = create_session("http://localhost:9090", product="MyApp", version="1.0")
+        session.update_state({"status": "running"})
+        session.log_event("app_started")
+        session.end()
+
+        # Async mode for games (non-blocking, < 0.01ms per call)
+        session = create_session("http://localhost:9090", product="MyGame", version="1.0", async_mode=True)
+        session.log_event("player_moved", data={"x": 10, "y": 20})  # Returns immediately!
+        session.shutdown()  # Flushes queue and ends session
     """
     if not product or not version:
         raise Exception("Product and version are required to create a session")
 
     client = DatacatClient(base_url, daemon_port=daemon_port)
     session_id = client.register_session(product, version)
-    return Session(client, session_id)
+    session = Session(client, session_id)
+
+    if async_mode:
+        return AsyncSession(session, queue_size=queue_size)
+    else:
+        return session

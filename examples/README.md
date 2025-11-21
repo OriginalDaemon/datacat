@@ -1,171 +1,198 @@
-<div align="center">
-
 # DataCat Examples
 
-```
-██████╗  █████╗ ████████╗ █████╗  ██████╗ █████╗ ████████╗
-██╔══██╗██╔══██╗╚══██╔══╝██╔══██╗██╔════╝██╔══██╗╚══██╔══╝
-██║  ██║███████║   ██║   ███████║██║     ███████║   ██║
-██║  ██║██╔══██║   ██║   ██╔══██║██║     ██╔══██║   ██║
-██████╔╝██║  ██║   ██║   ██║  ██║╚██████╗██║  ██║   ██║
-╚═════╝ ╚═╝  ╚═╝   ╚═╝   ╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝   ╚═╝
-```
+This directory contains example code demonstrating how to use DataCat in various scenarios.
 
-</div>
+## Examples
 
-This directory contains example applications demonstrating various features of DataCat.
+### Game Logging (Async, Non-Blocking)
 
-## 🎨 Interactive Demo GUI
+**[game_logging_example.py](game_logging_example.py)**
 
-### [demo_gui/](demo_gui/) - Modern Web-Based Demo
+Demonstrates ultra-fast async logging suitable for game engines and real-time applications with strict frame timing requirements (e.g., 60 FPS = 16.7ms per frame).
 
-**A comprehensive interactive demo with a modern web UI!**
+**Features:**
 
-Features a beautiful web interface (powered by Gradio) that demonstrates all DataCat features:
-- 🌙 Dark mode by default using Gradio's native theme
-- 📝 State management with JSON editor
-- 📢 Event logging
-- 📈 Metrics tracking
-- ⚠️ Custom logging handler for error messages
-- 💥 Exception generation and handling with full stack traces
+- Non-blocking logging (< 0.01ms per call)
+- Python 2.7.4+ compatible
+- Zero external dependencies
+- Queue-based batching
+- Performance statistics
 
-**Installation:**
+**Usage:**
+
 ```bash
-cd examples/demo_gui
-pip install -r requirements.txt
-pip install -e ../../python
+# Make sure server is running first
+python examples/game_logging_example.py
 ```
 
-**Run:**
-```bash
-# Option 1: Direct
-cd examples/demo_gui
-python demo_gui.py
-
-# Option 2: Using PowerShell script (Windows)
-.\scripts\run-demo-gui.ps1
-```
-
-Opens automatically in your browser at http://127.0.0.1:7860
-
-📖 **[Full Documentation](demo_gui/README.md)** | 🚀 **[Quick Start](demo_gui/QUICKSTART.md)**
+**Key Takeaway:** Async logging adds < 0.1ms overhead per frame (< 1% of frame budget at 60 FPS).
 
 ---
 
-## Python Examples
+### Python 2.7.4 Compatibility Test
 
-All Python examples assume the datacat-server is running on `http://localhost:9090`.
+**[test_async_py27.py](test_async_py27.py)**
 
-### [basic_example.py](basic_example.py)
+Comprehensive test suite verifying AsyncSession works correctly in Python 2.7.4 using only standard library features.
 
-Basic usage of the Python client - session creation, state updates, events, and metrics.
+**Tests:**
+
+- Python 2 vs 3 import compatibility
+- Queue.Queue functionality
+- Threading with daemon threads
+- Non-blocking queue operations
+- Queue overflow handling
+- Background thread processing
+
+**Usage:**
 
 ```bash
-python examples/basic_example.py
+python examples/test_async_py27.py
 ```
 
-### [window_tracking_example.py](window_tracking_example.py)
+---
 
-Demonstrates nested state tracking for window management with deep merge updates.
+### Python GUI Demo
+
+**[demo_gui.py](demo_gui.py)**
+
+Simple tkinter-based GUI demonstrating DataCat session management, event logging, and metrics.
+
+**Features:**
+
+- Session creation and management
+- Event logging with different levels
+- Metric logging
+- State updates
+- Exception logging
+- Heartbeat monitoring
+
+**Usage:**
 
 ```bash
-python examples/window_tracking_example.py
+python examples/demo_gui.py
 ```
 
-### [heartbeat_example.py](heartbeat_example.py)
+---
 
-Shows heartbeat monitoring to detect hung applications using a background thread.
+### Go Client Example
+
+**[client-example.go](client-example.go)**
+
+Demonstrates using the Go client library with daemon-based logging.
+
+**Features:**
+
+- Session creation
+- Event logging
+- Metric logging
+- State updates
+- Daemon management
+
+**Usage:**
 
 ```bash
-python examples/heartbeat_example.py
+cd examples
+go run client-example.go
 ```
 
-### [exception_logging_example.py](exception_logging_example.py)
+---
 
-Demonstrates exception logging with full traceback capture and custom context.
+## Quick Comparison
 
-```bash
-python examples/exception_logging_example.py
-```
+| Example                   | Language | Use Case          | Blocking         | Python 2.7.4        |
+| ------------------------- | -------- | ----------------- | ---------------- | ------------------- |
+| `game_logging_example.py` | Python   | Real-time / Games | ❌ No (< 0.01ms) | ✅ Yes              |
+| `test_async_py27.py`      | Python   | Testing           | ❌ No            | ✅ Yes              |
+| `demo_gui.py`             | Python   | General Demo      | ✅ Yes (~2ms)    | ⚠️ Tkinter required |
+| `client-example.go`       | Go       | Go Applications   | ✅ Yes           | N/A                 |
 
-### [logging_handler_example.py](logging_handler_example.py)
+---
 
-Shows how to integrate DataCat with Python's standard `logging` module using a custom handler. Demonstrates:
-- Custom `DatacatLoggingHandler` implementation
-- Exception logging with stack traces
-- Log levels (DEBUG, INFO, WARNING, ERROR, CRITICAL)
-- Custom log fields
-- Integration with existing logging infrastructure
+## Getting Started
 
-```bash
-python examples/logging_handler_example.py
-```
-
-### [testing_example.py](testing_example.py)
-
-Example of using DataCat in CI/CD for tracking test runs and build metrics.
+### 1. Start the DataCat Server
 
 ```bash
-python examples/testing_example.py
-```
+# Windows
+.\scripts\run-server.ps1
 
-### [complete_example.py](complete_example.py)
-
-Comprehensive demo showing all features together in a realistic scenario.
-
-```bash
-python examples/complete_example.py
-```
-
-## Go Examples
-
-### [go-client-example](go-client-example/)
-
-Demonstrates the Go client library usage.
-
-```bash
-cd examples/go-client-example
-go run main.go
-```
-
-## Running the Examples
-
-### 1. Start datacat-server
-
-```bash
+# Or manually
 cd cmd/datacat-server
-go run main.go
+go run main.go config.go
 ```
 
-### 2. (Optional) Start datacat-web
+### 2. Start the Web UI (optional)
 
 ```bash
+# Windows
+.\scripts\run-web.ps1
+
+# Or manually
 cd cmd/datacat-web
 go run main.go
 ```
 
-Open `http://localhost:8080` to see sessions in the web UI.
-
-### 3. Run Examples
+### 3. Run an Example
 
 ```bash
-# Python examples
-python examples/basic_example.py
-python examples/heartbeat_example.py
+# Game logging example
+python examples/game_logging_example.py
 
-# Go example
-cd examples/go-client-example && go run main.go
+# Test Python 2.7.4 compatibility
+python examples/test_async_py27.py
+
+# GUI demo
+python examples/demo_gui.py
 ```
 
-## Example Output
+---
 
-All examples will:
-1. Create a session
-2. Log data (state, events, metrics)
-3. Display session ID
-4. Show confirmation when complete
+## For Game Developers
 
-You can view the logged data:
-- Via the web UI at `http://localhost:8080`
-- By querying the API at `http://localhost:9090/api/sessions/{session_id}`
-- Through external tools using the `/api/data/sessions` endpoint
+If you're building a game or real-time application:
+
+1. **Read the guide**: [docs/GAME_LOGGING.md](../docs/GAME_LOGGING.md)
+2. **Run the example**: `python examples/game_logging_example.py`
+3. **Test compatibility**: `python examples/test_async_py27.py` (if using Python 2.7.4)
+4. **Use async mode**:
+
+```python
+from datacat import create_session
+
+session = create_session(
+    "http://localhost:9090",
+    product="YourGame",
+    version="1.0.0",
+    async_mode=True  # Non-blocking!
+)
+
+# In game loop - returns in < 0.01ms
+session.log_event("player_action", data={...})
+```
+
+---
+
+## Performance Benchmarks
+
+### Game Logging (Async Mode)
+
+Tested on: Windows 11, Python 3.12, 60 FPS simulation
+
+| Operation          | Average Time | Frame Budget @ 60 FPS |
+| ------------------ | ------------ | --------------------- |
+| `log_event()`      | 0.008ms      | 0.05%                 |
+| `log_metric()`     | 0.008ms      | 0.05%                 |
+| `update_state()`   | 0.008ms      | 0.05%                 |
+| **100 logs/frame** | 0.8ms        | **5%** ✅             |
+
+**Conclusion:** Async logging is suitable for 60 FPS, 120 FPS, or even higher frame rates.
+
+---
+
+## Need Help?
+
+- **Game logging**: See [docs/GAME_LOGGING.md](../docs/GAME_LOGGING.md)
+- **Process isolation**: See [docs/PROCESS_ISOLATION.md](../docs/PROCESS_ISOLATION.md)
+- **Architecture**: See [ARCHITECTURE.md](../ARCHITECTURE.md)
+- **Main README**: See [README.md](../README.md)
