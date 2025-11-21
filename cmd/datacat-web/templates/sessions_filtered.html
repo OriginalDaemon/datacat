@@ -3,9 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sessions - Datacat</title>
+    <title>Sessions - DataCat</title>
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
     <style>
         :root {
             --bg-primary: #1a202c;
@@ -455,9 +456,9 @@
             {{if .HasPrev}}
                 <a href="/sessions?page={{sub .CurrentPage 1}}&time_range={{.TimeRange}}&start_time={{.StartTime}}&end_time={{.EndTime}}&product={{.Product}}&version={{.Version}}&status={{.StatusFilter}}&state_key={{.StateKey}}&state_value={{.StateValue}}&event_name={{.EventName}}&sort={{.SortBy}}&order={{.SortOrder}}">← Previous</a>
             {{end}}
-            
+
             <span>Page {{.CurrentPage}} of {{.TotalPages}}</span>
-            
+
             {{if .HasNext}}
                 <a href="/sessions?page={{add .CurrentPage 1}}&time_range={{.TimeRange}}&start_time={{.StartTime}}&end_time={{.EndTime}}&product={{.Product}}&version={{.Version}}&status={{.StatusFilter}}&state_key={{.StateKey}}&state_value={{.StateValue}}&event_name={{.EventName}}&sort={{.SortBy}}&order={{.SortOrder}}">Next →</a>
             {{end}}
@@ -486,7 +487,7 @@
             const timeRange = document.getElementById('time_range').value;
             const customStartGroup = document.getElementById('custom_start_group');
             const customEndGroup = document.getElementById('custom_end_group');
-            
+
             if (timeRange === 'custom') {
                 customStartGroup.style.display = 'flex';
                 customEndGroup.style.display = 'flex';
@@ -503,7 +504,7 @@
         function toggleSection(sectionId) {
             const content = document.getElementById(sectionId + '-content');
             const icon = document.getElementById(sectionId + '-icon');
-            
+
             if (content.classList.contains('collapsed')) {
                 content.classList.remove('collapsed');
                 icon.classList.remove('collapsed');
@@ -517,24 +518,24 @@
         function toggleMetric(metricName) {
             const content = document.getElementById('metric-' + metricName + '-content');
             const icon = document.getElementById('metric-' + metricName + '-icon');
-            
+
             if (content.classList.contains('collapsed')) {
                 content.classList.remove('collapsed');
                 icon.classList.remove('collapsed');
-                
+
                 // Save to localStorage
                 const expanded = getExpandedMetrics();
                 if (!expanded.includes(metricName)) {
                     expanded.push(metricName);
                     localStorage.setItem('expandedMetrics', JSON.stringify(expanded));
                 }
-                
+
                 // Trigger HTMX to load the metric data
                 htmx.trigger('#metric-' + metricName + '-content', 'loadMetric');
             } else {
                 content.classList.add('collapsed');
                 icon.classList.add('collapsed');
-                
+
                 // Remove from localStorage
                 const expanded = getExpandedMetrics();
                 const index = expanded.indexOf(metricName);

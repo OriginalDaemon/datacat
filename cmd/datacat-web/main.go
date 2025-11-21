@@ -1468,30 +1468,49 @@ func handleMetricData(w http.ResponseWriter, r *http.Request) {
 			const ctx = document.getElementById('%s').getContext('2d');
 			const data = %s;
 
+			// Calculate point radius based on data density
+			const pointRadius = data.length > 100 ? 1 : (data.length > 50 ? 2 : 3);
+
 			new Chart(ctx, {
 				type: 'line',
 				data: {
-					labels: data.map(p => new Date(p.timestamp).toLocaleString()),
 					datasets: [{
 						label: '%s',
-						data: data.map(p => p.value),
+						data: data.map(p => ({
+							x: new Date(p.timestamp),
+							y: p.value
+						})),
 						borderColor: 'rgb(102, 126, 234)',
 						backgroundColor: 'rgba(102, 126, 234, 0.1)',
 						tension: 0.1,
 						fill: true,
-						pointRadius: 2,
-						pointHoverRadius: 4
+						pointRadius: pointRadius,
+						pointHoverRadius: pointRadius + 2,
+						pointBackgroundColor: 'rgb(102, 126, 234)',
+						pointBorderColor: '#ffffff',
+						pointBorderWidth: 1
 					}]
 				},
 				options: {
 					responsive: true,
 					maintainAspectRatio: false,
+					interaction: {
+						mode: 'nearest',
+						axis: 'x',
+						intersect: false
+					},
 					plugins: {
 						legend: {
 							display: false
 						},
 						tooltip: {
 							callbacks: {
+								title: function(context) {
+									return new Date(context[0].parsed.x).toLocaleString();
+								},
+								label: function(context) {
+									return 'Value: ' + context.parsed.y.toFixed(2);
+								},
 								afterLabel: function(context) {
 									const point = data[context.dataIndex];
 									return 'Session: ' + point.session_id.substring(0, 8) + '...';
@@ -1505,16 +1524,39 @@ func handleMetricData(w http.ResponseWriter, r *http.Request) {
 							title: {
 								display: true,
 								text: 'Value'
+							},
+							grid: {
+								color: 'rgba(160, 174, 192, 0.1)'
+							},
+							ticks: {
+								color: '#a0aec0'
 							}
 						},
 						x: {
+							type: 'time',
+							time: {
+								displayFormats: {
+									millisecond: 'HH:mm:ss.SSS',
+									second: 'HH:mm:ss',
+									minute: 'HH:mm',
+									hour: 'HH:mm',
+									day: 'MMM dd'
+								},
+								tooltipFormat: 'yyyy-MM-dd HH:mm:ss'
+							},
 							title: {
 								display: true,
 								text: 'Time'
 							},
+							grid: {
+								color: 'rgba(160, 174, 192, 0.1)'
+							},
 							ticks: {
+								color: '#a0aec0',
 								maxRotation: 45,
-								minRotation: 45
+								minRotation: 0,
+								autoSkip: true,
+								maxTicksLimit: 10
 							}
 						}
 					}
