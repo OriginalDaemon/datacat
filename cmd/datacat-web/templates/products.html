@@ -51,8 +51,8 @@
   .product-name {
     font-size: 20px;
     margin-bottom: 15px;
-    color: var(--accent-primary);
-    border-bottom: 2px solid var(--border-color);
+    color: var(--accent-secondary);
+    border-bottom: 2px solid var(--accent-primary);
     padding-bottom: 10px;
   }
 
@@ -67,11 +67,13 @@
     background: var(--bg-primary);
     border-radius: 6px;
     border: 1px solid var(--border-color);
-    transition: background 0.2s;
+    transition: all 0.2s;
   }
 
   .version-item:hover {
     background: var(--bg-hover);
+    border-color: var(--accent-primary);
+    box-shadow: 0 2px 8px rgba(129, 155, 252, 0.15);
   }
 
   .version-link {

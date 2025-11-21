@@ -91,13 +91,13 @@ class JSONViewer {
     // Helper to get highlight style for current path
     const getHighlightStyle = (itemPath) => {
       if (this.options.highlightAdded.includes(itemPath)) {
-        return "background: rgba(72, 187, 120, 0.15); border-left: 3px solid #48bb78; padding-left: 8px; margin-left: -8px;";
+        return "background: rgba(72, 187, 120, 0.1); border-left: 3px solid rgba(72, 187, 120, 0.6); padding-left: 8px; margin-left: -8px;";
       }
       if (this.options.highlightModified.includes(itemPath)) {
-        return "background: rgba(246, 173, 85, 0.15); border-left: 3px solid #f6ad55; padding-left: 8px; margin-left: -8px;";
+        return "background: rgba(129, 155, 252, 0.1); border-left: 3px solid rgba(129, 155, 252, 0.6); padding-left: 8px; margin-left: -8px;";
       }
       if (this.options.highlightRemoved.includes(itemPath)) {
-        return "background: rgba(245, 101, 101, 0.15); border-left: 3px solid #f56565; padding-left: 8px; margin-left: -8px;";
+        return "background: rgba(245, 101, 101, 0.1); border-left: 3px solid rgba(245, 101, 101, 0.6); padding-left: 8px; margin-left: -8px;";
       }
       return "";
     };

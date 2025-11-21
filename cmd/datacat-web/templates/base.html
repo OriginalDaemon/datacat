@@ -15,13 +15,13 @@
     <script src="/static/json-viewer.js"></script>
     <style>
       :root {
-        --bg-primary: #242420;
-        --bg-secondary: #2d2d28;
-        --bg-card: #323230;
-        --bg-hover: #3d3d38;
+        --bg-primary: #1a1a17;
+        --bg-secondary: #222220;
+        --bg-card: #282826;
+        --bg-hover: #323230;
         --text-primary: #e8e8e0;
         --text-secondary: #a8a8a0;
-        --border-color: #4a4a45;
+        --border-color: #3a3a38;
         --accent-primary: #819bfc;
         --accent-secondary: #a77bfc;
         --accent-tertiary: #b4c0fb;
@@ -51,11 +51,12 @@
       }
 
       header {
-        background: linear-gradient(135deg, #819bfc 0%, #a77bfc 100%);
+        background: linear-gradient(135deg, #1e1e1c 0%, #242422 100%);
+        border-bottom: 2px solid rgba(129, 155, 252, 0.3);
         color: white;
         padding: 20px 0;
         margin-bottom: 30px;
-        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
       }
 
       header .container {
@@ -78,16 +79,19 @@
       }
 
       nav a {
-        color: white;
+        color: var(--accent-tertiary);
         text-decoration: none;
         margin-left: 25px;
         padding: 8px 16px;
         border-radius: 4px;
-        transition: background 0.2s;
+        transition: all 0.2s;
+        border: 1px solid transparent;
       }
 
       nav a:hover {
-        background: rgba(255, 255, 255, 0.2);
+        background: rgba(129, 155, 252, 0.15);
+        border-color: var(--accent-primary);
+        color: white;
       }
 
       .card {
@@ -97,12 +101,15 @@
         margin-bottom: 20px;
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
         border: 1px solid var(--border-color);
+        border-top: 2px solid rgba(129, 155, 252, 0.4);
       }
 
       .card h2 {
         margin-bottom: 15px;
         color: var(--accent-primary);
         font-size: 22px;
+        border-bottom: 1px solid rgba(129, 155, 252, 0.2);
+        padding-bottom: 10px;
       }
 
       table {
@@ -118,9 +125,10 @@
       }
 
       th {
-        background: var(--bg-hover);
+        background: var(--bg-secondary);
         font-weight: 600;
-        color: var(--text-primary);
+        color: var(--accent-tertiary);
+        border-bottom: 1px solid rgba(129, 155, 252, 0.3);
       }
 
       tr:hover {
@@ -133,16 +141,19 @@
         border-radius: 12px;
         font-size: 12px;
         font-weight: 600;
+        border: 1px solid currentColor;
       }
 
       .badge-active {
-        background: #d4edda;
-        color: #155724;
+        background: rgba(72, 187, 120, 0.15);
+        color: var(--success-color);
+        border-color: var(--success-color);
       }
 
       .badge-inactive {
-        background: #f8d7da;
-        color: #721c24;
+        background: rgba(245, 101, 101, 0.15);
+        color: var(--error-color);
+        border-color: var(--error-color);
       }
 
       .btn {
@@ -204,6 +215,13 @@
         font-size: 14px;
         background: var(--bg-secondary);
         color: var(--text-primary);
+        transition: border-color 0.2s;
+      }
+
+      .form-group input:focus,
+      .form-group select:focus {
+        outline: none;
+        border-color: var(--accent-primary);
       }
 
       .stats-grid {
@@ -214,15 +232,12 @@
       }
 
       .stat-card {
-        background: linear-gradient(
-          135deg,
-          var(--accent-primary) 0%,
-          var(--accent-secondary) 100%
-        );
-        color: white;
+        background: var(--bg-card);
+        border: 1px solid var(--accent-primary);
+        color: var(--text-primary);
         padding: 20px;
         border-radius: 8px;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        box-shadow: 0 2px 8px rgba(129, 155, 252, 0.1);
       }
 
       .stat-card h3 {
@@ -234,6 +249,7 @@
       .stat-card .value {
         font-size: 32px;
         font-weight: 700;
+        color: var(--accent-primary);
       }
 
       .htmx-indicator {
@@ -282,19 +298,21 @@
 
       /* Theme switcher button */
       .theme-toggle {
-        background: rgba(255, 255, 255, 0.1);
-        border: none;
-        color: white;
+        background: rgba(129, 155, 252, 0.15);
+        border: 1px solid var(--accent-primary);
+        color: var(--accent-tertiary);
         padding: 8px 16px;
         border-radius: 4px;
         cursor: pointer;
         font-size: 14px;
-        transition: background 0.2s;
+        transition: all 0.2s;
         margin-left: 15px;
       }
 
       .theme-toggle:hover {
-        background: rgba(255, 255, 255, 0.2);
+        background: rgba(129, 155, 252, 0.25);
+        color: white;
+        border-color: var(--accent-tertiary);
       }
 
       /* Alert styles */

@@ -368,12 +368,24 @@
       const variance = values.reduce((sum, val) => sum + Math.pow(val - avg, 2), 0) / values.length;
       const stdDev = Math.sqrt(variance);
 
-      // Calculate mean (median)
+      // Calculate median
       const sortedValues = [...values].sort((a, b) => a - b);
       const mid = Math.floor(sortedValues.length / 2);
       const median = sortedValues.length % 2 === 0
           ? (sortedValues[mid - 1] + sortedValues[mid]) / 2
           : sortedValues[mid];
+
+      // Calculate mode (most frequently occurring value)
+      const frequencyMap = {};
+      let maxFrequency = 0;
+      let mode = values[0];
+      values.forEach(val => {
+          frequencyMap[val] = (frequencyMap[val] || 0) + 1;
+          if (frequencyMap[val] > maxFrequency) {
+              maxFrequency = frequencyMap[val];
+              mode = val;
+          }
+      });
 
       const safeMetricName = metricName.replace(/\./g, '_');
 
@@ -391,10 +403,11 @@
                   <h3 style="margin: 0 0 8px 0; font-size: 16px; color: var(--accent-primary);">${metricName}</h3>
                   <div style="font-size: 13px; color: var(--text-secondary); display: flex; gap: 20px; flex-wrap: wrap;">
                       <span><strong>Average:</strong> ${avg.toFixed(2)}</span>
-                      <span><strong>Std Dev:</strong> ${stdDev.toFixed(2)}</span>
-                      <span><strong>Median:</strong> ${median.toFixed(2)}</span>
-                      <span><strong>Min:</strong> ${min.toFixed(2)}</span>
                       <span><strong>Max:</strong> ${peak.toFixed(2)}</span>
+                      <span><strong>Min:</strong> ${min.toFixed(2)}</span>
+                      <span><strong>Median:</strong> ${median.toFixed(2)}</span>
+                      <span><strong>Mode:</strong> ${mode.toFixed(2)}</span>
+                      <span><strong>Std Dev:</strong> ${stdDev.toFixed(2)}</span>
                       <span><strong>Points:</strong> ${values.length}</span>
                   </div>
               </div>
@@ -1050,16 +1063,16 @@
                 contentDiv.innerHTML = `
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px;">
                         <div>
-                            <div style="background: rgba(244, 67, 54, 0.1); padding: 8px; border-radius: 4px; margin-bottom: 10px; font-weight: bold; color: #f44336;">
+                            <div style="background: rgba(245, 101, 101, 0.12); padding: 8px; border-radius: 4px; margin-bottom: 10px; font-weight: bold; color: var(--error-color); border: 1px solid rgba(245, 101, 101, 0.25);">
                                 Previous State
                             </div>
-                            <div id="timeline-state-old" style="border: 1px solid var(--border-color); border-radius: 4px; overflow: hidden;"></div>
+                            <div id="timeline-state-old" style="border: 1px solid var(--border-color); border-radius: 4px; overflow: hidden; background: var(--bg-secondary);"></div>
                         </div>
                         <div>
-                            <div style="background: rgba(76, 175, 80, 0.1); padding: 8px; border-radius: 4px; margin-bottom: 10px; font-weight: bold; color: #4caf50;">
+                            <div style="background: rgba(72, 187, 120, 0.12); padding: 8px; border-radius: 4px; margin-bottom: 10px; font-weight: bold; color: var(--success-color); border: 1px solid rgba(72, 187, 120, 0.25);">
                                 New State
                             </div>
-                            <div id="timeline-state-new" style="border: 1px solid var(--border-color); border-radius: 4px; overflow: hidden;"></div>
+                            <div id="timeline-state-new" style="border: 1px solid var(--border-color); border-radius: 4px; overflow: hidden; background: var(--bg-secondary);"></div>
                         </div>
                     </div>
                     <details style="margin-top: 15px; padding-top: 15px; border-top: 1px solid var(--border-color);">
