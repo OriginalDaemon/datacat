@@ -162,6 +162,9 @@ func (s *Store) CreateSession(product, version, machineID, hostname string) *Ses
 	// If found, mark them as crashed (machine came back but session didn't resume)
 	if machineID != "" {
 		for _, existing := range s.sessions {
+			// Update active status to check current suspension state
+			s.updateActiveStatus(existing)
+			
 			if existing.MachineID == machineID && existing.Suspended && !existing.Crashed {
 				existing.Crashed = true
 				existing.Suspended = false
@@ -234,6 +237,11 @@ func (s *Store) GetSession(id string) (*Session, bool) {
 // updateActiveStatusReadOnly updates active status without modifying the original session
 // Used when we have read lock only
 func (s *Store) updateActiveStatusReadOnly(session *Session) {
+	// If session is crashed, don't change status
+	if session.Crashed {
+		return
+	}
+	
 	// If session is ended, it's not active and not suspended
 	if session.EndedAt != nil {
 		session.Active = false
@@ -375,6 +383,11 @@ func (s *Store) UpdateHeartbeat(id string) error {
 // updateActiveStatus updates the active status based on heartbeat and ended state
 // This should be called with the mutex already locked
 func (s *Store) updateActiveStatus(session *Session) {
+	// If session is crashed, don't change status
+	if session.Crashed {
+		return
+	}
+	
 	// If session is ended, it's not active and not suspended
 	if session.EndedAt != nil {
 		session.Active = false
