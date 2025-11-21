@@ -3,9 +3,9 @@
 
 $ErrorActionPreference = "Stop"
 
-# Build binary first
+# Build server binary only
 Write-Host "Building datacat server..." -ForegroundColor Yellow
-& "$PSScriptRoot\build.ps1" | Out-Null
+& "$PSScriptRoot\build.ps1" -Components server | Out-Null
 Write-Host ""
 
 Write-Host "Starting datacat server..." -ForegroundColor Green

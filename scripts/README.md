@@ -17,6 +17,7 @@ First, set up your development environment:
 ```
 
 This will:
+
 - Check Go and Python installations
 - Create a Python virtual environment at `.venv/`
 - Install Python dependencies in the virtual environment
@@ -41,7 +42,7 @@ This will build the server binary (if not already built) and start it. The serve
 .\scripts\run-web.ps1
 ```
 
-This will build the web UI binary (if not already built) and start it. The web UI will be available at `http://localhost:8080`
+This will build the web UI binary (if not already built), start it, and automatically open your browser to `http://localhost:8080`
 
 **Note:** The web UI requires the server to be running at `http://localhost:9090`
 
@@ -84,6 +85,7 @@ This automatically starts the server, runs the tests, and stops the server.
 ```
 
 This runs:
+
 - Black formatter check (Python)
 - mypy type checking (Python)
 
@@ -104,18 +106,31 @@ This automatically formats all Python code with Black.
 ```
 
 Binaries will be output to the `bin/` directory:
+
 - `bin/datacat-server.exe` - REST API server
 - `bin/datacat-web.exe` - Web UI dashboard
 - `bin/datacat-daemon.exe` - Local batching daemon
 - `bin/go-client-example.exe` - Go client example
 
-Custom output directory:
+### Build Specific Components
+
+Build only what you need to save time:
 
 ```powershell
+# Build only the server
+.\scripts\build.ps1 -Components server
+
+# Build only the web UI
+.\scripts\build.ps1 -Components web
+
+# Build multiple components
+.\scripts\build.ps1 -Components server,web,daemon
+
+# Build to custom directory
 .\scripts\build.ps1 -Output "custom/path"
 ```
 
-**Note:** The build script is automatically run by `run-server.ps1`, `run-web.ps1`, and `run-both.ps1` to ensure binaries are up to date before running.
+**Note:** The run scripts (`run-server.ps1`, `run-web.ps1`, `run-both.ps1`) automatically build only the components they need, so you don't need to manually build before running.
 
 ## Running Examples
 
@@ -126,6 +141,7 @@ Custom output directory:
 ```
 
 This launches the modern web-based demo GUI, which provides an interactive interface for exploring all datacat features:
+
 - 📝 State management with JSON editing
 - 📢 Event logging
 - 📈 Metrics tracking
@@ -133,6 +149,7 @@ This launches the modern web-based demo GUI, which provides an interactive inter
 - 💥 Exception generation with full stack traces
 
 The script will:
+
 - **Automatically use the virtual environment** (`.venv`) if available
 - Check prerequisites (Python, Gradio, datacat client)
 - Offer to install Gradio if missing (into the venv)
@@ -177,6 +194,7 @@ The script will:
 ```
 
 This removes:
+
 - `bin/` - Compiled binaries
 - `datacat_data/` - Database files (session data)
 - `config.json` - Server configuration file
@@ -193,6 +211,7 @@ This removes:
 ```
 
 This removes all of the above plus:
+
 - `.venv/` - Python virtual environment
 
 **Note:** After using `-All`, you'll need to run `.\scripts\setup.ps1` again to recreate the virtual environment.
@@ -200,21 +219,25 @@ This removes all of the above plus:
 ## Example Workflow
 
 1. **Initial setup:**
+
    ```powershell
    .\scripts\setup.ps1
    ```
 
 2. **Build binaries (optional - run scripts do this automatically):**
+
    ```powershell
    .\scripts\build.ps1
    ```
 
 3. **Start services:**
+
    ```powershell
    .\scripts\run-both.ps1
    ```
 
 4. **In another terminal, run an example:**
+
    ```powershell
    .\scripts\run-example.ps1 -Example complete
    ```
@@ -237,6 +260,7 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 ### Port Already in Use
 
 If port 9090 or 8080 is already in use, you'll need to:
+
 1. Stop the process using the port, or
 2. Modify the port in the respective configuration or source files:
    - Server: Edit `config.json` (in repository root when using scripts) and change `server_port`
@@ -260,6 +284,7 @@ Remove-Item -Force ./config.json  # Optional - removes custom config
 ```
 
 Or use the cleanup script:
+
 ```powershell
 .\scripts\clean.ps1
 ```
@@ -285,26 +310,27 @@ Alternatively, you can manually reinstall dependencies in the virtual environmen
 
 ## Script Reference
 
-| Script | Description |
-|--------|-------------|
-| `setup.ps1` | Setup development environment |
-| `build.ps1` | Build all Go binaries |
-| `run-server.ps1` | Build and start REST API server |
-| `run-web.ps1` | Build and start web UI dashboard |
-| `run-both.ps1` | Build and start both services in parallel |
-| `run-demo-gui.ps1` | Launch the interactive demo GUI |
-| `run-example.ps1` | Run example applications |
-| `test-all.ps1` | Run all tests (Go + Python) |
-| `test-python.ps1` | Run Python integration tests |
-| `lint.ps1` | Check code quality (Black + mypy) |
-| `format.ps1` | Format Python code with Black |
-| `clean.ps1` | Remove build artifacts |
+| Script             | Description                               |
+| ------------------ | ----------------------------------------- |
+| `setup.ps1`        | Setup development environment             |
+| `build.ps1`        | Build Go binaries (all or selective)      |
+| `run-server.ps1`   | Build and start REST API server only      |
+| `run-web.ps1`      | Build, start web UI, and open browser     |
+| `run-both.ps1`     | Build and start both services in parallel |
+| `run-demo-gui.ps1` | Launch the interactive demo GUI           |
+| `run-example.ps1`  | Run example applications                  |
+| `test-all.ps1`     | Run all tests (Go + Python)               |
+| `test-python.ps1`  | Run Python integration tests              |
+| `lint.ps1`         | Check code quality (Black + mypy)         |
+| `format.ps1`       | Format Python code with Black             |
+| `clean.ps1`        | Remove build artifacts                    |
 
 ## Contributing
 
 When developing on Windows, use these scripts to ensure consistency with the CI/CD pipeline:
 
 1. **Before committing:**
+
    ```powershell
    .\scripts\format.ps1
    .\scripts\lint.ps1

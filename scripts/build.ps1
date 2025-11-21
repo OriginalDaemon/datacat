@@ -1,71 +1,92 @@
 #!/usr/bin/env pwsh
-# Build all Go binaries
+# Build Go binaries selectively or all at once
 
 param(
-    [string]$Output = "bin"
+    [string]$Output = "bin",
+    [ValidateSet("all", "server", "web", "daemon", "example")]
+    [string[]]$Components = @("all")
 )
 
 $ErrorActionPreference = "Stop"
-
-Write-Host "======================================" -ForegroundColor Cyan
-Write-Host "Building datacat binaries" -ForegroundColor Cyan
-Write-Host "======================================" -ForegroundColor Cyan
-Write-Host ""
 
 # Create output directory
 $repoRoot = Join-Path $PSScriptRoot ".."
 $binDir = Join-Path $repoRoot $Output
 New-Item -ItemType Directory -Force -Path $binDir | Out-Null
 
-# Build server
-Write-Host "Building datacat-server..." -ForegroundColor Green
-Push-Location $PSScriptRoot/../cmd/datacat-server
-try {
-    $serverBin = Join-Path $binDir "datacat-server.exe"
-    go build -o $serverBin
-    Write-Host "  Output: $serverBin" -ForegroundColor Gray
-} finally {
-    Pop-Location
+# Determine what to build
+$buildAll = $Components -contains "all"
+$buildServer = $buildAll -or ($Components -contains "server")
+$buildWeb = $buildAll -or ($Components -contains "web")
+$buildDaemon = $buildAll -or ($Components -contains "daemon")
+$buildExample = $buildAll -or ($Components -contains "example")
+
+if ($buildAll) {
+    Write-Host "======================================" -ForegroundColor Cyan
+    Write-Host "Building all datacat binaries" -ForegroundColor Cyan
+    Write-Host "======================================" -ForegroundColor Cyan
+    Write-Host ""
 }
-Write-Host ""
+
+# Build server
+if ($buildServer) {
+    Write-Host "Building datacat-server..." -ForegroundColor Green
+    Push-Location $PSScriptRoot/../cmd/datacat-server
+    try {
+        $serverBin = Join-Path $binDir "datacat-server.exe"
+        go build -o $serverBin
+        Write-Host "  Output: $serverBin" -ForegroundColor Gray
+    } finally {
+        Pop-Location
+    }
+    Write-Host ""
+}
 
 # Build web UI
-Write-Host "Building datacat-web..." -ForegroundColor Green
-Push-Location $PSScriptRoot/../cmd/datacat-web
-try {
-    $webBin = Join-Path $binDir "datacat-web.exe"
-    go build -o $webBin
-    Write-Host "  Output: $webBin" -ForegroundColor Gray
-} finally {
-    Pop-Location
+if ($buildWeb) {
+    Write-Host "Building datacat-web..." -ForegroundColor Green
+    Push-Location $PSScriptRoot/../cmd/datacat-web
+    try {
+        $webBin = Join-Path $binDir "datacat-web.exe"
+        go build -o $webBin
+        Write-Host "  Output: $webBin" -ForegroundColor Gray
+    } finally {
+        Pop-Location
+    }
+    Write-Host ""
 }
-Write-Host ""
 
 # Build daemon
-Write-Host "Building datacat-daemon..." -ForegroundColor Green
-Push-Location $PSScriptRoot/../cmd/datacat-daemon
-try {
-    $daemonBin = Join-Path $binDir "datacat-daemon.exe"
-    go build -o $daemonBin
-    Write-Host "  Output: $daemonBin" -ForegroundColor Gray
-} finally {
-    Pop-Location
+if ($buildDaemon) {
+    Write-Host "Building datacat-daemon..." -ForegroundColor Green
+    Push-Location $PSScriptRoot/../cmd/datacat-daemon
+    try {
+        $daemonBin = Join-Path $binDir "datacat-daemon.exe"
+        go build -o $daemonBin
+        Write-Host "  Output: $daemonBin" -ForegroundColor Gray
+    } finally {
+        Pop-Location
+    }
+    Write-Host ""
 }
-Write-Host ""
 
 # Build Go example
-Write-Host "Building go-client-example..." -ForegroundColor Green
-Push-Location $PSScriptRoot/../examples/go-client-example
-try {
-    $exampleBin = Join-Path $binDir "go-client-example.exe"
-    go build -o $exampleBin
-    Write-Host "  Output: $exampleBin" -ForegroundColor Gray
-} finally {
-    Pop-Location
+if ($buildExample) {
+    Write-Host "Building go-client-example..." -ForegroundColor Green
+    Push-Location $PSScriptRoot/../examples/go-client-example
+    try {
+        $exampleBin = Join-Path $binDir "go-client-example.exe"
+        go build -o $exampleBin
+        Write-Host "  Output: $exampleBin" -ForegroundColor Gray
+    } finally {
+        Pop-Location
+    }
+    Write-Host ""
 }
-Write-Host ""
 
-Write-Host "======================================" -ForegroundColor Green
-Write-Host "Build complete!" -ForegroundColor Green
-Write-Host "Binaries are in: $binDir" -ForegroundColor Green
-Write-Host "======================================" -ForegroundColor Green
+if ($buildAll) {
+    Write-Host "======================================" -ForegroundColor Green
+    Write-Host "Build complete!" -ForegroundColor Green
+    Write-Host "Binaries are in: $binDir" -ForegroundColor Green
+    Write-Host "======================================" -ForegroundColor Green
+}

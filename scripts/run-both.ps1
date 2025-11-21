@@ -3,9 +3,9 @@
 
 $ErrorActionPreference = "Stop"
 
-# Build binaries first
-Write-Host "Building datacat binaries..." -ForegroundColor Yellow
-& "$PSScriptRoot\build.ps1" | Out-Null
+# Build server and web binaries only
+Write-Host "Building datacat server and web UI..." -ForegroundColor Yellow
+& "$PSScriptRoot\build.ps1" -Components server,web | Out-Null
 Write-Host ""
 
 Write-Host "Starting datacat server and web UI..." -ForegroundColor Green
@@ -54,7 +54,7 @@ Write-Host ""
 try {
     # Wait for either job to finish (shouldn't happen unless error)
     Wait-Job -Job $serverJob, $webJob -Any | Out-Null
-    
+
     # Show output from completed jobs
     Receive-Job -Job $serverJob, $webJob
 } finally {
