@@ -121,6 +121,7 @@ Intelligent local subprocess that reduces network traffic through batching and s
   - **Smart state filtering** (only sends changed state)
   - **Parent process monitoring** (detects crashes/abnormal exits)
   - **Hang detection** (monitors heartbeats)
+  - **Machine tracking** (MAC-based ID for crash vs. sleep detection)
   - **Auto-retry with queueing**
 - **Port:** 8079 (default)
 - **Architecture:** Application → Daemon (subprocess) → Server (remote)

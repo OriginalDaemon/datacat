@@ -135,6 +135,10 @@ type Session struct {
 	EndedAt       *time.Time             `json:"ended_at,omitempty"`
 	LastHeartbeat *time.Time             `json:"last_heartbeat,omitempty"`
 	Active        bool                   `json:"active"`
+	Suspended     bool                   `json:"suspended"`
+	Crashed       bool                   `json:"crashed"`
+	MachineID     string                 `json:"machine_id,omitempty"`
+	Hostname      string                 `json:"hostname,omitempty"`
 	State         map[string]interface{} `json:"state"`
 	StateHistory  []StateSnapshot        `json:"state_history"`
 	Events        []Event                `json:"events"`

@@ -225,7 +225,14 @@ Result:
         -> Sets CrashLogged = true
         -> Immediately flushes to server
 
-5. App ends normally:
+5. Server-side crash detection:
+   - Each session is tagged with machine ID (MAC-based) and hostname
+   - When heartbeats stop: Session marked as "Suspended"
+   - When new session from same machine: Old suspended sessions marked as "Crashed"
+   - When heartbeats resume: Session returns to "Active"
+   - This distinguishes sleep/hibernate from actual crashes
+
+6. App ends normally:
    - session.end()
    - Daemon flushes remaining data
    - Daemon stops (child process cleanup)
@@ -252,6 +259,14 @@ Result:
 
 - **Before:** All state updates sent
 - **After:** Only changed state sent (daemon tracks last known state)
+
+### Crash vs. Sleep Detection
+
+- **Before:** All heartbeat timeouts look the same (could be crash, hang, or sleep)
+- **After:** Server tracks machine ID and distinguishes:
+  - **Suspended**: Heartbeats stopped (might be sleeping)
+  - **Crashed**: Machine came back but session didn't (actual crash)
+  - **Active**: Heartbeats resumed (was just sleeping)
 
 ```
 

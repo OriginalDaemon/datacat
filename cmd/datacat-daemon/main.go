@@ -2,10 +2,12 @@ package main
 
 import (
 	"bytes"
+	"crypto/md5"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"sync"
@@ -135,10 +137,16 @@ func (d *Daemon) handleRegister(w http.ResponseWriter, r *http.Request) {
 	var sessionID string
 	syncedWithServer := false
 
+	// Get machine identification
+	machineID := getMachineID()
+	hostname := getHostname()
+
 	// Try to forward to server to create session
-	reqBody, _ := json.Marshal(map[string]string{
-		"product": req.Product,
-		"version": req.Version,
+	reqBody, _ := json.Marshal(map[string]interface{}{
+		"product":    req.Product,
+		"version":    req.Version,
+		"machine_id": machineID,
+		"hostname":   hostname,
 	})
 	resp, err := http.Post(d.config.ServerURL+"/api/sessions", "application/json", bytes.NewBuffer(reqBody))
 	if err != nil {
@@ -154,9 +162,11 @@ func (d *Daemon) handleRegister(w http.ResponseWriter, r *http.Request) {
 		d.failedQueue = append(d.failedQueue, QueuedOperation{
 			SessionID: sessionID,
 			OpType:    "create_session",
-			Data: map[string]string{
-				"product": req.Product,
-				"version": req.Version,
+			Data: map[string]interface{}{
+				"product":    req.Product,
+				"version":    req.Version,
+				"machine_id": machineID,
+				"hostname":   hostname,
 			},
 			Timestamp: time.Now(),
 		})
@@ -870,6 +880,40 @@ func isProcessRunning(pid int) bool {
 	// On Unix, FindProcess always succeeds, so we need to send signal 0
 	err = process.Signal(syscall.Signal(0))
 	return err == nil
+}
+
+// getMachineID returns a unique identifier for this machine based on MAC address
+func getMachineID() string {
+	interfaces, err := net.Interfaces()
+	if err != nil {
+		log.Printf("Warning: Failed to get network interfaces: %v", err)
+		return ""
+	}
+
+	// Find the first non-loopback interface with a hardware address
+	for _, iface := range interfaces {
+		// Skip loopback and interfaces without hardware address
+		if iface.Flags&net.FlagLoopback != 0 || len(iface.HardwareAddr) == 0 {
+			continue
+		}
+
+		// Use MD5 hash of MAC address as machine ID (for privacy/consistency)
+		hash := md5.Sum([]byte(iface.HardwareAddr.String()))
+		return fmt.Sprintf("%x", hash)
+	}
+
+	log.Printf("Warning: No suitable network interface found for machine ID")
+	return ""
+}
+
+// getHostname returns the hostname of this machine
+func getHostname() string {
+	hostname, err := os.Hostname()
+	if err != nil {
+		log.Printf("Warning: Failed to get hostname: %v", err)
+		return ""
+	}
+	return hostname
 }
 
 // retryQueueProcessor periodically processes the failed queue

@@ -1661,15 +1661,28 @@ func handleSessionInfo(w http.ResponseWriter, r *http.Request) {
 		</tr>`)
 	}
 
+	// Determine status badge
 	statusBadge := `<span class="badge badge-inactive">Ended</span>`
 	if session.Active {
 		statusBadge = `<span class="badge badge-active">Active</span>`
+	} else if session.Crashed {
+		statusBadge = `<span class="badge badge-crashed">Crashed</span>`
+	} else if session.Suspended {
+		statusBadge = `<span class="badge badge-suspended">Suspended</span>`
 	}
 
 	html.WriteString(`<tr>
 		<th>Status</th>
 		<td>` + statusBadge + `</td>
 	</tr>`)
+
+	// Add machine/hostname if available
+	if session.Hostname != "" {
+		html.WriteString(`<tr>
+			<th>Machine</th>
+			<td>` + session.Hostname + `</td>
+		</tr>`)
+	}
 
 	// Add last heartbeat row
 	if session.LastHeartbeat != nil {

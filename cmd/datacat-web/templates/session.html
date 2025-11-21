@@ -97,12 +97,21 @@
         <td>
           {{if .Session.Active}}
           <span class="badge badge-active">Active</span>
+          {{else if .Session.Crashed}}
+          <span class="badge badge-crashed">Crashed</span>
+          {{else if .Session.Suspended}}
+          <span class="badge badge-suspended">Suspended</span>
           {{else}}
           <span class="badge badge-inactive">Ended</span>
           {{end}}
         </td>
       </tr>
-      {{if .Session.LastHeartbeat}}
+      {{if .Session.Hostname}}
+      <tr>
+        <th>Machine</th>
+        <td>{{.Session.Hostname}}</td>
+      </tr>
+      {{end}} {{if .Session.LastHeartbeat}}
       <tr>
         <th>Last Heartbeat</th>
         <td>{{.Session.LastHeartbeat.Format "2006-01-02 15:04:05"}}</td>
