@@ -438,6 +438,109 @@ func TestPersistence(t *testing.T) {
 	}
 }
 
+func TestComprehensivePersistence(t *testing.T) {
+	tmpDir := t.TempDir()
+	config := DefaultConfig()
+
+	// Create store and session
+	store1, err := NewStore(tmpDir, config)
+	if err != nil {
+		t.Fatalf("NewStore failed: %v", err)
+	}
+
+	session := store1.CreateSession("TestProduct", "1.0.0", "", "")
+	sessionID := session.ID
+
+	// Update state with nested data
+	store1.UpdateState(sessionID, map[string]interface{}{
+		"status": "running",
+		"config": map[string]interface{}{
+			"mode":  "test",
+			"count": 42,
+		},
+	})
+
+	// Add event
+	store1.AddEvent(sessionID, "test_event", "info", "test", []string{"tag1"}, "test message",
+		map[string]interface{}{"extra": "data"}, "", "", nil, "", 0, "")
+
+	// Add metric
+	store1.AddMetric(sessionID, "cpu_usage", 75.5, []string{"host:server1"})
+
+	// Wait for async saves
+	time.Sleep(200 * time.Millisecond)
+
+	// Close store
+	store1.Close()
+
+	// Reopen store
+	store2, err := NewStore(tmpDir, config)
+	if err != nil {
+		t.Fatalf("Failed to reopen store: %v", err)
+	}
+	defer store2.Close()
+
+	// Verify session persisted
+	retrieved, ok := store2.GetSession(sessionID)
+	if !ok {
+		t.Fatal("Session not found after reload")
+	}
+	if retrieved.ID != sessionID {
+		t.Errorf("Expected ID %s, got %s", sessionID, retrieved.ID)
+	}
+
+	// Verify state persisted
+	if retrieved.State["status"] != "running" {
+		t.Errorf("Expected status 'running', got %v", retrieved.State["status"])
+	}
+	configMap, ok := retrieved.State["config"].(map[string]interface{})
+	if !ok {
+		t.Fatal("Expected config to be a map")
+	}
+	if configMap["mode"] != "test" {
+		t.Errorf("Expected config.mode 'test', got %v", configMap["mode"])
+	}
+
+	// Verify event persisted
+	if len(retrieved.Events) != 1 {
+		t.Fatalf("Expected 1 event, got %d", len(retrieved.Events))
+	}
+	if retrieved.Events[0].Name != "test_event" {
+		t.Errorf("Expected event name 'test_event', got %s", retrieved.Events[0].Name)
+	}
+	if retrieved.Events[0].Data["extra"] != "data" {
+		t.Errorf("Expected event data to be persisted")
+	}
+
+	// Verify metric persisted
+	if len(retrieved.Metrics) != 1 {
+		t.Fatalf("Expected 1 metric, got %d", len(retrieved.Metrics))
+	}
+	if retrieved.Metrics[0].Name != "cpu_usage" {
+		t.Errorf("Expected metric name 'cpu_usage', got %s", retrieved.Metrics[0].Name)
+	}
+	if retrieved.Metrics[0].Value != 75.5 {
+		t.Errorf("Expected metric value 75.5, got %f", retrieved.Metrics[0].Value)
+	}
+
+	// Add more data after reopening
+	store2.UpdateState(sessionID, map[string]interface{}{"status": "completed"})
+	store2.AddEvent(sessionID, "after_reload", "info", "test", nil, "after reload",
+		map[string]interface{}{}, "", "", nil, "", 0, "")
+
+	// Wait for async saves
+	time.Sleep(200 * time.Millisecond)
+
+	// Verify new data was added
+	retrieved2, _ := store2.GetSession(sessionID)
+	if retrieved2.State["status"] != "completed" {
+		t.Errorf("Expected status 'completed' after update, got %v", retrieved2.State["status"])
+	}
+	if len(retrieved2.Events) != 2 {
+		t.Errorf("Expected 2 events after adding new one, got %d", len(retrieved2.Events))
+	}
+}
+
 func TestAddEventErrors(t *testing.T) {
 	tmpDir := t.TempDir()
 	config := DefaultConfig()

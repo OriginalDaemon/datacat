@@ -164,7 +164,7 @@ func (s *Store) CreateSession(product, version, machineID, hostname string) *Ses
 		for _, existing := range s.sessions {
 			// Update active status to check current suspension state
 			s.updateActiveStatus(existing)
-			
+
 			if existing.MachineID == machineID && existing.Suspended && !existing.Crashed {
 				existing.Crashed = true
 				existing.Suspended = false
@@ -241,7 +241,7 @@ func (s *Store) updateActiveStatusReadOnly(session *Session) {
 	if session.Crashed {
 		return
 	}
-	
+
 	// If session is ended, it's not active and not suspended
 	if session.EndedAt != nil {
 		session.Active = false
@@ -387,7 +387,7 @@ func (s *Store) updateActiveStatus(session *Session) {
 	if session.Crashed {
 		return
 	}
-	
+
 	// If session is ended, it's not active and not suspended
 	if session.EndedAt != nil {
 		session.Active = false
