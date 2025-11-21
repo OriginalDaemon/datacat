@@ -455,13 +455,13 @@ func TestComprehensivePersistence(t *testing.T) {
 	store1.UpdateState(sessionID, map[string]interface{}{
 		"status": "running",
 		"config": map[string]interface{}{
-			"mode": "test",
+			"mode":  "test",
 			"count": 42,
 		},
 	})
 
 	// Add event
-	store1.AddEvent(sessionID, "test_event", "info", "test", []string{"tag1"}, "test message", 
+	store1.AddEvent(sessionID, "test_event", "info", "test", []string{"tag1"}, "test message",
 		map[string]interface{}{"extra": "data"}, "", "", nil, "", 0, "")
 
 	// Add metric
@@ -525,7 +525,7 @@ func TestComprehensivePersistence(t *testing.T) {
 
 	// Add more data after reopening
 	store2.UpdateState(sessionID, map[string]interface{}{"status": "completed"})
-	store2.AddEvent(sessionID, "after_reload", "info", "test", nil, "after reload", 
+	store2.AddEvent(sessionID, "after_reload", "info", "test", nil, "after reload",
 		map[string]interface{}{}, "", "", nil, "", 0, "")
 
 	// Wait for async saves
