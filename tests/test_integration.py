@@ -175,7 +175,7 @@ class TestDatacatIntegration(unittest.TestCase):
     def test_convenience_session_class(self):
         """Test the convenience Session class"""
         session = create_session(
-            self.base_url, use_daemon=False, product="IntegrationTest", version="1.0.0"
+            self.base_url, product="IntegrationTest", version="1.0.0"
         )
 
         # Test state update

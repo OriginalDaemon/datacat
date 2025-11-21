@@ -158,32 +158,25 @@ class DaemonManager(object):
 
 
 class DatacatClient(object):
-    """Client for interacting with the datacat REST API or local daemon"""
+    """Client for interacting with the datacat daemon (daemon mode only)"""
 
     def __init__(
-        self, base_url="http://localhost:9090", use_daemon=False, daemon_port="8079"
+        self, base_url="http://localhost:9090", daemon_port="8079"
     ):
         """
         Initialize the datacat client
 
         Args:
-            base_url (str): Base URL of the datacat service (used when use_daemon=False or as daemon's upstream)
-            use_daemon (bool): If True, start and use a local daemon subprocess
-            daemon_port (str): Port for the local daemon (only used if use_daemon=True)
+            base_url (str): Base URL of the datacat server (used as daemon's upstream)
+            daemon_port (str): Port for the local daemon
         """
-        self.use_daemon = use_daemon
-        self.daemon_manager = None
-
-        if use_daemon:
-            # Start local daemon
-            self.daemon_manager = DaemonManager(
-                daemon_port=daemon_port, server_url=base_url
-            )
-            self.daemon_manager.start()
-            # Point to daemon instead of server
-            self.base_url = "http://localhost:{}".format(daemon_port)
-        else:
-            self.base_url = base_url.rstrip("/")
+        self.use_daemon = True  # Always use daemon
+        self.daemon_manager = DaemonManager(
+            daemon_port=daemon_port, server_url=base_url
+        )
+        self.daemon_manager.start()
+        # Point to daemon instead of server
+        self.base_url = "http://localhost:{}".format(daemon_port)
 
     def _make_request(self, url, method="GET", data=None):
         """
@@ -240,13 +233,9 @@ class DatacatClient(object):
         if not product or not version:
             raise Exception("Product and version are required to create a session")
 
-        if self.use_daemon:
-            url = "{0}/register".format(self.base_url)
-            # Send parent PID so daemon can monitor for crashes
-            data = {"parent_pid": os.getpid(), "product": product, "version": version}
-        else:
-            url = "{0}/api/sessions".format(self.base_url)
-            data = {"product": product, "version": version}
+        url = "{0}/register".format(self.base_url)
+        # Send parent PID so daemon can monitor for crashes
+        data = {"parent_pid": os.getpid(), "product": product, "version": version}
         response = self._make_request(url, method="POST", data=data)
         return response.get("session_id")
 
@@ -263,10 +252,7 @@ class DatacatClient(object):
         Raises:
             Exception: If the request fails
         """
-        if self.use_daemon:
-            url = "{0}/session?session_id={1}".format(self.base_url, session_id)
-        else:
-            url = "{0}/api/sessions/{1}".format(self.base_url, session_id)
+        url = "{0}/session?session_id={1}".format(self.base_url, session_id)
         return self._make_request(url, method="GET")
 
     def update_state(self, session_id, state):
@@ -283,12 +269,8 @@ class DatacatClient(object):
         Raises:
             Exception: If the request fails
         """
-        if self.use_daemon:
-            url = "{0}/state".format(self.base_url)
-            data = {"session_id": session_id, "state": state}
-        else:
-            url = "{0}/api/sessions/{1}/state".format(self.base_url, session_id)
-            data = state
+        url = "{0}/state".format(self.base_url)
+        data = {"session_id": session_id, "state": state}
         return self._make_request(url, method="POST", data=data)
 
     def log_event(self, session_id, name, data=None):
@@ -309,13 +291,8 @@ class DatacatClient(object):
         if data is None:
             data = {}
 
-        if self.use_daemon:
-            url = "{0}/event".format(self.base_url)
-            request_data = {"session_id": session_id, "name": name, "data": data}
-        else:
-            event_data = {"name": name, "data": data}
-            url = "{0}/api/sessions/{1}/events".format(self.base_url, session_id)
-            request_data = event_data
+        url = "{0}/event".format(self.base_url)
+        request_data = {"session_id": session_id, "name": name, "data": data}
         return self._make_request(url, method="POST", data=request_data)
 
     def log_metric(self, session_id, name, value, tags=None):
@@ -334,17 +311,13 @@ class DatacatClient(object):
         Raises:
             Exception: If the request fails
         """
-        if self.use_daemon:
-            url = "{0}/metric".format(self.base_url)
-            metric_data = {
-                "session_id": session_id,
-                "name": name,
-                "value": float(value),
-                "tags": tags or [],
-            }
-        else:
-            metric_data = {"name": name, "value": float(value), "tags": tags or []}
-            url = "{0}/api/sessions/{1}/metrics".format(self.base_url, session_id)
+        url = "{0}/metric".format(self.base_url)
+        metric_data = {
+            "session_id": session_id,
+            "name": name,
+            "value": float(value),
+            "tags": tags or [],
+        }
         return self._make_request(url, method="POST", data=metric_data)
 
     def end_session(self, session_id):
@@ -360,14 +333,10 @@ class DatacatClient(object):
         Raises:
             Exception: If the request fails
         """
-        if self.use_daemon:
-            url = "{0}/end".format(self.base_url)
-            return self._make_request(
-                url, method="POST", data={"session_id": session_id}
-            )
-        else:
-            url = "{0}/api/sessions/{1}/end".format(self.base_url, session_id)
-            return self._make_request(url, method="POST")
+        url = "{0}/end".format(self.base_url)
+        return self._make_request(
+            url, method="POST", data={"session_id": session_id}
+        )
 
     def log_exception(self, session_id, exc_info=None, extra_data=None):
         """
@@ -410,11 +379,49 @@ class DatacatClient(object):
         Raises:
             Exception: If the request fails
         """
-        if self.use_daemon:
-            url = "{0}/sessions".format(self.base_url)
-        else:
-            url = "{0}/api/data/sessions".format(self.base_url)
+        url = "{0}/sessions".format(self.base_url)
         return self._make_request(url, method="GET")
+
+    def pause_heartbeat_monitoring(self, session_id):
+        """
+        Tell the daemon to pause heartbeat monitoring for this session
+
+        This is useful when the application will be intentionally unresponsive
+        (e.g., long-running computation, blocking I/O, etc.)
+
+        Args:
+            session_id (str): Session ID
+
+        Returns:
+            dict: Response from the daemon
+
+        Raises:
+            Exception: If the request fails
+        """
+        url = "{0}/pause_heartbeat".format(self.base_url)
+        return self._make_request(
+            url, method="POST", data={"session_id": session_id}
+        )
+
+    def resume_heartbeat_monitoring(self, session_id):
+        """
+        Tell the daemon to resume heartbeat monitoring for this session
+
+        After calling this, the application should resume sending regular heartbeats.
+
+        Args:
+            session_id (str): Session ID
+
+        Returns:
+            dict: Response from the daemon
+
+        Raises:
+            Exception: If the request fails
+        """
+        url = "{0}/resume_heartbeat".format(self.base_url)
+        return self._make_request(
+            url, method="POST", data={"session_id": session_id}
+        )
 
 
 class HeartbeatMonitor(object):
@@ -507,15 +514,14 @@ class HeartbeatMonitor(object):
         with self._lock:
             self._last_heartbeat = time.time()
 
-            # When using daemon, send heartbeat to daemon
-            if self.client.use_daemon:
-                try:
-                    url = "{0}/heartbeat".format(self.client.base_url)
-                    data = {"session_id": self.session_id}
-                    self.client._make_request(url, method="POST", data=data)
-                except Exception:
-                    # Silently continue if heartbeat fails
-                    pass
+            # Send heartbeat to daemon
+            try:
+                url = "{0}/heartbeat".format(self.client.base_url)
+                data = {"session_id": self.session_id}
+                self.client._make_request(url, method="POST", data=data)
+            except Exception:
+                # Silently continue if heartbeat fails
+                pass
 
             # Reset hung flag if we receive a heartbeat after being hung
             if self._hung_logged:
@@ -630,11 +636,32 @@ class Session(object):
             self._heartbeat_monitor.stop()
             self._heartbeat_monitor = None
 
+    def pause_heartbeat_monitoring(self):
+        """
+        Pause heartbeat monitoring for this session
+
+        Use this when your application will be intentionally unresponsive
+        (e.g., long-running computation, blocking I/O, etc.)
+
+        After pausing, the daemon will not report this session as hung
+        until you call resume_heartbeat_monitoring().
+        """
+        return self.client.pause_heartbeat_monitoring(self.session_id)
+
+    def resume_heartbeat_monitoring(self):
+        """
+        Resume heartbeat monitoring for this session
+
+        Call this after calling pause_heartbeat_monitoring() to resume
+        normal heartbeat monitoring. Remember to start sending heartbeats
+        again regularly.
+        """
+        return self.client.resume_heartbeat_monitoring(self.session_id)
+
 
 # Factory function for convenience
 def create_session(
     base_url="http://localhost:9090",
-    use_daemon=True,
     daemon_port="8079",
     product=None,
     version=None,
@@ -642,10 +669,11 @@ def create_session(
     """
     Create a new session and return a Session object
 
+    The client always uses a local daemon subprocess for batching and crash detection.
+
     Args:
-        base_url (str): Base URL of the datacat service (or server URL if using daemon)
-        use_daemon (bool): If True, start and use a local daemon subprocess (recommended)
-        daemon_port (str): Port for the local daemon (only used if use_daemon=True)
+        base_url (str): Base URL of the datacat server (daemon's upstream)
+        daemon_port (str): Port for the local daemon
         product (str): Product name (required)
         version (str): Product version (required)
 
@@ -658,6 +686,6 @@ def create_session(
     if not product or not version:
         raise Exception("Product and version are required to create a session")
 
-    client = DatacatClient(base_url, use_daemon=use_daemon, daemon_port=daemon_port)
+    client = DatacatClient(base_url, daemon_port=daemon_port)
     session_id = client.register_session(product, version)
     return Session(client, session_id)

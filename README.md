@@ -87,12 +87,14 @@ Dashboard available at `http://localhost:8080`
 #### 3. Use a Client Library
 
 **Python:**
+
 ```bash
 cd python && pip install -e .
 python ../examples/basic_example.py
 ```
 
 **Go:**
+
 ```bash
 cd examples/go-client-example
 go run main.go
@@ -122,7 +124,7 @@ Intelligent local subprocess that reduces network traffic through batching and s
   - **Auto-retry with queueing**
 - **Port:** 8079 (default)
 - **Architecture:** Application → Daemon (subprocess) → Server (remote)
-- **Usage:** Automatically started by client libraries when `use_daemon=True`
+- **Usage:** Automatically started by client libraries (always enabled)
 
 ### [datacat-web](cmd/datacat-web/) - Web Dashboard
 
@@ -166,11 +168,13 @@ python demo_gui.py
 ```
 
 Or use the PowerShell script (Windows):
+
 ```powershell
 .\scripts\run-demo-gui.ps1
 ```
 
 Opens a modern web interface at http://127.0.0.1:7860 with:
+
 - 🌙 Dark mode by default (Gradio's native theme)
 - 📝 State updates with JSON editor
 - 📢 Event logging
@@ -184,13 +188,15 @@ Opens a modern web interface at http://127.0.0.1:7860 with:
 
 ### Python Client
 
-**With Local Daemon (Recommended):**
-
 ```python
 from datacat import create_session
 
-# Create session with local daemon (automatic batching and crash detection)
-session = create_session("http://localhost:9090", use_daemon=True)
+# Create session (always uses local daemon for batching and crash detection)
+session = create_session(
+    "http://localhost:9090",
+    product="MyApp",
+    version="1.0.0"
+)
 
 # Nested state updates with deep merge
 session.update_state({
@@ -213,15 +219,12 @@ while running:
     session.heartbeat()
     do_work()
 
+# Pause heartbeat monitoring during long operations
+session.pause_heartbeat_monitoring()
+long_blocking_operation()
+session.resume_heartbeat_monitoring()
+
 session.end()
-```
-
-**Direct to Server (No Daemon):**
-
-```python
-# For simple use cases without batching/monitoring
-session = create_session("http://localhost:9090", use_daemon=False)
-# ... same API as above
 ```
 
 ### Go Client
@@ -295,12 +298,14 @@ The REST API provides the following endpoints:
 ## 🎯 Use Cases
 
 **Application Monitoring**
+
 ```python
 session.update_state({"app": "myapp", "status": "starting"})
 session.log_metric("requests_per_second", 1000)
 ```
 
 **Testing & CI/CD**
+
 ```python
 session.update_state({"test_suite": "integration"})
 for test in tests:
@@ -308,6 +313,7 @@ for test in tests:
 ```
 
 **Window/UI Tracking**
+
 ```python
 session.update_state({
     "window_state": {
@@ -318,6 +324,7 @@ session.update_state({
 ```
 
 **Crash Detection**
+
 ```python
 # Heartbeat monitor auto-logs "application_appears_hung" if no heartbeat for 60s
 session.start_heartbeat_monitor(timeout=60)
@@ -342,11 +349,13 @@ All session data is stored in a **BadgerDB database** on the server. The locatio
 **Important - Data Location Depends on How You Run the Server:**
 
 - **When using PowerShell scripts** (`.\scripts\run-server.ps1` or `.\scripts\run-both.ps1`):
+
   - Data is stored in the **repository root directory**: `./datacat_data`
   - Config file is in the **repository root**: `./config.json`
   - (Scripts explicitly set the working directory to ensure consistent location)
 
 - **When running from cmd/datacat-server** (`cd cmd/datacat-server && go run main.go`):
+
   - Data is stored in **cmd/datacat-server/datacat_data**
   - Config file is in **cmd/datacat-server/config.json**
 
@@ -355,6 +364,7 @@ All session data is stored in a **BadgerDB database** on the server. The locatio
   - Check the server startup logs to see the exact path being used
 
 **To find your data directory:**
+
 - Check the server startup logs - they show the data path:
   ```
   Configuration loaded: Data path=./datacat_data, Retention=365 days, Port=9090
@@ -375,6 +385,7 @@ Stop the running server (Ctrl+C in the terminal/PowerShell window)
 **Step 2: Locate and delete the data**
 
 **If you used PowerShell scripts** (`.\scripts\run-server.ps1` or `.\scripts\run-both.ps1`):
+
 ```powershell
 # Data is in repository root
 Remove-Item -Recurse -Force ./datacat_data
@@ -382,6 +393,7 @@ Remove-Item -Force ./config.json  # Optional - removes custom config
 ```
 
 **If you ran manually from cmd/datacat-server**:
+
 ```bash
 cd cmd/datacat-server
 rm -rf ./datacat_data
@@ -389,6 +401,7 @@ rm config.json  # Optional
 ```
 
 **If you're unsure where the data is:**
+
 1. Check the server logs when it started - they show the data path
 2. Search for `datacat_data` directory in your repository
 3. Use the clean script: `.\scripts\clean.ps1` (cleans repository directory)
@@ -430,6 +443,7 @@ To restore, stop the server and copy the backup back to the original location.
 We welcome contributions! Please ensure your PR meets the following requirements:
 
 ### Code Quality Requirements
+
 - ✅ **Python code** must pass Black formatting (`black --check`)
 - ✅ **Python code** must pass mypy type checking
 - ✅ **Go code** must build successfully
@@ -457,6 +471,7 @@ pytest tests/ -v --cov=python --cov-report=term
 ### Branch Protection
 
 The `main` branch is protected with the following requirements:
+
 - All status checks must pass (linting, formatting, tests)
 - Code coverage must be at least 85%
 - At least one approval required

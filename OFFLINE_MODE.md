@@ -21,22 +21,26 @@ The original implementation had the following issues:
 ### Daemon Changes
 
 #### 1. Local Session Creation
+
 - When the server is unavailable, the daemon creates sessions locally with IDs starting with `local-session-`
 - These sessions are fully functional and track all state, events, and metrics locally
 - Session creation requests are queued for retry to create the session on the server when it becomes available
 
 #### 2. Operation Queueing
+
 - Added `QueuedOperation` struct to track failed operations
 - All failed operations (session creation, state updates, events, metrics, session end) are queued
 - Failed operations include: operation type, session ID, data, and timestamp
 
 #### 3. Retry Mechanism
+
 - New `retryQueueProcessor` goroutine runs every 10 seconds
 - Attempts to re-send all queued operations to the server
 - Successfully sent operations are removed from the queue
 - Failed operations remain in the queue for next retry
 
 #### 4. Session Tracking
+
 - Extended `SessionBuffer` with:
   - `CreatedAt`: When session was created locally
   - `EndedAt`: When session was ended
@@ -44,6 +48,7 @@ The original implementation had the following issues:
   - `SyncedWithServer`: Whether session exists on the server
 
 #### 5. New Daemon Endpoints
+
 - `GET /session?session_id=<id>`: Retrieve session details from daemon
 - `GET /sessions`: Retrieve all sessions from daemon
 - These endpoints return local data when server is unavailable
@@ -52,7 +57,9 @@ The original implementation had the following issues:
 ### Client Changes
 
 #### Go Client (`client/client.go`)
+
 - `GetSession()`: Routes through daemon when `UseDaemon=true`
+
   - Daemon mode: `GET /session?session_id=<id>`
   - Direct mode: `GET /api/sessions/<id>`
 
@@ -61,22 +68,24 @@ The original implementation had the following issues:
   - Direct mode: `GET /api/data/sessions`
 
 #### Python Client (`python/datacat.py`)
-- `get_session()`: Routes through daemon when `use_daemon=True`
-  - Daemon mode: `GET /session?session_id=<id>`
-  - Direct mode: `GET /api/sessions/<id>`
 
-- `get_all_sessions()`: Routes through daemon when `use_daemon=True`
-  - Daemon mode: `GET /sessions`
-  - Direct mode: `GET /api/data/sessions`
+- `get_session()`: Always routes through daemon
+
+  - `GET /session?session_id=<id>`
+
+- `get_all_sessions()`: Always routes through daemon
+  - `GET /sessions`
 
 ## Code Changes Summary
 
 ### Files Modified
+
 1. `cmd/datacat-daemon/main.go` - Core daemon implementation (454 lines added)
 2. `client/client.go` - Go client routing changes (16 lines added)
 3. `python/datacat.py` - Python client routing changes (8 lines added)
 
 ### Files Added
+
 1. `tests/test_offline_mode.py` - Comprehensive offline mode tests (229 lines)
 2. `examples/offline_demo.py` - Demonstration script (116 lines)
 
@@ -85,6 +94,7 @@ The original implementation had the following issues:
 ### Test Coverage
 
 #### Offline Mode Tests (8 tests)
+
 1. `test_create_session_offline` - Sessions created when server down
 2. `test_state_updates_offline` - State updates work offline
 3. `test_events_offline` - Events logged offline
@@ -95,10 +105,12 @@ The original implementation had the following issues:
 8. `test_heartbeat_offline` - Heartbeats work offline
 
 #### Existing Tests
+
 - All 88 Go tests pass (client, daemon, server, web)
 - All 9 Python integration tests pass
 
 #### Code Quality
+
 - ✅ Black formatting applied
 - ✅ MyPy type checking passes
 - ✅ CodeQL security scan: 0 alerts
@@ -106,8 +118,9 @@ The original implementation had the following issues:
 ## Behavior Changes
 
 ### Before Implementation
+
 ```
-Client (use_daemon=True)
+Client (daemon mode)
     │
     ├─→ CreateSession() ──→ Daemon ──→ Server (fails if down) ✗
     ├─→ UpdateState() ──→ Daemon ──→ Server (data lost if fails) ✗
@@ -115,8 +128,9 @@ Client (use_daemon=True)
 ```
 
 ### After Implementation
+
 ```
-Client (use_daemon=True)
+Client (daemon mode)
     │
     ├─→ CreateSession() ──→ Daemon ──→ Local session + Queue ✓
     ├─→ UpdateState() ──→ Daemon ──→ Queue if server down ✓
@@ -130,6 +144,7 @@ Client (use_daemon=True)
 - **Locally-created session**: `local-session-<timestamp>-<counter>` (e.g., `local-session-1700000000-1`)
 
 When the server becomes available, the daemon will:
+
 1. Create the session on the server
 2. Get the server-assigned UUID
 3. Update the local session ID to the server's UUID
@@ -143,7 +158,8 @@ from datacat import create_session
 # Works even if server is down!
 session = create_session(
     base_url="http://localhost:9090",
-    use_daemon=True,
+    product="MyApp",
+    version="1.0.0",
     daemon_port="8079"
 )
 
@@ -167,6 +183,7 @@ This implementation fully complies with the daemon architecture principle:
 > **"When using daemon mode, clients should NEVER communicate directly with the server. Only the daemon should talk to the server."**
 
 All client operations now route through the daemon:
+
 - ✅ Session creation
 - ✅ State updates
 - ✅ Event logging
