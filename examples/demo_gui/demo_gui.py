@@ -784,11 +784,17 @@ if __name__ == "__main__":
     print("\nThe demo GUI will open in your browser...")
     print("="*60 + "\n")
 
-    demo.launch(
-        server_name="127.0.0.1",
-        server_port=7860,
-        share=False,
-        inbrowser=True,
-        favicon_path="logo-small.png"  # DataCat favicon
-    )
+    # Set favicon if it exists
+    favicon_path = os.path.join(os.path.dirname(__file__), "logo-small.png")
+    launch_kwargs = {
+        "server_name": "127.0.0.1",
+        "server_port": 7860,
+        "share": False,
+        "inbrowser": True
+    }
+
+    if os.path.exists(favicon_path):
+        launch_kwargs["favicon_path"] = favicon_path
+
+    demo.launch(**launch_kwargs)
 
