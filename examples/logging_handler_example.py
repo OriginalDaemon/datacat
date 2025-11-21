@@ -73,16 +73,34 @@ class DatacatLoggingHandler(logging.Handler):
                 event_data["exception"] = {
                     "type": record.exc_info[0].__name__,
                     "message": str(record.exc_info[1]),
-                    "traceback": traceback.format_exception(*record.exc_info)
+                    "traceback": traceback.format_exception(*record.exc_info),
                 }
 
             # Add any extra fields from the record
             for key in record.__dict__:
-                if key not in ['name', 'msg', 'args', 'created', 'filename', 'funcName',
-                               'levelname', 'levelno', 'lineno', 'module', 'msecs',
-                               'message', 'pathname', 'process', 'processName',
-                               'relativeCreated', 'thread', 'threadName', 'exc_info',
-                               'exc_text', 'stack_info']:
+                if key not in [
+                    "name",
+                    "msg",
+                    "args",
+                    "created",
+                    "filename",
+                    "funcName",
+                    "levelname",
+                    "levelno",
+                    "lineno",
+                    "module",
+                    "msecs",
+                    "message",
+                    "pathname",
+                    "process",
+                    "processName",
+                    "relativeCreated",
+                    "thread",
+                    "threadName",
+                    "exc_info",
+                    "exc_text",
+                    "stack_info",
+                ]:
                     event_data[key] = record.__dict__[key]
 
             # Send to datacat
@@ -118,7 +136,7 @@ def setup_logging(session, level=logging.INFO):
     console_handler = logging.StreamHandler()
     console_handler.setLevel(level)
     console_formatter = logging.Formatter(
-        '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     )
     console_handler.setFormatter(console_formatter)
     logger.addHandler(console_handler)
@@ -127,7 +145,7 @@ def setup_logging(session, level=logging.INFO):
     datacat_handler = DatacatLoggingHandler(session)
     datacat_handler.setLevel(level)
     datacat_formatter = logging.Formatter(
-        '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     )
     datacat_handler.setFormatter(datacat_formatter)
     logger.addHandler(datacat_handler)
@@ -159,9 +177,7 @@ def main():
 
     # Create datacat session
     session = create_session(
-        "http://localhost:9090",
-        product="LoggingHandlerExample",
-        version="1.0.0"
+        "http://localhost:9090", product="LoggingHandlerExample", version="1.0.0"
     )
     print("Session ID:", session.session_id)
     print()
@@ -170,13 +186,15 @@ def main():
     logger = setup_logging(session, level=logging.DEBUG)
 
     # Set initial state
-    session.update_state({
-        "application": {
-            "name": "logging-handler-example",
-            "version": "1.0.0",
-            "started_at": datetime.now().isoformat()
+    session.update_state(
+        {
+            "application": {
+                "name": "logging-handler-example",
+                "version": "1.0.0",
+                "started_at": datetime.now().isoformat(),
+            }
         }
-    })
+    )
 
     # Log application startup
     logger.info("Application started", extra={"session_id": session.session_id})
@@ -201,7 +219,7 @@ def main():
             result = risky_database_operation(record_id)
             logger.info(
                 "Database operation successful",
-                extra={"record_id": record_id, "operation": "read"}
+                extra={"record_id": record_id, "operation": "read"},
             )
             print("    ✓ Success")
         except (ValueError, KeyError) as e:
@@ -209,7 +227,7 @@ def main():
             logger.error(
                 "Database operation failed: {}".format(str(e)),
                 exc_info=True,
-                extra={"record_id": record_id, "operation": "read"}
+                extra={"record_id": record_id, "operation": "read"},
             )
 
         time.sleep(0.5)
@@ -230,11 +248,7 @@ def main():
         logger.critical(
             "Critical error in request processing",
             exc_info=True,
-            extra={
-                "user_id": 1,
-                "action": "delete",
-                "severity": "critical"
-            }
+            extra={"user_id": 1, "action": "delete", "severity": "critical"},
         )
 
     # Demonstrate logging with custom fields
@@ -247,8 +261,8 @@ def main():
             "user_id": 42,
             "username": "john_doe",
             "ip_address": "192.168.1.100",
-            "login_method": "password"
-        }
+            "login_method": "password",
+        },
     )
     print("  Logged user login with custom fields")
 
@@ -264,8 +278,8 @@ def main():
                 "method": "GET",
                 "path": "/api/users",
                 "status_code": 200,
-                "response_time_ms": round(response_time * 1000, 2)
-            }
+                "response_time_ms": round(response_time * 1000, 2),
+            },
         )
         session.log_metric("response_time", response_time, tags=["endpoint:/api/users"])
         print("  Request {}/5 - Response time: {:.2f}s".format(i + 1, response_time))
@@ -319,4 +333,3 @@ if __name__ == "__main__":
         print("\n\n❌ Fatal error: {}".format(str(e)))
         traceback.print_exc()
         sys.exit(1)
-

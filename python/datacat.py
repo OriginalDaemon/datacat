@@ -87,7 +87,7 @@ class DaemonManager(object):
         for path in possible_paths:
             if os.path.exists(path):
                 return path
-            
+
         # Check if it's in PATH
         if self._is_in_path(binary_name):
             return binary_name
@@ -141,9 +141,19 @@ class DaemonManager(object):
 
             # Check if daemon is running
             if self.process.poll() is not None:
-                stderr_output = self.process.stderr.read().decode() if self.process.stderr else "No stderr"
-                stdout_output = self.process.stdout.read().decode() if self.process.stdout else "No stdout"
-                raise Exception(f"Daemon failed to start. Stderr: {stderr_output}, Stdout: {stdout_output}")
+                stderr_output = (
+                    self.process.stderr.read().decode()
+                    if self.process.stderr
+                    else "No stderr"
+                )
+                stdout_output = (
+                    self.process.stdout.read().decode()
+                    if self.process.stdout
+                    else "No stdout"
+                )
+                raise Exception(
+                    f"Daemon failed to start. Stderr: {stderr_output}, Stdout: {stdout_output}"
+                )
 
             # Register cleanup on exit
             atexit.register(self.stop)
@@ -173,9 +183,7 @@ class DaemonManager(object):
 class DatacatClient(object):
     """Client for interacting with the datacat daemon (daemon mode only)"""
 
-    def __init__(
-        self, base_url="http://localhost:9090", daemon_port="8079"
-    ):
+    def __init__(self, base_url="http://localhost:9090", daemon_port="8079"):
         """
         Initialize the datacat client
 
@@ -296,8 +304,22 @@ class DatacatClient(object):
         data = {"session_id": session_id, "state": state}
         return self._make_request(url, method="POST", data=data)
 
-    def log_event(self, session_id, name, level=None, category=None, labels=None, message=None, data=None,
-                  exception_type=None, exception_msg=None, stacktrace=None, source_file=None, source_line=None, source_function=None):
+    def log_event(
+        self,
+        session_id,
+        name,
+        level=None,
+        category=None,
+        labels=None,
+        message=None,
+        data=None,
+        exception_type=None,
+        exception_msg=None,
+        stacktrace=None,
+        source_file=None,
+        source_line=None,
+        source_function=None,
+    ):
         """
         Log an event to a session
 
@@ -326,11 +348,7 @@ class DatacatClient(object):
             data = {}
 
         url = "{0}/event".format(self.base_url)
-        request_data = {
-            "session_id": session_id,
-            "name": name,
-            "data": data
-        }
+        request_data = {"session_id": session_id, "name": name, "data": data}
 
         # Add optional fields if provided
         if level:
@@ -395,9 +413,7 @@ class DatacatClient(object):
             Exception: If the request fails
         """
         url = "{0}/end".format(self.base_url)
-        return self._make_request(
-            url, method="POST", data={"session_id": session_id}
-        )
+        return self._make_request(url, method="POST", data={"session_id": session_id})
 
     def log_exception(self, session_id, exc_info=None, extra_data=None):
         """
@@ -423,7 +439,9 @@ class DatacatClient(object):
         exception_msg = str(exc_value) if exc_value else ""
 
         # Format stack trace as list of strings
-        stacktrace_lines = traceback.format_exception(exc_type, exc_value, exc_traceback)
+        stacktrace_lines = traceback.format_exception(
+            exc_type, exc_value, exc_traceback
+        )
 
         # Extract source file, line, and function from the innermost frame
         source_file = None
@@ -453,7 +471,7 @@ class DatacatClient(object):
             stacktrace=stacktrace_lines,
             source_file=source_file,
             source_line=source_line,
-            source_function=source_function
+            source_function=source_function,
         )
 
     def get_all_sessions(self):
@@ -486,9 +504,7 @@ class DatacatClient(object):
             Exception: If the request fails
         """
         url = "{0}/pause_heartbeat".format(self.base_url)
-        return self._make_request(
-            url, method="POST", data={"session_id": session_id}
-        )
+        return self._make_request(url, method="POST", data={"session_id": session_id})
 
     def resume_heartbeat_monitoring(self, session_id):
         """
@@ -506,9 +522,7 @@ class DatacatClient(object):
             Exception: If the request fails
         """
         url = "{0}/resume_heartbeat".format(self.base_url)
-        return self._make_request(
-            url, method="POST", data={"session_id": session_id}
-        )
+        return self._make_request(url, method="POST", data={"session_id": session_id})
 
 
 class HeartbeatMonitor(object):
@@ -707,7 +721,9 @@ try:
 
                 # If there's exception info and we're including it
                 if self.include_exceptions and record.exc_info:
-                    self.session.log_exception(exc_info=record.exc_info, extra_data=data)
+                    self.session.log_exception(
+                        exc_info=record.exc_info, extra_data=data
+                    )
                 else:
                     # Regular event log
                     self.session.log_event(
@@ -716,18 +732,18 @@ try:
                         category=record.name,
                         labels=labels,
                         message=message,
-                        data=data
+                        data=data,
                     )
             except Exception:
                 # Don't let logging failures crash the application
                 self.handleError(record)
 
     # Export the handler
-    __all__ = ['DatacatClient', 'Session', 'HeartbeatMonitor', 'DatacatHandler']
+    __all__ = ["DatacatClient", "Session", "HeartbeatMonitor", "DatacatHandler"]
 
 except ImportError:
     # logging module not available (shouldn't happen in modern Python)
-    __all__ = ['DatacatClient', 'Session', 'HeartbeatMonitor']
+    __all__ = ["DatacatClient", "Session", "HeartbeatMonitor"]
 
 
 # Convenience class for session management
@@ -750,10 +766,19 @@ class Session(object):
         """Update session state"""
         return self.client.update_state(self.session_id, state)
 
-    def log_event(self, name, level=None, category=None, labels=None, message=None, data=None):
+    def log_event(
+        self, name, level=None, category=None, labels=None, message=None, data=None
+    ):
         """Log an event"""
-        return self.client.log_event(self.session_id, name, level=level, category=category,
-                                     labels=labels, message=message, data=data)
+        return self.client.log_event(
+            self.session_id,
+            name,
+            level=level,
+            category=category,
+            labels=labels,
+            message=message,
+            data=data,
+        )
 
     def log_metric(self, name, value, tags=None):
         """Log a metric"""

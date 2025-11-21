@@ -103,11 +103,13 @@ class TestOfflineMode(unittest.TestCase):
         """Test that sessions can be created when server is offline"""
         url = "{}/register".format(self.base_daemon_url)
         result = self._make_request(
-            url, method="POST", data={
+            url,
+            method="POST",
+            data={
                 "parent_pid": os.getpid(),
                 "product": "TestProduct",
-                "version": "1.0.0"
-            }
+                "version": "1.0.0",
+            },
         )
 
         session_id = result.get("session_id")
@@ -119,11 +121,13 @@ class TestOfflineMode(unittest.TestCase):
         # Create session
         url = "{}/register".format(self.base_daemon_url)
         result = self._make_request(
-            url, method="POST", data={
+            url,
+            method="POST",
+            data={
                 "parent_pid": os.getpid(),
                 "product": "TestProduct",
-                "version": "1.0.0"
-            }
+                "version": "1.0.0",
+            },
         )
         session_id = result.get("session_id")
 
@@ -140,11 +144,13 @@ class TestOfflineMode(unittest.TestCase):
         # Create session
         url = "{}/register".format(self.base_daemon_url)
         result = self._make_request(
-            url, method="POST", data={
+            url,
+            method="POST",
+            data={
                 "parent_pid": os.getpid(),
                 "product": "TestProduct",
-                "version": "1.0.0"
-            }
+                "version": "1.0.0",
+            },
         )
         session_id = result.get("session_id")
 
@@ -166,11 +172,13 @@ class TestOfflineMode(unittest.TestCase):
         # Create session
         url = "{}/register".format(self.base_daemon_url)
         result = self._make_request(
-            url, method="POST", data={
+            url,
+            method="POST",
+            data={
                 "parent_pid": os.getpid(),
                 "product": "TestProduct",
-                "version": "1.0.0"
-            }
+                "version": "1.0.0",
+            },
         )
         session_id = result.get("session_id")
 
@@ -193,11 +201,13 @@ class TestOfflineMode(unittest.TestCase):
         # Create session
         url = "{}/register".format(self.base_daemon_url)
         result = self._make_request(
-            url, method="POST", data={
+            url,
+            method="POST",
+            data={
                 "parent_pid": os.getpid(),
                 "product": "TestProduct",
-                "version": "1.0.0"
-            }
+                "version": "1.0.0",
+            },
         )
         session_id = result.get("session_id")
 
@@ -221,11 +231,13 @@ class TestOfflineMode(unittest.TestCase):
         # Create session
         url = "{}/register".format(self.base_daemon_url)
         result = self._make_request(
-            url, method="POST", data={
+            url,
+            method="POST",
+            data={
                 "parent_pid": os.getpid(),
                 "product": "TestProduct",
-                "version": "1.0.0"
-            }
+                "version": "1.0.0",
+            },
         )
         session_id = result.get("session_id")
 
@@ -239,20 +251,24 @@ class TestOfflineMode(unittest.TestCase):
         # Create a few sessions
         url = "{}/register".format(self.base_daemon_url)
         result1 = self._make_request(
-            url, method="POST", data={
+            url,
+            method="POST",
+            data={
                 "parent_pid": os.getpid(),
                 "product": "TestProduct",
-                "version": "1.0.0"
-            }
+                "version": "1.0.0",
+            },
         )
         session_id1 = result1.get("session_id")
 
         result2 = self._make_request(
-            url, method="POST", data={
+            url,
+            method="POST",
+            data={
                 "parent_pid": os.getpid(),
                 "product": "TestProduct",
-                "version": "1.0.0"
-            }
+                "version": "1.0.0",
+            },
         )
         session_id2 = result2.get("session_id")
 
@@ -269,11 +285,13 @@ class TestOfflineMode(unittest.TestCase):
         # Create session
         url = "{}/register".format(self.base_daemon_url)
         result = self._make_request(
-            url, method="POST", data={
+            url,
+            method="POST",
+            data={
                 "parent_pid": os.getpid(),
                 "product": "TestProduct",
-                "version": "1.0.0"
-            }
+                "version": "1.0.0",
+            },
         )
         session_id = result.get("session_id")
 

@@ -61,7 +61,9 @@ class TestDatacatIntegration(unittest.TestCase):
         try:
             cls.shared_client = DatacatClient(cls.base_url)
             # Verify service is running
-            test_session = cls.shared_client.register_session("IntegrationTest", "1.0.0")
+            test_session = cls.shared_client.register_session(
+                "IntegrationTest", "1.0.0"
+            )
             cls.shared_client.end_session(test_session)
         except Exception as e:
             cls.tearDownClass()
@@ -71,7 +73,7 @@ class TestDatacatIntegration(unittest.TestCase):
     def tearDownClass(cls):
         """Stop the datacat service after tests"""
         # Stop shared daemon
-        if hasattr(cls, 'shared_client') and cls.shared_client.daemon_manager:
+        if hasattr(cls, "shared_client") and cls.shared_client.daemon_manager:
             cls.shared_client.daemon_manager.stop()
         # Stop service
         if cls.service_process:
@@ -235,7 +237,7 @@ class TestDatacatIntegration(unittest.TestCase):
             self.assertFalse(details["active"])
         finally:
             # Clean up the daemon created by create_session
-            if hasattr(session, 'client') and hasattr(session.client, 'daemon_manager'):
+            if hasattr(session, "client") and hasattr(session.client, "daemon_manager"):
                 session.client.daemon_manager.stop()
 
 
@@ -299,10 +301,10 @@ class TestDatacatPersistence(unittest.TestCase):
             try:
                 # Retrieve session
                 client2 = DatacatClient(self.base_url)
-                
+
                 # Wait for daemon to start
                 time.sleep(2)
-                
+
                 session = client2.get_session(session_id)
 
                 # Verify data persisted
@@ -315,7 +317,7 @@ class TestDatacatPersistence(unittest.TestCase):
 
                 # Add more data after restart
                 client2.log_event(session_id, "after_restart", data={"data": "test2"})
-                
+
                 # Wait for daemon to flush
                 time.sleep(6)
 

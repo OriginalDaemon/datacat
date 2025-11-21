@@ -40,10 +40,10 @@ class TestDatacatClientErrorHandling(unittest.TestCase):
         mock_daemon = Mock()
         mock_daemon_class.return_value = mock_daemon
         self.client = DatacatClient("http://localhost:9090")
-        
+
     def tearDown(self):
         """Clean up test client"""
-        if hasattr(self, 'client') and hasattr(self.client, 'daemon_manager'):
+        if hasattr(self, "client") and hasattr(self.client, "daemon_manager"):
             self.client.daemon_manager.stop()
 
     @patch("datacat.urlopen")
@@ -53,7 +53,7 @@ class TestDatacatClientErrorHandling(unittest.TestCase):
         # Set up daemon mock
         mock_daemon = Mock()
         mock_daemon_class.return_value = mock_daemon
-        
+
         # Create a mock HTTPError
         mock_error = HTTPError(
             url="http://test.com",
@@ -78,7 +78,7 @@ class TestDatacatClientErrorHandling(unittest.TestCase):
         # Set up daemon mock
         mock_daemon = Mock()
         mock_daemon_class.return_value = mock_daemon
-        
+
         # Create a mock URLError
         mock_error = URLError("Connection refused")
         mock_urlopen.side_effect = mock_error
@@ -97,7 +97,7 @@ class TestDatacatClientErrorHandling(unittest.TestCase):
         # Set up daemon mock
         mock_daemon = Mock()
         mock_daemon_class.return_value = mock_daemon
-        
+
         # Create a general exception
         mock_urlopen.side_effect = RuntimeError("Unexpected error")
 
@@ -114,7 +114,7 @@ class TestDatacatClientErrorHandling(unittest.TestCase):
         # Set up daemon mock
         mock_daemon = Mock()
         mock_daemon_class.return_value = mock_daemon
-        
+
         client = DatacatClient("http://localhost:9090/")
         # Client always uses daemon URL, not the server URL directly
         self.assertEqual(client.base_url, "http://localhost:8079")
@@ -133,7 +133,7 @@ class TestDatacatClientGetAllSessions(unittest.TestCase):
         # Set up daemon mock
         mock_daemon = Mock()
         mock_daemon_class.return_value = mock_daemon
-        
+
         # Mock response
         mock_response = Mock()
         mock_response.read.return_value = b'[{"id": "session1"}, {"id": "session2"}]'
@@ -145,9 +145,7 @@ class TestDatacatClientGetAllSessions(unittest.TestCase):
         # Verify correct endpoint was called (daemon endpoint, not server)
         call_args = mock_urlopen.call_args
         request = call_args[0][0]
-        self.assertEqual(
-            request.get_full_url(), "http://localhost:8079/sessions"
-        )
+        self.assertEqual(request.get_full_url(), "http://localhost:8079/sessions")
 
         # Verify response parsing
         self.assertEqual(len(sessions), 2)
@@ -504,7 +502,7 @@ class TestEdgeCases(unittest.TestCase):
         # Set up daemon mock
         mock_daemon = Mock()
         mock_daemon_class.return_value = mock_daemon
-        
+
         mock_response = Mock()
         mock_response.read.return_value = b'{"status": "ok"}'
         mock_urlopen.return_value = mock_response
@@ -527,7 +525,7 @@ class TestEdgeCases(unittest.TestCase):
         # Set up daemon mock
         mock_daemon = Mock()
         mock_daemon_class.return_value = mock_daemon
-        
+
         mock_response = Mock()
         mock_response.read.return_value = b'{"status": "ok"}'
         mock_urlopen.return_value = mock_response
@@ -868,9 +866,7 @@ class TestDatacatClientWithDaemon(unittest.TestCase):
         mock_daemon = Mock()
         mock_daemon_class.return_value = mock_daemon
 
-        client = DatacatClient(
-            base_url="http://example.com:8080", daemon_port="9999"
-        )
+        client = DatacatClient(base_url="http://example.com:8080", daemon_port="9999")
 
         # Verify daemon was created and started
         mock_daemon_class.assert_called_once_with(
@@ -1103,8 +1099,13 @@ class TestSessionConvenienceMethods(unittest.TestCase):
         result = session.log_event("test_event", data={"data": "value"})
 
         mock_client.log_event.assert_called_once_with(
-            "session-123", "test_event", level=None, category=None, 
-            labels=None, message=None, data={"data": "value"}
+            "session-123",
+            "test_event",
+            level=None,
+            category=None,
+            labels=None,
+            message=None,
+            data={"data": "value"},
         )
         self.assertEqual(result, {"status": "ok"})
 
@@ -1184,7 +1185,6 @@ class TestProductVersionValidation(unittest.TestCase):
             create_session("http://localhost:9090", product="TestProduct", version=None)
         self.assertIn("Product and version are required", str(context.exception))
 
-
     @patch("datacat.urlopen")
     @patch("datacat.DaemonManager")
     def test_log_exception_with_all_fields(self, mock_daemon_class, mock_urlopen):
@@ -1244,7 +1244,7 @@ class TestProductVersionValidation(unittest.TestCase):
             category="my.component",
             labels=["tag1", "tag2"],
             message="This is a warning",
-            data={"key": "value"}
+            data={"key": "value"},
         )
 
         # Verify all fields were sent
