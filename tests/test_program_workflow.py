@@ -42,20 +42,33 @@ class TestProgramWorkflow(unittest.TestCase):
         cls.base_url = "http://localhost:9090"
         cls.shared_client = None  # type: ignore
 
-        # Build the service
+        # Build the service and daemon
+        repo_root = os.path.join(os.path.dirname(__file__), "..")
+
+        # Build server
         build_result = subprocess.run(
             ["go", "build", "-o", "datacat", "./cmd/datacat-server"],
-            cwd=os.path.join(os.path.dirname(__file__), ".."),
+            cwd=repo_root,
             capture_output=True,
         )
-
         if build_result.returncode != 0:
             raise Exception(f"Failed to build service: {build_result.stderr.decode()}")
+
+        # Build daemon (required by DatacatClient)
+        daemon_build_result = subprocess.run(
+            ["go", "build", "-o", "datacat-daemon", "./cmd/datacat-daemon"],
+            cwd=repo_root,
+            capture_output=True,
+        )
+        if daemon_build_result.returncode != 0:
+            raise Exception(
+                f"Failed to build daemon: {daemon_build_result.stderr.decode()}"
+            )
 
         # Start the service
         cls.service_process = subprocess.Popen(
             ["./datacat"],
-            cwd=os.path.join(os.path.dirname(__file__), ".."),
+            cwd=repo_root,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
@@ -239,17 +252,6 @@ class TestProgramWorkflow(unittest.TestCase):
                 self.assertIn("program", snapshot["state"])
                 self.assertEqual(snapshot["state"]["program"]["name"], "graphite")
 
-        # Print summary for manual inspection
-        print("\n=== Program Workflow Test Summary ===")
-        print(f"Total State Updates: {len(state_history)}")
-        print(f"Total Events: {len(events)}")
-        print(f"Total Metrics: {len(metrics)}")
-        print(f"\nFinal State Keys: {list(final_state.keys())}")
-        print(f"Program State: {final_state.get('program', {})}")
-        print(f"Resource State: {final_state.get('resource', {})}")
-        print(f"Scene State: {final_state.get('scene', {})}")
-        print(f"UI State: {final_state.get('ui', {})}")
-
         # End the session
         session.end()
 
@@ -321,11 +323,6 @@ class TestProgramWorkflow(unittest.TestCase):
         self.assertEqual(final_snapshot["state"]["program"]["status"], "running")
         self.assertEqual(final_snapshot["state"]["config"]["mode"], "production")
         self.assertEqual(final_snapshot["state"]["ui"]["theme"], "dark")
-
-        print("\n=== State History Timeline Test ===")
-        for i, snapshot in enumerate(history):
-            print(f"\nSnapshot {i + 1} @ {snapshot['timestamp']}:")
-            print(f"  State: {snapshot['state']}")
 
         # Clean up daemon
         if hasattr(session, "client") and hasattr(session.client, "daemon_manager"):

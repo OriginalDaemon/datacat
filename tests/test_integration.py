@@ -38,16 +38,28 @@ class TestDatacatIntegration(unittest.TestCase):
         cls.service_process = None  # type: ignore
         cls.base_url = "http://localhost:9090"
 
-        # Build the service
+        # Build the service and daemon
         repo_root = os.path.join(os.path.dirname(__file__), "..")
+
+        # Build server
         build_result = subprocess.run(
             ["go", "build", "-o", "datacat", "./cmd/datacat-server"],
             cwd=repo_root,
             capture_output=True,
         )
-
         if build_result.returncode != 0:
             raise Exception(f"Failed to build service: {build_result.stderr.decode()}")
+
+        # Build daemon (required by DatacatClient)
+        daemon_build_result = subprocess.run(
+            ["go", "build", "-o", "datacat-daemon", "./cmd/datacat-daemon"],
+            cwd=repo_root,
+            capture_output=True,
+        )
+        if daemon_build_result.returncode != 0:
+            raise Exception(
+                f"Failed to build daemon: {daemon_build_result.stderr.decode()}"
+            )
 
         # Start the service
         cls.service_process = subprocess.Popen(
