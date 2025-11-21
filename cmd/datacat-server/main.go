@@ -47,6 +47,14 @@ type Event struct {
 	Labels    []string               `json:"labels"`   // arbitrary tags for filtering
 	Message   string                 `json:"message"`  // human-readable message
 	Data      map[string]interface{} `json:"data"`     // additional structured data
+
+	// Exception-specific fields (when this is an exception event)
+	ExceptionType  string   `json:"exception_type,omitempty"`  // e.g., "ValueError", "NullPointerException"
+	ExceptionMsg   string   `json:"exception_msg,omitempty"`   // exception message
+	Stacktrace     []string `json:"stacktrace,omitempty"`      // array of stack trace lines
+	SourceFile     string   `json:"source_file,omitempty"`     // file where exception occurred
+	SourceLine     int      `json:"source_line,omitempty"`     // line number where exception occurred
+	SourceFunction string   `json:"source_function,omitempty"` // function where exception occurred
 }
 
 // Metric represents a metric logged in a session
@@ -270,6 +278,12 @@ func (s *Store) GetAllSessions() []*Session {
 // deepMerge recursively merges src into dst
 func deepMerge(dst, src map[string]interface{}) {
 	for k, v := range src {
+		// If value is nil, delete the key from destination
+		if v == nil {
+			delete(dst, k)
+			continue
+		}
+
 		if srcMap, ok := v.(map[string]interface{}); ok {
 			if dstMap, ok := dst[k].(map[string]interface{}); ok {
 				// Both are maps, merge recursively
@@ -462,7 +476,7 @@ func (s *Store) StartCleanupRoutine() {
 }
 
 // AddEvent adds an event to a session
-func (s *Store) AddEvent(id string, name string, level string, category string, labels []string, message string, data map[string]interface{}) error {
+func (s *Store) AddEvent(id string, name string, level string, category string, labels []string, message string, data map[string]interface{}, exceptionType string, exceptionMsg string, stacktrace []string, sourceFile string, sourceLine int, sourceFunction string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -476,14 +490,25 @@ func (s *Store) AddEvent(id string, name string, level string, category string, 
 		level = "info"
 	}
 
+	// For exceptions, default level to "error" if not specified
+	if exceptionType != "" && level == "info" {
+		level = "error"
+	}
+
 	event := Event{
-		Timestamp: time.Now(),
-		Name:      name,
-		Level:     level,
-		Category:  category,
-		Labels:    labels,
-		Message:   message,
-		Data:      data,
+		Timestamp:      time.Now(),
+		Name:           name,
+		Level:          level,
+		Category:       category,
+		Labels:         labels,
+		Message:        message,
+		Data:           data,
+		ExceptionType:  exceptionType,
+		ExceptionMsg:   exceptionMsg,
+		Stacktrace:     stacktrace,
+		SourceFile:     sourceFile,
+		SourceLine:     sourceLine,
+		SourceFunction: sourceFunction,
 	}
 	session.Events = append(session.Events, event)
 	session.UpdatedAt = time.Now()
@@ -643,19 +668,25 @@ func handleSessionOperations(w http.ResponseWriter, r *http.Request) {
 	// POST /api/sessions/{id}/events - Add event
 	if r.Method == "POST" && operation == "events" {
 		var eventData struct {
-			Name     string                 `json:"name"`
-			Level    string                 `json:"level"`    // optional: debug, info, warning, error, critical
-			Category string                 `json:"category"` // optional: logger name, component
-			Labels   []string               `json:"labels"`   // optional: tags for filtering
-			Message  string                 `json:"message"`  // optional: human-readable message
-			Data     map[string]interface{} `json:"data"`     // optional: additional structured data
+			Name           string                 `json:"name"`
+			Level          string                 `json:"level"`           // optional: debug, info, warning, error, critical
+			Category       string                 `json:"category"`        // optional: logger name, component
+			Labels         []string               `json:"labels"`          // optional: tags for filtering
+			Message        string                 `json:"message"`         // optional: human-readable message
+			Data           map[string]interface{} `json:"data"`            // optional: additional structured data
+			ExceptionType  string                 `json:"exception_type"`  // optional: for exceptions
+			ExceptionMsg   string                 `json:"exception_msg"`   // optional: for exceptions
+			Stacktrace     []string               `json:"stacktrace"`      // optional: for exceptions
+			SourceFile     string                 `json:"source_file"`     // optional: for exceptions
+			SourceLine     int                    `json:"source_line"`     // optional: for exceptions
+			SourceFunction string                 `json:"source_function"` // optional: for exceptions
 		}
 		if err := json.NewDecoder(r.Body).Decode(&eventData); err != nil {
 			http.Error(w, "Invalid request body", http.StatusBadRequest)
 			return
 		}
 
-		if err := store.AddEvent(sessionID, eventData.Name, eventData.Level, eventData.Category, eventData.Labels, eventData.Message, eventData.Data); err != nil {
+		if err := store.AddEvent(sessionID, eventData.Name, eventData.Level, eventData.Category, eventData.Labels, eventData.Message, eventData.Data, eventData.ExceptionType, eventData.ExceptionMsg, eventData.Stacktrace, eventData.SourceFile, eventData.SourceLine, eventData.SourceFunction); err != nil {
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}

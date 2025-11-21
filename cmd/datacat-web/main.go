@@ -1437,6 +1437,26 @@ func handleMetricData(w http.ResponseWriter, r *http.Request) {
 		filteredSessions = append(filteredSessions, session)
 	}
 
+	// Find the overall time range across all sessions
+	var globalMinTime, globalMaxTime time.Time
+	for _, session := range filteredSessions {
+		if globalMinTime.IsZero() || session.CreatedAt.Before(globalMinTime) {
+			globalMinTime = session.CreatedAt
+		}
+		if globalMaxTime.IsZero() || session.UpdatedAt.After(globalMaxTime) {
+			globalMaxTime = session.UpdatedAt
+		}
+		// Also check metric timestamps
+		for _, metric := range session.Metrics {
+			if globalMinTime.IsZero() || metric.Timestamp.Before(globalMinTime) {
+				globalMinTime = metric.Timestamp
+			}
+			if metric.Timestamp.After(globalMaxTime) {
+				globalMaxTime = metric.Timestamp
+			}
+		}
+	}
+
 	// Collect all metric values
 	var allValues []float64
 	var points []TimeseriesPoint
@@ -1580,6 +1600,8 @@ func handleMetricData(w http.ResponseWriter, r *http.Request) {
 						},
 						x: {
 							type: 'time',
+							min: %d,
+							max: %d,
 							time: {
 								displayFormats: {
 									millisecond: 'HH:mm:ss.SSS',
@@ -1610,7 +1632,7 @@ func handleMetricData(w http.ResponseWriter, r *http.Request) {
 			});
 		})();
 		</script>
-	`, chartID, avg, max, min, median, mode, stdDev, chartID, toJSON(points), metricName))
+	`, chartID, avg, max, min, median, mode, stdDev, chartID, toJSON(points), globalMinTime.UnixMilli(), globalMaxTime.UnixMilli(), metricName))
 
 	w.Write([]byte(html.String()))
 }

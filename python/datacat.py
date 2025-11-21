@@ -259,28 +259,49 @@ class DatacatClient(object):
         """
         Update the state of a session
 
+        State updates are merged with the existing state. To delete a key from
+        the state, pass None as its value.
+
         Args:
             session_id (str): Session ID
-            state (dict): State data to update
+            state (dict): State data to update. Use None values to delete keys.
 
         Returns:
             dict: Response from the server
 
         Raises:
             Exception: If the request fails
+
+        Example:
+            # Add or update keys
+            session.update_state({"user": "alice", "count": 5})
+
+            # Delete a key
+            session.update_state({"user": None})
         """
         url = "{0}/state".format(self.base_url)
         data = {"session_id": session_id, "state": state}
         return self._make_request(url, method="POST", data=data)
 
-    def log_event(self, session_id, name, data=None):
+    def log_event(self, session_id, name, level=None, category=None, labels=None, message=None, data=None,
+                  exception_type=None, exception_msg=None, stacktrace=None, source_file=None, source_line=None, source_function=None):
         """
         Log an event to a session
 
         Args:
             session_id (str): Session ID
             name (str): Event name
+            level (str): Optional event level (debug, info, warning, error, critical)
+            category (str): Optional category (e.g., logger name, component name)
+            labels (list): Optional list of labels/tags
+            message (str): Optional human-readable message
             data (dict): Optional event data
+            exception_type (str): Optional exception type (for exception events)
+            exception_msg (str): Optional exception message (for exception events)
+            stacktrace (list): Optional stack trace lines (for exception events)
+            source_file (str): Optional source file (for exception events)
+            source_line (int): Optional source line (for exception events)
+            source_function (str): Optional source function (for exception events)
 
         Returns:
             dict: Response from the server
@@ -292,7 +313,34 @@ class DatacatClient(object):
             data = {}
 
         url = "{0}/event".format(self.base_url)
-        request_data = {"session_id": session_id, "name": name, "data": data}
+        request_data = {
+            "session_id": session_id,
+            "name": name,
+            "data": data
+        }
+
+        # Add optional fields if provided
+        if level:
+            request_data["level"] = level
+        if category:
+            request_data["category"] = category
+        if labels:
+            request_data["labels"] = labels
+        if message:
+            request_data["message"] = message
+        if exception_type:
+            request_data["exception_type"] = exception_type
+        if exception_msg:
+            request_data["exception_msg"] = exception_msg
+        if stacktrace:
+            request_data["stacktrace"] = stacktrace
+        if source_file:
+            request_data["source_file"] = source_file
+        if source_line is not None:
+            request_data["source_line"] = source_line
+        if source_function:
+            request_data["source_function"] = source_function
+
         return self._make_request(url, method="POST", data=request_data)
 
     def log_metric(self, session_id, name, value, tags=None):
@@ -358,16 +406,42 @@ class DatacatClient(object):
 
         exc_type, exc_value, exc_traceback = exc_info
 
-        exception_data = {
-            "type": exc_type.__name__ if exc_type else "Unknown",
-            "message": str(exc_value) if exc_value else "",
-            "traceback": traceback.format_exception(exc_type, exc_value, exc_traceback),
-        }
+        exception_type = exc_type.__name__ if exc_type else "Unknown"
+        exception_msg = str(exc_value) if exc_value else ""
 
-        if extra_data:
-            exception_data.update(extra_data)
+        # Format stack trace as list of strings
+        stacktrace_lines = traceback.format_exception(exc_type, exc_value, exc_traceback)
 
-        return self.log_event(session_id, "exception", exception_data)
+        # Extract source file, line, and function from the innermost frame
+        source_file = None
+        source_line = None
+        source_function = None
+
+        if exc_traceback:
+            # Get the innermost frame (where the exception occurred)
+            tb = exc_traceback
+            while tb.tb_next:
+                tb = tb.tb_next
+            frame = tb.tb_frame
+            source_file = frame.f_code.co_filename
+            source_line = tb.tb_lineno
+            source_function = frame.f_code.co_name
+
+        return self.log_event(
+            session_id=session_id,
+            name="exception",
+            level="error",
+            category="exception",
+            labels=["exception", exception_type],
+            message=exception_msg,
+            data=extra_data if extra_data else {},
+            exception_type=exception_type,
+            exception_msg=exception_msg,
+            stacktrace=stacktrace_lines,
+            source_file=source_file,
+            source_line=source_line,
+            source_function=source_function
+        )
 
     def get_all_sessions(self):
         """
@@ -543,6 +617,106 @@ class HeartbeatMonitor(object):
         return self._running and self._thread and self._thread.is_alive()
 
 
+# Python logging integration
+try:
+    import logging
+
+    class DatacatHandler(logging.Handler):
+        """
+        A logging.Handler that sends log records to datacat
+
+        Example usage:
+            import logging
+            from datacat import DatacatHandler
+
+            session = client.create_session("MyApp", "1.0.0")
+            handler = DatacatHandler(session)
+            logger = logging.getLogger()
+            logger.addHandler(handler)
+            logger.setLevel(logging.INFO)
+
+            logger.info("Application started")
+            logger.error("Something went wrong", exc_info=True)
+        """
+
+        def __init__(self, session, include_exceptions=True):
+            """
+            Initialize the handler
+
+            Args:
+                session (Session): The datacat session to log to
+                include_exceptions (bool): Whether to capture exception info (default: True)
+            """
+            logging.Handler.__init__(self)
+            self.session = session
+            self.include_exceptions = include_exceptions
+
+            # Map Python logging levels to datacat levels
+            self.level_mapping = {
+                logging.DEBUG: "debug",
+                logging.INFO: "info",
+                logging.WARNING: "warning",
+                logging.ERROR: "error",
+                logging.CRITICAL: "critical",
+            }
+
+        def emit(self, record):
+            """
+            Emit a log record to datacat
+
+            Args:
+                record (logging.LogRecord): The log record to emit
+            """
+            try:
+                # Map logging level to datacat level
+                level = self.level_mapping.get(record.levelno, "info")
+
+                # Build the message
+                message = self.format(record)
+
+                # Build event name from logger name
+                event_name = "log.{0}".format(record.name)
+
+                # Build labels
+                labels = [record.levelname.lower(), record.name]
+                if record.funcName:
+                    labels.append(record.funcName)
+
+                # Build data dict
+                data = {
+                    "logger": record.name,
+                    "level_name": record.levelname,
+                    "pathname": record.pathname,
+                    "lineno": record.lineno,
+                    "funcName": record.funcName,
+                    "module": record.module,
+                }
+
+                # If there's exception info and we're including it
+                if self.include_exceptions and record.exc_info:
+                    self.session.log_exception(exc_info=record.exc_info, extra_data=data)
+                else:
+                    # Regular event log
+                    self.session.log_event(
+                        name=event_name,
+                        level=level,
+                        category=record.name,
+                        labels=labels,
+                        message=message,
+                        data=data
+                    )
+            except Exception:
+                # Don't let logging failures crash the application
+                self.handleError(record)
+
+    # Export the handler
+    __all__ = ['DatacatClient', 'Session', 'HeartbeatMonitor', 'DatacatHandler']
+
+except ImportError:
+    # logging module not available (shouldn't happen in modern Python)
+    __all__ = ['DatacatClient', 'Session', 'HeartbeatMonitor']
+
+
 # Convenience class for session management
 class Session(object):
     """Represents a datacat session with convenience methods"""
@@ -563,9 +737,10 @@ class Session(object):
         """Update session state"""
         return self.client.update_state(self.session_id, state)
 
-    def log_event(self, name, data=None):
+    def log_event(self, name, level=None, category=None, labels=None, message=None, data=None):
         """Log an event"""
-        return self.client.log_event(self.session_id, name, data)
+        return self.client.log_event(self.session_id, name, level=level, category=category,
+                                     labels=labels, message=message, data=data)
 
     def log_metric(self, name, value, tags=None):
         """Log a metric"""

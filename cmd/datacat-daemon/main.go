@@ -36,8 +36,18 @@ type SessionBuffer struct {
 
 // EventData represents an event to be logged
 type EventData struct {
-	Name string                 `json:"name"`
-	Data map[string]interface{} `json:"data"`
+	Name           string                 `json:"name"`
+	Level          string                 `json:"level"`
+	Category       string                 `json:"category"`
+	Labels         []string               `json:"labels"`
+	Message        string                 `json:"message"`
+	Data           map[string]interface{} `json:"data"`
+	ExceptionType  string                 `json:"exception_type,omitempty"`
+	ExceptionMsg   string                 `json:"exception_msg,omitempty"`
+	Stacktrace     []string               `json:"stacktrace,omitempty"`
+	SourceFile     string                 `json:"source_file,omitempty"`
+	SourceLine     int                    `json:"source_line,omitempty"`
+	SourceFunction string                 `json:"source_function,omitempty"`
 }
 
 // MetricData represents a metric to be logged
@@ -274,9 +284,19 @@ func (d *Daemon) handleEvent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		SessionID string                 `json:"session_id"`
-		Name      string                 `json:"name"`
-		Data      map[string]interface{} `json:"data"`
+		SessionID      string                 `json:"session_id"`
+		Name           string                 `json:"name"`
+		Level          string                 `json:"level"`
+		Category       string                 `json:"category"`
+		Labels         []string               `json:"labels"`
+		Message        string                 `json:"message"`
+		Data           map[string]interface{} `json:"data"`
+		ExceptionType  string                 `json:"exception_type"`
+		ExceptionMsg   string                 `json:"exception_msg"`
+		Stacktrace     []string               `json:"stacktrace"`
+		SourceFile     string                 `json:"source_file"`
+		SourceLine     int                    `json:"source_line"`
+		SourceFunction string                 `json:"source_function"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -295,8 +315,18 @@ func (d *Daemon) handleEvent(w http.ResponseWriter, r *http.Request) {
 
 	buffer.mu.Lock()
 	buffer.Events = append(buffer.Events, EventData{
-		Name: req.Name,
-		Data: req.Data,
+		Name:           req.Name,
+		Level:          req.Level,
+		Category:       req.Category,
+		Labels:         req.Labels,
+		Message:        req.Message,
+		Data:           req.Data,
+		ExceptionType:  req.ExceptionType,
+		ExceptionMsg:   req.ExceptionMsg,
+		Stacktrace:     req.Stacktrace,
+		SourceFile:     req.SourceFile,
+		SourceLine:     req.SourceLine,
+		SourceFunction: req.SourceFunction,
 	})
 	buffer.mu.Unlock()
 
@@ -379,8 +409,12 @@ func (d *Daemon) handleHeartbeat(w http.ResponseWriter, r *http.Request) {
 	if buffer.HangLogged {
 		// Application recovered
 		buffer.Events = append(buffer.Events, EventData{
-			Name: "application_recovered",
-			Data: map[string]interface{}{},
+			Name:     "application_recovered",
+			Level:    "info",
+			Category: "datacat.daemon",
+			Labels:   []string{"heartbeat", "recovery"},
+			Message:  "Application heartbeat resumed after hang",
+			Data:     map[string]interface{}{},
 		})
 		buffer.HangLogged = false
 	}
@@ -722,9 +756,14 @@ func (d *Daemon) checkHeartbeat(sessionID string) {
 	if time.Since(buffer.LastHeartbeat) > timeout && !buffer.HangLogged {
 		// Application appears hung
 		buffer.Events = append(buffer.Events, EventData{
-			Name: "application_appears_hung",
+			Name:     "application_appears_hung",
+			Level:    "error",
+			Category: "datacat.daemon",
+			Labels:   []string{"heartbeat", "hung"},
+			Message:  fmt.Sprintf("Application has not sent heartbeat for %.0f seconds", time.Since(buffer.LastHeartbeat).Seconds()),
 			Data: map[string]interface{}{
-				"last_heartbeat": buffer.LastHeartbeat.Format(time.RFC3339),
+				"last_heartbeat":          buffer.LastHeartbeat.Format(time.RFC3339),
+				"seconds_since_heartbeat": int(time.Since(buffer.LastHeartbeat).Seconds()),
 			},
 		})
 		buffer.HangLogged = true
@@ -855,7 +894,11 @@ func (d *Daemon) checkParentProcess(sessionID string) {
 	if !isProcessRunning(buffer.ParentPID) {
 		// Parent process has crashed or exited abnormally
 		buffer.Events = append(buffer.Events, EventData{
-			Name: "parent_process_crashed",
+			Name:     "parent_process_crashed",
+			Level:    "critical",
+			Category: "datacat.daemon",
+			Labels:   []string{"crash", "process"},
+			Message:  fmt.Sprintf("Parent process (PID %d) is no longer running", buffer.ParentPID),
 			Data: map[string]interface{}{
 				"parent_pid": buffer.ParentPID,
 			},

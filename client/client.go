@@ -154,9 +154,19 @@ type StateSnapshot struct {
 
 // Event represents an event in a session
 type Event struct {
-	Timestamp time.Time              `json:"timestamp"`
-	Name      string                 `json:"name"`
-	Data      map[string]interface{} `json:"data"`
+	Timestamp      time.Time              `json:"timestamp"`
+	Name           string                 `json:"name"`
+	Level          string                 `json:"level"`
+	Category       string                 `json:"category"`
+	Labels         []string               `json:"labels"`
+	Message        string                 `json:"message"`
+	Data           map[string]interface{} `json:"data"`
+	ExceptionType  string                 `json:"exception_type,omitempty"`
+	ExceptionMsg   string                 `json:"exception_msg,omitempty"`
+	Stacktrace     []string               `json:"stacktrace,omitempty"`
+	SourceFile     string                 `json:"source_file,omitempty"`
+	SourceLine     int                    `json:"source_line,omitempty"`
+	SourceFunction string                 `json:"source_function,omitempty"`
 }
 
 // Metric represents a metric in a session

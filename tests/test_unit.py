@@ -1140,5 +1140,104 @@ class TestProductVersionValidation(unittest.TestCase):
         self.assertIn("Product and version are required", str(context.exception))
 
 
+    @patch("datacat.urlopen")
+    @patch("datacat.DaemonManager")
+    def test_log_exception_with_all_fields(self, mock_daemon_class, mock_urlopen):
+        """Test log_exception sends all exception-specific fields"""
+        mock_daemon = Mock()
+        mock_daemon_class.return_value = mock_daemon
+
+        mock_response = Mock()
+        mock_response.read.return_value = b'{"status": "ok"}'
+        mock_urlopen.return_value = mock_response
+
+        client = DatacatClient()
+
+        # Create a fake exception
+        try:
+            raise ValueError("test error")
+        except ValueError:
+            exc_info = sys.exc_info()
+            client.log_exception("session-123", exc_info=exc_info)
+
+        # Verify correct endpoint and format
+        call_args = mock_urlopen.call_args
+        request = call_args[0][0]
+        self.assertTrue(request.get_full_url().endswith("/event"))
+
+        sent_data = json.loads(request.data.decode("utf-8"))
+        self.assertEqual(sent_data["session_id"], "session-123")
+        self.assertEqual(sent_data["name"], "exception")
+        self.assertEqual(sent_data["level"], "error")
+        self.assertEqual(sent_data["category"], "exception")
+        self.assertIn("exception", sent_data["labels"])
+        self.assertIn("ValueError", sent_data["labels"])
+        self.assertEqual(sent_data["exception_type"], "ValueError")
+        self.assertEqual(sent_data["exception_msg"], "test error")
+        self.assertIsInstance(sent_data["stacktrace"], list)
+        self.assertTrue(len(sent_data["stacktrace"]) > 0)
+        self.assertIsNotNone(sent_data["source_file"])
+        self.assertIsNotNone(sent_data["source_line"])
+        self.assertIsNotNone(sent_data["source_function"])
+
+    @patch("datacat.urlopen")
+    @patch("datacat.DaemonManager")
+    def test_log_event_with_all_optional_fields(self, mock_daemon_class, mock_urlopen):
+        """Test log_event with level, category, labels, and message"""
+        mock_daemon = Mock()
+        mock_daemon_class.return_value = mock_daemon
+
+        mock_response = Mock()
+        mock_response.read.return_value = b'{"status": "ok"}'
+        mock_urlopen.return_value = mock_response
+
+        client = DatacatClient()
+        client.log_event(
+            "session-123",
+            "custom_event",
+            level="warning",
+            category="my.component",
+            labels=["tag1", "tag2"],
+            message="This is a warning",
+            data={"key": "value"}
+        )
+
+        # Verify all fields were sent
+        call_args = mock_urlopen.call_args
+        request = call_args[0][0]
+        sent_data = json.loads(request.data.decode("utf-8"))
+
+        self.assertEqual(sent_data["name"], "custom_event")
+        self.assertEqual(sent_data["level"], "warning")
+        self.assertEqual(sent_data["category"], "my.component")
+        self.assertEqual(sent_data["labels"], ["tag1", "tag2"])
+        self.assertEqual(sent_data["message"], "This is a warning")
+        self.assertEqual(sent_data["data"], {"key": "value"})
+
+    @patch("datacat.urlopen")
+    @patch("datacat.DaemonManager")
+    def test_update_state_with_null_deletes_keys(self, mock_daemon_class, mock_urlopen):
+        """Test that passing None as a value deletes state keys"""
+        mock_daemon = Mock()
+        mock_daemon_class.return_value = mock_daemon
+
+        mock_response = Mock()
+        mock_response.read.return_value = b'{"status": "ok"}'
+        mock_urlopen.return_value = mock_response
+
+        client = DatacatClient()
+
+        # Update state with None value to delete key
+        client.update_state("session-123", {"user": None, "count": 10})
+
+        # Verify None was sent (will be serialized as null in JSON)
+        call_args = mock_urlopen.call_args
+        request = call_args[0][0]
+        sent_data = json.loads(request.data.decode("utf-8"))
+
+        self.assertIsNone(sent_data["state"]["user"])
+        self.assertEqual(sent_data["state"]["count"], 10)
+
+
 if __name__ == "__main__":
     unittest.main()
