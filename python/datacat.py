@@ -58,9 +58,14 @@ class DaemonManager(object):
 
         # Check common locations
         possible_paths = [
-            binary_name,  # In PATH
             "./" + binary_name,  # Current directory
+            "../" + binary_name,  # Parent directory (when running from tests/)
             "./cmd/datacat-daemon/" + binary_name,  # Development
+            os.path.join(
+                os.path.dirname(__file__),
+                "..",
+                binary_name,
+            ),  # Repo root relative to python/
             os.path.join(
                 os.path.dirname(__file__),
                 "..",
@@ -69,17 +74,23 @@ class DaemonManager(object):
                 binary_name,
             ),
             "./bin/" + binary_name,  # Built binaries
+            "../bin/" + binary_name,  # Built binaries (from tests/)
             os.path.join(
                 os.path.dirname(__file__),
                 "..",
                 "bin",
                 binary_name,
             ),
+            binary_name,  # In PATH (check last since we prefer explicit paths)
         ]
 
         for path in possible_paths:
-            if os.path.exists(path) or self._is_in_path(path):
+            if os.path.exists(path):
                 return path
+            
+        # Check if it's in PATH
+        if self._is_in_path(binary_name):
+            return binary_name
 
         # Return default and let it fail if not found
         return binary_name
@@ -130,7 +141,9 @@ class DaemonManager(object):
 
             # Check if daemon is running
             if self.process.poll() is not None:
-                raise Exception("Daemon failed to start")
+                stderr_output = self.process.stderr.read().decode() if self.process.stderr else "No stderr"
+                stdout_output = self.process.stdout.read().decode() if self.process.stdout else "No stdout"
+                raise Exception(f"Daemon failed to start. Stderr: {stderr_output}, Stdout: {stdout_output}")
 
             # Register cleanup on exit
             atexit.register(self.stop)

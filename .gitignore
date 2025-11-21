@@ -72,3 +72,10 @@ screenshots/
 
 # Temporary files
 tmp/
+
+# Jekyll and documentation
+docs/_site/
+docs/.jekyll-cache/
+docs/.jekyll-metadata
+docs/Gemfile.lock
+.sass-cache/

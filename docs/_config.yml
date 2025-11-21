@@ -1,0 +1,84 @@
+# Site settings
+title: DataCat Documentation
+description: Complete data logging system with REST API, client libraries, and web UI
+baseurl: "/datacat"
+url: "https://OriginalDaemon.github.io"
+
+# Theme settings
+theme: just-the-docs
+color_scheme: dark
+
+# Logo and favicon
+logo: "/assets/images/logo.png"
+
+# Navigation
+nav_enabled: true
+nav_sort: case_insensitive
+
+# Search
+search_enabled: true
+search:
+  heading_level: 2
+  previews: 3
+  preview_words_before: 5
+  preview_words_after: 10
+  tokenizer_separator: /[\s/]+/
+  rel_url: true
+  button: false
+
+# Heading anchors
+heading_anchors: true
+
+# Aux links
+aux_links:
+  "DataCat on GitHub":
+    - "https://github.com/OriginalDaemon/datacat"
+
+# Footer content
+footer_content: "Copyright &copy; 2024 DataCat. Distributed under the MIT License."
+
+# Back to top link
+back_to_top: true
+back_to_top_text: "Back to top"
+
+# Collections for organizing content
+collections:
+  guides:
+    permalink: "/:collection/:path/"
+    output: true
+  api:
+    permalink: "/:collection/:path/"
+    output: true
+
+# Default frontmatter
+defaults:
+  - scope:
+      path: ""
+    values:
+      layout: default
+  - scope:
+      path: ""
+      type: "guides"
+    values:
+      layout: default
+      nav_order: 2
+  - scope:
+      path: ""
+      type: "api"
+    values:
+      layout: default
+      nav_order: 3
+
+# Plugins
+plugins:
+  - jekyll-seo-tag
+  - jekyll-github-metadata
+  - jekyll-include-cache
+
+# Exclude from processing
+exclude:
+  - node_modules/
+  - vendor/
+  - Gemfile
+  - Gemfile.lock
+  - README.md

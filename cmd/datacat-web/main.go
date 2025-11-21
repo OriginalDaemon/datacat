@@ -1632,7 +1632,7 @@ func handleMetricData(w http.ResponseWriter, r *http.Request) {
 			});
 		})();
 		</script>
-	`, chartID, avg, max, min, median, mode, stdDev, chartID, toJSON(points), globalMinTime.UnixMilli(), globalMaxTime.UnixMilli(), metricName))
+	`, chartID, avg, max, min, median, mode, stdDev, chartID, toJSON(points), metricName, globalMinTime.UnixMilli(), globalMaxTime.UnixMilli()))
 
 	w.Write([]byte(html.String()))
 }
