@@ -106,6 +106,7 @@ func (s *Store) Close() error {
 func (s *Store) saveSessionToDB(session *Session) error {
 	data, err := json.Marshal(session)
 	if err != nil {
+		log.Printf("ERROR: Failed to marshal session %s: %v", session.ID, err)
 		return fmt.Errorf("failed to marshal session: %v", err)
 	}
 
@@ -114,6 +115,7 @@ func (s *Store) saveSessionToDB(session *Session) error {
 	})
 
 	if err != nil {
+		log.Printf("ERROR: Failed to save session %s to database: %v", session.ID, err)
 		return fmt.Errorf("failed to save session to db: %v", err)
 	}
 
@@ -210,8 +212,13 @@ func (s *Store) CreateSession(product, version, machineID, hostname string) *Ses
 
 	s.sessions[session.ID] = session
 
-	// Save to database asynchronously
-	go s.saveSessionToDB(session)
+	// Save to database asynchronously (with error logging)
+	go func() {
+		if err := s.saveSessionToDB(session); err != nil {
+			// Error is already logged in saveSessionToDB
+			// Session is still in memory, so next operation will trigger another save attempt
+		}
+	}()
 
 	return session
 }
@@ -351,8 +358,12 @@ func (s *Store) UpdateState(id string, state map[string]interface{}) error {
 	}
 	session.StateHistory = append(session.StateHistory, snapshot)
 
-	// Save to database asynchronously
-	go s.saveSessionToDB(session)
+	// Save to database asynchronously (with error logging)
+	go func() {
+		if err := s.saveSessionToDB(session); err != nil {
+			// Error is already logged in saveSessionToDB
+		}
+	}()
 
 	return nil
 }
@@ -374,8 +385,12 @@ func (s *Store) UpdateHeartbeat(id string) error {
 	// Update active status based on heartbeat
 	s.updateActiveStatus(session)
 
-	// Save to database asynchronously
-	go s.saveSessionToDB(session)
+	// Save to database asynchronously (with error logging)
+	go func() {
+		if err := s.saveSessionToDB(session); err != nil {
+			// Error is already logged in saveSessionToDB
+		}
+	}()
 
 	return nil
 }
@@ -432,8 +447,12 @@ func (s *Store) EndSession(id string) error {
 	session.Active = false
 	session.UpdatedAt = now
 
-	// Save to database asynchronously
-	go s.saveSessionToDB(session)
+	// Save to database asynchronously (with error logging)
+	go func() {
+		if err := s.saveSessionToDB(session); err != nil {
+			// Error is already logged in saveSessionToDB
+		}
+	}()
 
 	return nil
 }
@@ -538,8 +557,12 @@ func (s *Store) AddEvent(id string, name string, level string, category string, 
 		log.Printf("Session %s recovered from hang", id)
 	}
 
-	// Save to database asynchronously
-	go s.saveSessionToDB(session)
+	// Save to database asynchronously (with error logging)
+	go func() {
+		if err := s.saveSessionToDB(session); err != nil {
+			// Error is already logged in saveSessionToDB
+		}
+	}()
 
 	return nil
 }
@@ -563,8 +586,12 @@ func (s *Store) AddMetric(id string, name string, value float64, tags []string) 
 	session.Metrics = append(session.Metrics, metric)
 	session.UpdatedAt = time.Now()
 
-	// Save to database asynchronously
-	go s.saveSessionToDB(session)
+	// Save to database asynchronously (with error logging)
+	go func() {
+		if err := s.saveSessionToDB(session); err != nil {
+			// Error is already logged in saveSessionToDB
+		}
+	}()
 
 	return nil
 }

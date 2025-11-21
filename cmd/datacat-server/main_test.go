@@ -925,8 +925,11 @@ func TestStartCleanupRoutine(t *testing.T) {
 }
 
 func TestNewStoreError(t *testing.T) {
-	// Try to create store with invalid path
-	_, err := NewStore("/invalid/path/that/really/does/not/exist/anywhere", DefaultConfig())
+	// Try to create store with invalid path (use a path with invalid characters)
+	// On Windows, paths with certain characters like * are invalid
+	// On Unix, we use a path that requires root permissions
+	invalidPath := "\x00invalid\x00path" // Null bytes are invalid in paths on all systems
+	_, err := NewStore(invalidPath, DefaultConfig())
 	if err == nil {
 		t.Error("Expected error when creating store with invalid path")
 	}
