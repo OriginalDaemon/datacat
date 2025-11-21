@@ -353,8 +353,15 @@
                             <option value="">All Statuses</option>
                             <option value="active" {{if eq .StatusFilter "active"}}selected{{end}}>Active</option>
                             <option value="ended" {{if eq .StatusFilter "ended"}}selected{{end}}>Ended</option>
+                            <option value="suspended" {{if eq .StatusFilter "suspended"}}selected{{end}}>Suspended</option>
                             <option value="crashed" {{if eq .StatusFilter "crashed"}}selected{{end}}>Crashed</option>
-                            <option value="hung" {{if eq .StatusFilter "hung"}}selected{{end}}>Hung</option>
+                            <optgroup label="Hung Sessions">
+                                <option value="hung" {{if eq .StatusFilter "hung"}}selected{{end}}>Currently Hung</option>
+                                <option value="ever_hung" {{if eq .StatusFilter "ever_hung"}}selected{{end}}>Ever Hung (Any)</option>
+                                <option value="hung_recovered" {{if eq .StatusFilter "hung_recovered"}}selected{{end}}>Hung & Recovered</option>
+                                <option value="hung_ended" {{if eq .StatusFilter "hung_ended"}}selected{{end}}>Hung When Ended</option>
+                                <option value="hung_crashed" {{if eq .StatusFilter "hung_crashed"}}selected{{end}}>Hung When Crashed</option>
+                            </optgroup>
                         </select>
                     </div>
 

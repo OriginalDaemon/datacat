@@ -137,6 +137,7 @@ type Session struct {
 	Active        bool                   `json:"active"`
 	Suspended     bool                   `json:"suspended"`
 	Crashed       bool                   `json:"crashed"`
+	Hung          bool                   `json:"hung"`
 	MachineID     string                 `json:"machine_id,omitempty"`
 	Hostname      string                 `json:"hostname,omitempty"`
 	State         map[string]interface{} `json:"state"`

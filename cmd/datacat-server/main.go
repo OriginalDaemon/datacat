@@ -23,6 +23,7 @@ type Session struct {
 	Active        bool                   `json:"active"`
 	Suspended     bool                   `json:"suspended"`            // True when heartbeats stopped but likely asleep/hibernating
 	Crashed       bool                   `json:"crashed"`              // True when machine came back but session didn't resume
+	Hung          bool                   `json:"hung"`                 // True if session ever had a hang event
 	MachineID     string                 `json:"machine_id,omitempty"` // Unique machine identifier
 	Hostname      string                 `json:"hostname,omitempty"`   // Machine hostname for display
 	State         map[string]interface{} `json:"state"`
@@ -473,6 +474,18 @@ func (s *Store) AddEvent(id string, name string, data map[string]interface{}) er
 	}
 	session.Events = append(session.Events, event)
 	session.UpdatedAt = time.Now()
+
+	// Mark session as hung if we receive a hang event
+	if name == "application_appears_hung" {
+		session.Hung = true
+		log.Printf("Session %s marked as hung", id)
+	}
+
+	// Clear hung flag if application recovers
+	if name == "application_recovered" {
+		session.Hung = false
+		log.Printf("Session %s recovered from hang", id)
+	}
 
 	// Save to database asynchronously
 	go s.saveSessionToDB(session)

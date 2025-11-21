@@ -480,19 +480,79 @@ func matchesFilters(session *client.Session, product, version, statusFilter, sta
 				return false
 			}
 		case "crashed":
-			if !session.Active {
+			if !session.Crashed {
 				return false
 			}
-			status, _ := session.State["status"].(string)
-			if status != "crashed" {
+		case "suspended":
+			if !session.Suspended {
 				return false
 			}
 		case "hung":
-			if !session.Active {
+			// Sessions currently hung (Hung=true)
+			if !session.Hung {
 				return false
 			}
-			status, _ := session.State["status"].(string)
-			if status != "hung" {
+		case "ever_hung":
+			// Sessions that were hung at any point (check events)
+			hasHangEvent := false
+			for _, event := range session.Events {
+				if event.Name == "application_appears_hung" {
+					hasHangEvent = true
+					break
+				}
+			}
+			if !hasHangEvent {
+				return false
+			}
+		case "hung_crashed":
+			// Sessions that were hung when they crashed
+			if !session.Crashed {
+				return false
+			}
+			// Check if there was a hang event before crash
+			hasHangEvent := false
+			for _, event := range session.Events {
+				if event.Name == "application_appears_hung" {
+					hasHangEvent = true
+					break
+				}
+			}
+			if !hasHangEvent {
+				return false
+			}
+		case "hung_ended":
+			// Sessions that were hung when they ended normally
+			if session.Active || session.Crashed || session.EndedAt == nil {
+				return false
+			}
+			// Check if there was a hang event
+			hasHangEvent := false
+			for _, event := range session.Events {
+				if event.Name == "application_appears_hung" {
+					hasHangEvent = true
+					break
+				}
+			}
+			if !hasHangEvent {
+				return false
+			}
+		case "hung_recovered":
+			// Sessions that had a hang event and recovered (Hung=false after being true)
+			if session.Hung {
+				return false // Still hung, not recovered
+			}
+			// Check for both hang and recovery events
+			hasHangEvent := false
+			hasRecoveryEvent := false
+			for _, event := range session.Events {
+				if event.Name == "application_appears_hung" {
+					hasHangEvent = true
+				}
+				if event.Name == "application_recovered" {
+					hasRecoveryEvent = true
+				}
+			}
+			if !hasHangEvent || !hasRecoveryEvent {
 				return false
 			}
 		}
@@ -1669,6 +1729,11 @@ func handleSessionInfo(w http.ResponseWriter, r *http.Request) {
 		statusBadge = `<span class="badge badge-crashed">Crashed</span>`
 	} else if session.Suspended {
 		statusBadge = `<span class="badge badge-suspended">Suspended</span>`
+	}
+
+	// Add hung badge if applicable
+	if session.Hung {
+		statusBadge += ` <span class="badge badge-hung" style="margin-left: 8px;">Hung</span>`
 	}
 
 	html.WriteString(`<tr>

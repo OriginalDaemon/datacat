@@ -103,6 +103,8 @@
           <span class="badge badge-suspended">Suspended</span>
           {{else}}
           <span class="badge badge-inactive">Ended</span>
+          {{end}} {{if .Session.Hung}}
+          <span class="badge badge-hung" style="margin-left: 8px">Hung</span>
           {{end}}
         </td>
       </tr>
