@@ -13,6 +13,13 @@ import (
 	"github.com/google/uuid"
 )
 
+const (
+	eventHangDetected   = "application_appears_hung"
+	eventHangRecovered  = "application_recovered"
+	defaultEventLevel   = "info"
+	exceptionEventLevel = "error"
+)
+
 // Session represents a registered session
 type Session struct {
 	ID            string                 `json:"id"`
@@ -507,54 +514,71 @@ func (s *Store) StartCleanupRoutine() {
 	}()
 }
 
+// EventInput represents the input for adding an event
+type EventInput struct {
+	Name           string                 `json:"name"`
+	Level          string                 `json:"level"`
+	Category       string                 `json:"category"`
+	Labels         []string               `json:"labels"`
+	Message        string                 `json:"message"`
+	Data           map[string]interface{} `json:"data"`
+	ExceptionType  string                 `json:"exception_type,omitempty"`
+	ExceptionMsg   string                 `json:"exception_msg,omitempty"`
+	Stacktrace     []string               `json:"stacktrace,omitempty"`
+	SourceFile     string                 `json:"source_file,omitempty"`
+	SourceLine     int                    `json:"source_line,omitempty"`
+	SourceFunction string                 `json:"source_function,omitempty"`
+}
+
 // AddEvent adds an event to a session
-func (s *Store) AddEvent(id string, name string, level string, category string, labels []string, message string, data map[string]interface{}, exceptionType string, exceptionMsg string, stacktrace []string, sourceFile string, sourceLine int, sourceFunction string) error {
+func (s *Store) AddEvent(sessionID string, input EventInput) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	session, ok := s.sessions[id]
+	session, ok := s.sessions[sessionID]
 	if !ok {
 		return fmt.Errorf("session not found")
 	}
 
 	// Default level to "info" if not specified
+	level := input.Level
 	if level == "" {
-		level = "info"
+		level = defaultEventLevel
 	}
 
 	// For exceptions, default level to "error" if not specified
-	if exceptionType != "" && level == "info" {
-		level = "error"
+	if input.ExceptionType != "" && level == defaultEventLevel {
+		level = exceptionEventLevel
 	}
 
 	event := Event{
 		Timestamp:      time.Now(),
-		Name:           name,
+		Name:           input.Name,
 		Level:          level,
-		Category:       category,
-		Labels:         labels,
-		Message:        message,
-		Data:           data,
-		ExceptionType:  exceptionType,
-		ExceptionMsg:   exceptionMsg,
-		Stacktrace:     stacktrace,
-		SourceFile:     sourceFile,
-		SourceLine:     sourceLine,
-		SourceFunction: sourceFunction,
+		Category:       input.Category,
+		Labels:         input.Labels,
+		Message:        input.Message,
+		Data:           input.Data,
+		ExceptionType:  input.ExceptionType,
+		ExceptionMsg:   input.ExceptionMsg,
+		Stacktrace:     input.Stacktrace,
+		SourceFile:     input.SourceFile,
+		SourceLine:     input.SourceLine,
+		SourceFunction: input.SourceFunction,
 	}
 	session.Events = append(session.Events, event)
 	session.UpdatedAt = time.Now()
 
 	// Mark session as hung if we receive a hang event
-	if name == "application_appears_hung" {
+	if input.Name == eventHangDetected {
 		session.Hung = true
-		log.Printf("Session %s marked as hung", id)
+		log.Printf("Session %s marked as hung", sessionID)
 	}
 
 	// Clear hung flag if application recovers
-	if name == "application_recovered" {
+	if input.Name == eventHangRecovered {
 		session.Hung = false
-		log.Printf("Session %s recovered from hang", id)
+		log.Printf("Session %s recovered from hang", sessionID)
 	}
 
 	// Save to database asynchronously (with error logging)
@@ -567,21 +591,28 @@ func (s *Store) AddEvent(id string, name string, level string, category string, 
 	return nil
 }
 
+// MetricInput represents the input for adding a metric
+type MetricInput struct {
+	Name  string   `json:"name"`
+	Value float64  `json:"value"`
+	Tags  []string `json:"tags,omitempty"`
+}
+
 // AddMetric adds a metric to a session
-func (s *Store) AddMetric(id string, name string, value float64, tags []string) error {
+func (s *Store) AddMetric(sessionID string, input MetricInput) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	session, ok := s.sessions[id]
+	session, ok := s.sessions[sessionID]
 	if !ok {
 		return fmt.Errorf("session not found")
 	}
 
 	metric := Metric{
 		Timestamp: time.Now(),
-		Name:      name,
-		Value:     value,
-		Tags:      tags,
+		Name:      input.Name,
+		Value:     input.Value,
+		Tags:      input.Tags,
 	}
 	session.Metrics = append(session.Metrics, metric)
 	session.UpdatedAt = time.Now()
@@ -707,26 +738,13 @@ func handleSessionOperations(w http.ResponseWriter, r *http.Request) {
 
 	// POST /api/sessions/{id}/events - Add event
 	if r.Method == "POST" && operation == "events" {
-		var eventData struct {
-			Name           string                 `json:"name"`
-			Level          string                 `json:"level"`           // optional: debug, info, warning, error, critical
-			Category       string                 `json:"category"`        // optional: logger name, component
-			Labels         []string               `json:"labels"`          // optional: tags for filtering
-			Message        string                 `json:"message"`         // optional: human-readable message
-			Data           map[string]interface{} `json:"data"`            // optional: additional structured data
-			ExceptionType  string                 `json:"exception_type"`  // optional: for exceptions
-			ExceptionMsg   string                 `json:"exception_msg"`   // optional: for exceptions
-			Stacktrace     []string               `json:"stacktrace"`      // optional: for exceptions
-			SourceFile     string                 `json:"source_file"`     // optional: for exceptions
-			SourceLine     int                    `json:"source_line"`     // optional: for exceptions
-			SourceFunction string                 `json:"source_function"` // optional: for exceptions
-		}
+		var eventData EventInput
 		if err := json.NewDecoder(r.Body).Decode(&eventData); err != nil {
 			http.Error(w, "Invalid request body", http.StatusBadRequest)
 			return
 		}
 
-		if err := store.AddEvent(sessionID, eventData.Name, eventData.Level, eventData.Category, eventData.Labels, eventData.Message, eventData.Data, eventData.ExceptionType, eventData.ExceptionMsg, eventData.Stacktrace, eventData.SourceFile, eventData.SourceLine, eventData.SourceFunction); err != nil {
+		if err := store.AddEvent(sessionID, eventData); err != nil {
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}
@@ -738,17 +756,13 @@ func handleSessionOperations(w http.ResponseWriter, r *http.Request) {
 
 	// POST /api/sessions/{id}/metrics - Add metric
 	if r.Method == "POST" && operation == "metrics" {
-		var metricData struct {
-			Name  string   `json:"name"`
-			Value float64  `json:"value"`
-			Tags  []string `json:"tags,omitempty"`
-		}
+		var metricData MetricInput
 		if err := json.NewDecoder(r.Body).Decode(&metricData); err != nil {
 			http.Error(w, "Invalid request body", http.StatusBadRequest)
 			return
 		}
 
-		if err := store.AddMetric(sessionID, metricData.Name, metricData.Value, metricData.Tags); err != nil {
+		if err := store.AddMetric(sessionID, metricData); err != nil {
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}

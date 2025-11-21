@@ -175,7 +175,14 @@ func TestAddEvent(t *testing.T) {
 		"message": "test event",
 	}
 
-	err = store.AddEvent(session.ID, "test_event", "info", "test", []string{"tag1"}, "test message", eventData, "", "", nil, "", 0, "")
+	err = store.AddEvent(session.ID, EventInput{
+		Name:     "test_event",
+		Level:    "info",
+		Category: "test",
+		Labels:   []string{"tag1"},
+		Message:  "test message",
+		Data:     eventData,
+	})
 	if err != nil {
 		t.Fatalf("AddEvent failed: %v", err)
 	}
@@ -201,7 +208,11 @@ func TestAddMetric(t *testing.T) {
 
 	session := store.CreateSession("TestProduct", "1.0.0", "", "")
 
-	err = store.AddMetric(session.ID, "cpu_usage", 75.5, []string{"tag1", "tag2"})
+	err = store.AddMetric(session.ID, MetricInput{
+		Name:  "cpu_usage",
+		Value: 75.5,
+		Tags:  []string{"tag1", "tag2"},
+	})
 	if err != nil {
 		t.Fatalf("AddMetric failed: %v", err)
 	}
@@ -461,11 +472,21 @@ func TestComprehensivePersistence(t *testing.T) {
 	})
 
 	// Add event
-	store1.AddEvent(sessionID, "test_event", "info", "test", []string{"tag1"}, "test message",
-		map[string]interface{}{"extra": "data"}, "", "", nil, "", 0, "")
+	store1.AddEvent(sessionID, EventInput{
+		Name:     "test_event",
+		Level:    "info",
+		Category: "test",
+		Labels:   []string{"tag1"},
+		Message:  "test message",
+		Data:     map[string]interface{}{"extra": "data"},
+	})
 
 	// Add metric
-	store1.AddMetric(sessionID, "cpu_usage", 75.5, []string{"host:server1"})
+	store1.AddMetric(sessionID, MetricInput{
+		Name:  "cpu_usage",
+		Value: 75.5,
+		Tags:  []string{"host:server1"},
+	})
 
 	// Wait for async saves
 	time.Sleep(200 * time.Millisecond)
@@ -525,8 +546,13 @@ func TestComprehensivePersistence(t *testing.T) {
 
 	// Add more data after reopening
 	store2.UpdateState(sessionID, map[string]interface{}{"status": "completed"})
-	store2.AddEvent(sessionID, "after_reload", "info", "test", nil, "after reload",
-		map[string]interface{}{}, "", "", nil, "", 0, "")
+	store2.AddEvent(sessionID, EventInput{
+		Name:     "after_reload",
+		Level:    "info",
+		Category: "test",
+		Message:  "after reload",
+		Data:     map[string]interface{}{},
+	})
 
 	// Wait for async saves
 	time.Sleep(200 * time.Millisecond)
@@ -551,7 +577,10 @@ func TestAddEventErrors(t *testing.T) {
 	defer store.Close()
 
 	// Try to add event to non-existent session
-	err = store.AddEvent("non-existent", "test", "", "", nil, "", map[string]interface{}{}, "", "", nil, "", 0, "")
+	err = store.AddEvent("non-existent", EventInput{
+		Name: "test",
+		Data: map[string]interface{}{},
+	})
 	if err == nil {
 		t.Error("Expected error when adding event to non-existent session")
 	}
@@ -567,7 +596,10 @@ func TestAddMetricErrors(t *testing.T) {
 	defer store.Close()
 
 	// Try to add metric to non-existent session
-	err = store.AddMetric("non-existent", "test", 0.0, nil)
+	err = store.AddMetric("non-existent", MetricInput{
+		Name:  "test",
+		Value: 0.0,
+	})
 	if err == nil {
 		t.Error("Expected error when adding metric to non-existent session")
 	}
@@ -1353,9 +1385,16 @@ func TestHungTracking(t *testing.T) {
 	}
 
 	// Log hung event
-	err = store.AddEvent(session.ID, "application_appears_hung", "error", "datacat.daemon", []string{"heartbeat", "hung"}, "Application appears hung", map[string]interface{}{
-		"last_heartbeat": time.Now().Format(time.RFC3339),
-	}, "", "", nil, "", 0, "")
+	err = store.AddEvent(session.ID, EventInput{
+		Name:     "application_appears_hung",
+		Level:    "error",
+		Category: "datacat.daemon",
+		Labels:   []string{"heartbeat", "hung"},
+		Message:  "Application appears hung",
+		Data: map[string]interface{}{
+			"last_heartbeat": time.Now().Format(time.RFC3339),
+		},
+	})
 	if err != nil {
 		t.Fatalf("AddEvent failed: %v", err)
 	}
@@ -1367,7 +1406,14 @@ func TestHungTracking(t *testing.T) {
 	}
 
 	// Log recovery event
-	err = store.AddEvent(session.ID, "application_recovered", "info", "datacat.daemon", []string{"heartbeat", "recovery"}, "Application recovered", map[string]interface{}{}, "", "", nil, "", 0, "")
+	err = store.AddEvent(session.ID, EventInput{
+		Name:     "application_recovered",
+		Level:    "info",
+		Category: "datacat.daemon",
+		Labels:   []string{"heartbeat", "recovery"},
+		Message:  "Application recovered",
+		Data:     map[string]interface{}{},
+	})
 	if err != nil {
 		t.Fatalf("AddEvent failed: %v", err)
 	}
@@ -1403,7 +1449,14 @@ func TestHungWhileCrashed(t *testing.T) {
 	store.UpdateHeartbeat(session1.ID)
 
 	// Log hung event
-	store.AddEvent(session1.ID, "application_appears_hung", "error", "datacat.daemon", []string{"heartbeat", "hung"}, "Application appears hung", map[string]interface{}{}, "", "", nil, "", 0, "")
+	store.AddEvent(session1.ID, EventInput{
+		Name:     "application_appears_hung",
+		Level:    "error",
+		Category: "datacat.daemon",
+		Labels:   []string{"heartbeat", "hung"},
+		Message:  "Application appears hung",
+		Data:     map[string]interface{}{},
+	})
 
 	// Verify it's hung
 	retrieved, _ := store.GetSession(session1.ID)
@@ -1563,21 +1616,20 @@ func TestExceptionEvent(t *testing.T) {
 		"ValueError: test error",
 	}
 
-	err = store.AddEvent(
-		session.ID,
-		"exception",
-		"error",
-		"exception",
-		[]string{"exception", "ValueError"},
-		"test error",
-		map[string]interface{}{"extra": "data"},
-		"ValueError",
-		"test error",
-		stacktrace,
-		"test.py",
-		10,
-		"<module>",
-	)
+	err = store.AddEvent(session.ID, EventInput{
+		Name:           "exception",
+		Level:          "error",
+		Category:       "exception",
+		Labels:         []string{"exception", "ValueError"},
+		Message:        "test error",
+		Data:           map[string]interface{}{"extra": "data"},
+		ExceptionType:  "ValueError",
+		ExceptionMsg:   "test error",
+		Stacktrace:     stacktrace,
+		SourceFile:     "test.py",
+		SourceLine:     10,
+		SourceFunction: "<module>",
+	})
 	if err != nil {
 		t.Fatalf("AddEvent failed: %v", err)
 	}
@@ -1729,16 +1781,14 @@ func TestEventWithLevelCategoryLabels(t *testing.T) {
 	session := store.CreateSession("TestProduct", "1.0.0", "", "")
 
 	// Add event with level, category, labels, and message
-	err = store.AddEvent(
-		session.ID,
-		"custom_event",
-		"warning",
-		"my.component",
-		[]string{"tag1", "tag2", "important"},
-		"This is a warning message",
-		map[string]interface{}{"detail": "some detail"},
-		"", "", nil, "", 0, "",
-	)
+	err = store.AddEvent(session.ID, EventInput{
+		Name:     "custom_event",
+		Level:    "warning",
+		Category: "my.component",
+		Labels:   []string{"tag1", "tag2", "important"},
+		Message:  "This is a warning message",
+		Data:     map[string]interface{}{"detail": "some detail"},
+	})
 	if err != nil {
 		t.Fatalf("AddEvent failed: %v", err)
 	}

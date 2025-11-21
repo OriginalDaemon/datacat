@@ -16,6 +16,13 @@ import (
 	"time"
 )
 
+const (
+	heartbeatCheckInterval     = 5 * time.Second
+	parentProcessCheckInterval = 5 * time.Second
+	serverHeartbeatInterval    = 15 * time.Second
+	retryQueueInterval         = 10 * time.Second
+)
+
 // SessionBuffer holds pending updates for a session
 type SessionBuffer struct {
 	SessionID              string
@@ -121,6 +128,71 @@ func (d *Daemon) Start() error {
 	return http.ListenAndServe(addr, nil)
 }
 
+// createSessionOnServer attempts to create a session on the server
+func (d *Daemon) createSessionOnServer(product, version, machineID, hostname string) (string, error) {
+	reqBody, _ := json.Marshal(map[string]interface{}{
+		"product":    product,
+		"version":    version,
+		"machine_id": machineID,
+		"hostname":   hostname,
+	})
+
+	resp, err := http.Post(d.config.ServerURL+"/api/sessions", "application/json", bytes.NewBuffer(reqBody))
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("server returned status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var result map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return "", fmt.Errorf("failed to decode response: %v", err)
+	}
+
+	sessionID, ok := result["session_id"].(string)
+	if !ok {
+		return "", fmt.Errorf("invalid session ID in response")
+	}
+
+	return sessionID, nil
+}
+
+// createLocalSessionID generates a unique local session ID
+func (d *Daemon) createLocalSessionID() string {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.sessionCounter++
+	return fmt.Sprintf("local-session-%d-%d", time.Now().Unix(), d.sessionCounter)
+}
+
+// initSessionBuffer creates and stores a new session buffer
+func (d *Daemon) initSessionBuffer(sessionID, product, version string, parentPID int, synced bool) {
+	initialState := map[string]interface{}{
+		"product": product,
+		"version": version,
+	}
+
+	now := time.Now()
+	d.mu.Lock()
+	d.sessions[sessionID] = &SessionBuffer{
+		SessionID:        sessionID,
+		StateUpdates:     []map[string]interface{}{},
+		Events:           []EventData{},
+		Metrics:          []MetricData{},
+		LastHeartbeat:    now,
+		LastState:        initialState,
+		ParentPID:        parentPID,
+		CreatedAt:        now,
+		Active:           true,
+		SyncedWithServer: synced,
+	}
+	d.mu.Unlock()
+}
+
 // handleRegister registers a new session
 func (d *Daemon) handleRegister(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -128,7 +200,6 @@ func (d *Daemon) handleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Parse request body to get parent PID, product, and version
 	var req struct {
 		ParentPID int    `json:"parent_pid"`
 		Product   string `json:"product"`
@@ -139,94 +210,31 @@ func (d *Daemon) handleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate that product and version are provided
 	if req.Product == "" || req.Version == "" {
 		http.Error(w, "Product and version are required fields", http.StatusBadRequest)
 		return
 	}
 
-	var sessionID string
-	syncedWithServer := false
-
-	// Get machine identification
 	machineID := getMachineID()
 	hostname := getHostname()
 
-	// Try to forward to server to create session
-	reqBody, _ := json.Marshal(map[string]interface{}{
-		"product":    req.Product,
-		"version":    req.Version,
-		"machine_id": machineID,
-		"hostname":   hostname,
-	})
-	resp, err := http.Post(d.config.ServerURL+"/api/sessions", "application/json", bytes.NewBuffer(reqBody))
+	sessionID, err := d.createSessionOnServer(req.Product, req.Version, machineID, hostname)
+	syncedWithServer := true
+
 	if err != nil {
-		// Server is unavailable - create session locally
 		log.Printf("Server unavailable, creating session locally: %v", err)
-		d.mu.Lock()
-		d.sessionCounter++
-		sessionID = fmt.Sprintf("local-session-%d-%d", time.Now().Unix(), d.sessionCounter)
-		d.mu.Unlock()
+		sessionID = d.createLocalSessionID()
+		syncedWithServer = false
 
-		// Queue the session creation for retry
-		d.queueMu.Lock()
-		d.failedQueue = append(d.failedQueue, QueuedOperation{
-			SessionID: sessionID,
-			OpType:    "create_session",
-			Data: map[string]interface{}{
-				"product":    req.Product,
-				"version":    req.Version,
-				"machine_id": machineID,
-				"hostname":   hostname,
-			},
-			Timestamp: time.Now(),
+		d.queueOperation(sessionID, "create_session", map[string]interface{}{
+			"product":    req.Product,
+			"version":    req.Version,
+			"machine_id": machineID,
+			"hostname":   hostname,
 		})
-		d.queueMu.Unlock()
-	} else {
-		defer resp.Body.Close()
-
-		if resp.StatusCode != http.StatusOK {
-			body, _ := io.ReadAll(resp.Body)
-			http.Error(w, fmt.Sprintf("Server returned error: %s", string(body)), resp.StatusCode)
-			return
-		}
-
-		var result map[string]interface{}
-		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-			http.Error(w, fmt.Sprintf("Failed to decode response: %v", err), http.StatusInternalServerError)
-			return
-		}
-
-		id, ok := result["session_id"].(string)
-		if !ok {
-			http.Error(w, "Invalid session ID in response", http.StatusInternalServerError)
-			return
-		}
-		sessionID = id
-		syncedWithServer = true
 	}
 
-	// Create buffer for this session with initial state containing product and version
-	initialState := make(map[string]interface{})
-	initialState["product"] = req.Product
-	initialState["version"] = req.Version
-
-	d.mu.Lock()
-	d.sessions[sessionID] = &SessionBuffer{
-		SessionID:        sessionID,
-		StateUpdates:     make([]map[string]interface{}, 0),
-		Events:           make([]EventData, 0),
-		Metrics:          make([]MetricData, 0),
-		LastHeartbeat:    time.Now(),
-		LastState:        initialState,
-		HangLogged:       false,
-		ParentPID:        req.ParentPID,
-		CrashLogged:      false,
-		CreatedAt:        time.Now(),
-		Active:           true,
-		SyncedWithServer: syncedWithServer,
-	}
-	d.mu.Unlock()
+	d.initSessionBuffer(sessionID, req.Product, req.Version, req.ParentPID, syncedWithServer)
 
 	log.Printf("Registered session: %s (product: %s, version: %s, parent PID: %d, synced: %v)",
 		sessionID, req.Product, req.Version, req.ParentPID, syncedWithServer)
@@ -621,133 +629,56 @@ func (d *Daemon) flushSession(sessionID string) {
 	}
 }
 
-// sendStateUpdate sends a state update to the server
-func (d *Daemon) sendStateUpdate(sessionID string, state map[string]interface{}) {
-	data, _ := json.Marshal(state)
+// queueOperation adds an operation to the failed queue for retry
+func (d *Daemon) queueOperation(sessionID, opType string, data interface{}) {
+	d.queueMu.Lock()
+	d.failedQueue = append(d.failedQueue, QueuedOperation{
+		SessionID: sessionID,
+		OpType:    opType,
+		Data:      data,
+		Timestamp: time.Now(),
+	})
+	d.queueMu.Unlock()
+}
+
+// sendToServer sends data to the server with automatic retry queueing on failure
+func (d *Daemon) sendToServer(sessionID, endpoint, opType string, data interface{}) {
+	jsonData, _ := json.Marshal(data)
 	resp, err := http.Post(
-		d.config.ServerURL+"/api/sessions/"+sessionID+"/state",
+		d.config.ServerURL+endpoint,
 		"application/json",
-		bytes.NewBuffer(data),
+		bytes.NewBuffer(jsonData),
 	)
 	if err != nil {
-		log.Printf("Failed to send state update, queueing for retry: %v", err)
-		// Queue for retry
-		d.queueMu.Lock()
-		d.failedQueue = append(d.failedQueue, QueuedOperation{
-			SessionID: sessionID,
-			OpType:    "state",
-			Data:      state,
-			Timestamp: time.Now(),
-		})
-		d.queueMu.Unlock()
+		log.Printf("Failed to send %s, queueing for retry: %v", opType, err)
+		d.queueOperation(sessionID, opType, data)
 		return
 	}
 	defer resp.Body.Close()
 
-	// Check status code
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		log.Printf("Server returned error for state update (status %d), queueing for retry: %s", resp.StatusCode, string(body))
-		// Queue for retry
-		d.queueMu.Lock()
-		d.failedQueue = append(d.failedQueue, QueuedOperation{
-			SessionID: sessionID,
-			OpType:    "state",
-			Data:      state,
-			Timestamp: time.Now(),
-		})
-		d.queueMu.Unlock()
+		log.Printf("Server returned error for %s (status %d), queueing for retry: %s", opType, resp.StatusCode, string(body))
+		d.queueOperation(sessionID, opType, data)
 		return
 	}
 
-	// Mark session as synced with server on successful operation
 	d.markSessionSynced(sessionID)
+}
+
+// sendStateUpdate sends a state update to the server
+func (d *Daemon) sendStateUpdate(sessionID string, state map[string]interface{}) {
+	d.sendToServer(sessionID, "/api/sessions/"+sessionID+"/state", "state", state)
 }
 
 // sendEvent sends an event to the server
 func (d *Daemon) sendEvent(sessionID string, event EventData) {
-	data, _ := json.Marshal(event)
-	resp, err := http.Post(
-		d.config.ServerURL+"/api/sessions/"+sessionID+"/events",
-		"application/json",
-		bytes.NewBuffer(data),
-	)
-	if err != nil {
-		log.Printf("Failed to send event, queueing for retry: %v", err)
-		// Queue for retry
-		d.queueMu.Lock()
-		d.failedQueue = append(d.failedQueue, QueuedOperation{
-			SessionID: sessionID,
-			OpType:    "event",
-			Data:      event,
-			Timestamp: time.Now(),
-		})
-		d.queueMu.Unlock()
-		return
-	}
-	defer resp.Body.Close()
-
-	// Check status code
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		log.Printf("Server returned error for event (status %d), queueing for retry: %s", resp.StatusCode, string(body))
-		// Queue for retry
-		d.queueMu.Lock()
-		d.failedQueue = append(d.failedQueue, QueuedOperation{
-			SessionID: sessionID,
-			OpType:    "event",
-			Data:      event,
-			Timestamp: time.Now(),
-		})
-		d.queueMu.Unlock()
-		return
-	}
-
-	// Mark session as synced with server on successful operation
-	d.markSessionSynced(sessionID)
+	d.sendToServer(sessionID, "/api/sessions/"+sessionID+"/events", "event", event)
 }
 
 // sendMetric sends a metric to the server
 func (d *Daemon) sendMetric(sessionID string, metric MetricData) {
-	data, _ := json.Marshal(metric)
-	resp, err := http.Post(
-		d.config.ServerURL+"/api/sessions/"+sessionID+"/metrics",
-		"application/json",
-		bytes.NewBuffer(data),
-	)
-	if err != nil {
-		log.Printf("Failed to send metric, queueing for retry: %v", err)
-		// Queue for retry
-		d.queueMu.Lock()
-		d.failedQueue = append(d.failedQueue, QueuedOperation{
-			SessionID: sessionID,
-			OpType:    "metric",
-			Data:      metric,
-			Timestamp: time.Now(),
-		})
-		d.queueMu.Unlock()
-		return
-	}
-	defer resp.Body.Close()
-
-	// Check status code
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		log.Printf("Server returned error for metric (status %d), queueing for retry: %s", resp.StatusCode, string(body))
-		// Queue for retry
-		d.queueMu.Lock()
-		d.failedQueue = append(d.failedQueue, QueuedOperation{
-			SessionID: sessionID,
-			OpType:    "metric",
-			Data:      metric,
-			Timestamp: time.Now(),
-		})
-		d.queueMu.Unlock()
-		return
-	}
-
-	// Mark session as synced with server on successful operation
-	d.markSessionSynced(sessionID)
+	d.sendToServer(sessionID, "/api/sessions/"+sessionID+"/metrics", "metric", metric)
 }
 
 // sendHeartbeat sends a heartbeat to the server
@@ -766,7 +697,7 @@ func (d *Daemon) sendHeartbeat(sessionID string) {
 
 // heartbeatMonitor checks for hung applications
 func (d *Daemon) heartbeatMonitor() {
-	ticker := time.NewTicker(5 * time.Second)
+	ticker := time.NewTicker(heartbeatCheckInterval)
 	defer ticker.Stop()
 
 	for range ticker.C {
@@ -822,8 +753,8 @@ func (d *Daemon) checkHeartbeat(sessionID string) {
 
 // periodicHeartbeatSender sends periodic heartbeats to the server for all active sessions
 func (d *Daemon) periodicHeartbeatSender() {
-	// Send heartbeats every 15 seconds (should be less than server timeout)
-	ticker := time.NewTicker(15 * time.Second)
+	// Send heartbeats to server (should be less than server timeout)
+	ticker := time.NewTicker(serverHeartbeatInterval)
 	defer ticker.Stop()
 
 	for range ticker.C {
@@ -904,7 +835,7 @@ func (d *Daemon) mergeState(old, new map[string]interface{}) map[string]interfac
 
 // parentProcessMonitor checks if parent processes are still alive
 func (d *Daemon) parentProcessMonitor() {
-	ticker := time.NewTicker(5 * time.Second)
+	ticker := time.NewTicker(parentProcessCheckInterval)
 	defer ticker.Stop()
 
 	for range ticker.C {
@@ -1023,7 +954,7 @@ func getHostname() string {
 
 // retryQueueProcessor periodically processes the failed queue
 func (d *Daemon) retryQueueProcessor() {
-	ticker := time.NewTicker(10 * time.Second)
+	ticker := time.NewTicker(retryQueueInterval)
 	defer ticker.Stop()
 
 	for range ticker.C {
