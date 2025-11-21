@@ -201,8 +201,12 @@ class TestDatacatIntegration(unittest.TestCase):
 
     def test_convenience_session_class(self):
         """Test the convenience Session class"""
+        # Use different port to avoid conflict with shared daemon
         session = create_session(
-            self.base_url, product="IntegrationTest", version="1.0.0"
+            self.base_url,
+            daemon_port="8080",
+            product="IntegrationTest",
+            version="1.0.0",
         )
 
         try:
@@ -280,8 +284,8 @@ class TestDatacatPersistence(unittest.TestCase):
         client = None
         client2 = None
         try:
-            # Create session and log data
-            client = DatacatClient(self.base_url)
+            # Create session and log data with different daemon port
+            client = DatacatClient(self.base_url, daemon_port="8081")
             session_id = client.register_session("PersistenceTest", "1.0.0")
 
             client.update_state(session_id, {"test": "persistent_data"})
@@ -299,8 +303,8 @@ class TestDatacatPersistence(unittest.TestCase):
             process2 = self.start_service()
 
             try:
-                # Retrieve session
-                client2 = DatacatClient(self.base_url)
+                # Retrieve session with new daemon instance
+                client2 = DatacatClient(self.base_url, daemon_port="8082")
 
                 # Wait for daemon to start
                 time.sleep(2)
