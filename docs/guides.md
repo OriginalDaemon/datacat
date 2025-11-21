@@ -51,6 +51,8 @@ Take your DataCat usage to the next level.
 - [Daemon Batching](daemon-batching.html) - How intelligent batching works
 - [Crash Detection](crash-detection.html) - Automatic crash and hang detection
 - [Heartbeat Monitoring](heartbeat-monitoring.html) - Keep-alive and timeout detection
+- [Hung Session Tracking](hung-tracking.html) - Detecting and analyzing hung applications
+- [Machine Tracking](machine-tracking.html) - Cross-machine crash detection
 - [Web Dashboard](web-dashboard.html) - Using the visualization dashboard
 
 ---

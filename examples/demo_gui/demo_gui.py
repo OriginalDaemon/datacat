@@ -72,11 +72,11 @@ class DatacatLoggingHandler(logging.Handler):
                 event_data["exception"] = {
                     "type": record.exc_info[0].__name__,
                     "message": str(record.exc_info[1]),
-                    "traceback": traceback.format_exception(*record.exc_info)
+                    "traceback": traceback.format_exception(*record.exc_info),
                 }
 
             # Add any extra fields
-            if hasattr(record, 'extra_data'):
+            if hasattr(record, "extra_data"):
                 event_data.update(record.extra_data)
 
             # Send to datacat
@@ -106,9 +106,9 @@ def toggle_session(server_url, product_name, product_version):
     if session and session_info["created"]:
         try:
             session_id = session.session_id
-            session.log_event("demo_session_ended", {
-                "ended_at": datetime.now().isoformat()
-            })
+            session.log_event(
+                "demo_session_ended", {"ended_at": datetime.now().isoformat()}
+            )
             session.end()
 
             result = f"✅ Session ended successfully!\n\nSession ID: {session_id}"
@@ -181,19 +181,21 @@ def toggle_session(server_url, product_name, product_version):
         session_info["id"] = session.session_id
 
         # Set initial state with user-provided product info
-        session.update_state({
-            "application": {
-                "name": product_name,
-                "version": product_version,
-                "started_at": datetime.now().isoformat()
-            },
-            "statistics": {
-                "events_sent": 0,
-                "metrics_sent": 0,
-                "states_updated": 0,
-                "errors_logged": 0
+        session.update_state(
+            {
+                "application": {
+                    "name": product_name,
+                    "version": product_version,
+                    "started_at": datetime.now().isoformat(),
+                },
+                "statistics": {
+                    "events_sent": 0,
+                    "metrics_sent": 0,
+                    "states_updated": 0,
+                    "errors_logged": 0,
+                },
             }
-        })
+        )
 
         result = (
             f"✅ Session Created!\n\n"
@@ -325,7 +327,7 @@ def log_error_message(error_level, error_message):
         # Add our custom handler
         handler = DatacatLoggingHandler(session)
         formatter = logging.Formatter(
-            '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+            "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
         )
         handler.setFormatter(formatter)
         logger.addHandler(handler)
@@ -336,7 +338,7 @@ def log_error_message(error_level, error_message):
             "INFO": logger.info,
             "WARNING": logger.warning,
             "ERROR": logger.error,
-            "CRITICAL": logger.critical
+            "CRITICAL": logger.critical,
         }
 
         log_func = level_map.get(error_level, logger.error)
@@ -368,7 +370,7 @@ def generate_exception(exception_type, include_nested):
 
         handler = DatacatLoggingHandler(session)
         formatter = logging.Formatter(
-            '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+            "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
         )
         handler.setFormatter(formatter)
         logger.addHandler(handler)
@@ -392,7 +394,9 @@ def generate_exception(exception_type, include_nested):
                         raise ZeroDivisionError("Inner exception: Division by zero")
                 except Exception as inner_e:
                     # Re-raise with context
-                    raise RuntimeError(f"Outer exception wrapping: {type(inner_e).__name__}") from inner_e
+                    raise RuntimeError(
+                        f"Outer exception wrapping: {type(inner_e).__name__}"
+                    ) from inner_e
             else:
                 # Generate single exception
                 if exception_type == "ValueError":
@@ -414,12 +418,14 @@ def generate_exception(exception_type, include_nested):
             logger.error("Exception occurred in demo", exc_info=True)
 
             # Also log directly via datacat for comparison
-            session.log_exception(extra_data={
-                "demo_exception": True,
-                "exception_type": exception_type,
-                "nested": include_nested,
-                "generated_at": datetime.now().isoformat()
-            })
+            session.log_exception(
+                extra_data={
+                    "demo_exception": True,
+                    "exception_type": exception_type,
+                    "nested": include_nested,
+                    "generated_at": datetime.now().isoformat(),
+                }
+            )
 
         # Update statistics
         details = session.get_details()
@@ -472,8 +478,6 @@ def get_session_stats():
         return f"❌ Error getting stats: {str(e)}"
 
 
-
-
 # JavaScript to enable Gradio's built-in dark mode on startup
 ENABLE_DARK_MODE_JS = """
 function() {
@@ -492,7 +496,7 @@ def create_ui():
             primary_hue="blue",
             secondary_hue="slate",
         ),
-        js=ENABLE_DARK_MODE_JS
+        js=ENABLE_DARK_MODE_JS,
     ) as demo:
         gr.Markdown(
             """
@@ -531,13 +535,13 @@ def create_ui():
                         label="Product Name",
                         placeholder="my-application",
                         value="",
-                        info="Enter your application/product name"
+                        info="Enter your application/product name",
                     )
                     product_version = gr.Textbox(
                         label="Product Version",
                         placeholder="1.0.0",
                         value="",
-                        info="Enter your product version"
+                        info="Enter your product version",
                     )
 
                 gr.Markdown("**Connection Settings**")
@@ -545,31 +549,29 @@ def create_ui():
                     label="Server URL",
                     value="http://localhost:9090",
                     placeholder="http://localhost:9090",
-                    info="DataCat always uses a local daemon for batching and crash detection"
+                    info="DataCat always uses a local daemon for batching and crash detection",
                 )
 
-                session_toggle_btn = gr.Button("Start New Session", variant="primary", size="lg")
+                session_toggle_btn = gr.Button(
+                    "Start New Session", variant="primary", size="lg"
+                )
 
                 session_output = gr.Textbox(
-                    label="Session Status",
-                    lines=4,
-                    interactive=False
+                    label="Session Status", lines=4, interactive=False
                 )
 
                 current_session = gr.Textbox(
-                    label="Current Session ID",
-                    value="N/A",
-                    interactive=False
+                    label="Current Session ID", value="N/A", interactive=False
                 )
 
             with gr.Column(scale=1):
                 gr.Markdown("## 📊 Statistics")
                 stats_output = gr.Textbox(
-                    label="Session Statistics",
-                    lines=15,
-                    interactive=False
+                    label="Session Statistics", lines=15, interactive=False
                 )
-                refresh_stats_btn = gr.Button("Refresh Stats", size="sm", interactive=False)
+                refresh_stats_btn = gr.Button(
+                    "Refresh Stats", size="sm", interactive=False
+                )
 
         # State Management
         gr.Markdown("## 📝 State Management")
@@ -578,14 +580,19 @@ def create_ui():
                 state_json = gr.Code(
                     label="State JSON",
                     language="json",
-                    value=json.dumps({
-                        "user": {"name": "demo_user", "role": "admin"},
-                        "settings": {"theme": "dark", "notifications": True}
-                    }, indent=2),
+                    value=json.dumps(
+                        {
+                            "user": {"name": "demo_user", "role": "admin"},
+                            "settings": {"theme": "dark", "notifications": True},
+                        },
+                        indent=2,
+                    ),
                     lines=8,
-                    interactive=False
+                    interactive=False,
                 )
-                update_state_btn = gr.Button("Update State", variant="primary", interactive=False)
+                update_state_btn = gr.Button(
+                    "Update State", variant="primary", interactive=False
+                )
                 state_output = gr.Textbox(label="State Update Result", lines=4)
 
         # Event Logging
@@ -596,16 +603,18 @@ def create_ui():
                     label="Event Name",
                     placeholder="user_action",
                     value="user_click",
-                    interactive=False
+                    interactive=False,
                 )
                 event_data = gr.Code(
                     label="Event Data (JSON)",
                     language="json",
                     value=json.dumps({"button": "submit", "page": "home"}, indent=2),
                     lines=5,
-                    interactive=False
+                    interactive=False,
                 )
-                log_event_btn = gr.Button("Log Event", variant="primary", interactive=False)
+                log_event_btn = gr.Button(
+                    "Log Event", variant="primary", interactive=False
+                )
                 event_output = gr.Textbox(label="Event Result", lines=4)
 
         # Metrics Logging
@@ -616,41 +625,41 @@ def create_ui():
                     label="Metric Name",
                     placeholder="cpu_usage",
                     value="response_time",
-                    interactive=False
+                    interactive=False,
                 )
             with gr.Column():
                 metric_value = gr.Number(
-                    label="Metric Value",
-                    value=42.5,
-                    interactive=False
+                    label="Metric Value", value=42.5, interactive=False
                 )
             with gr.Column():
                 metric_tags = gr.Textbox(
                     label="Tags (comma-separated)",
                     placeholder="env:prod, service:api",
                     value="env:demo, type:performance",
-                    interactive=False
+                    interactive=False,
                 )
         log_metric_btn = gr.Button("Log Metric", variant="primary", interactive=False)
         metric_output = gr.Textbox(label="Metric Result", lines=4)
 
         # Error Logging
         gr.Markdown("## ⚠️ Error Logging (via Logging Handler)")
-        gr.Markdown("Uses a custom logging handler that formats errors and sends them to datacat")
+        gr.Markdown(
+            "Uses a custom logging handler that formats errors and sends them to datacat"
+        )
         with gr.Row():
             with gr.Column():
                 error_level = gr.Dropdown(
                     label="Log Level",
                     choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
                     value="ERROR",
-                    interactive=False
+                    interactive=False,
                 )
             with gr.Column():
                 error_message = gr.Textbox(
                     label="Error Message",
                     placeholder="Something went wrong...",
                     value="Database connection timeout after 30 seconds",
-                    interactive=False
+                    interactive=False,
                 )
         log_error_btn = gr.Button("Log Error", variant="primary", interactive=False)
         error_output = gr.Textbox(label="Error Result", lines=4)
@@ -670,19 +679,21 @@ def create_ui():
                         "TypeError",
                         "KeyError",
                         "IndexError",
-                        "ZeroDivisionError"
+                        "ZeroDivisionError",
                     ],
                     value="ValueError",
-                    interactive=False
+                    interactive=False,
                 )
             with gr.Column():
                 include_nested = gr.Checkbox(
                     label="Include Nested Exception",
                     value=False,
                     info="Wraps the exception in a RuntimeError for nested exception demo",
-                    interactive=False
+                    interactive=False,
                 )
-        generate_exception_btn = gr.Button("Generate & Log Exception", variant="primary", interactive=False)
+        generate_exception_btn = gr.Button(
+            "Generate & Log Exception", variant="primary", interactive=False
+        )
         exception_output = gr.Textbox(label="Exception Result", lines=8)
 
         # Wire up the session toggle button
@@ -709,43 +720,36 @@ def create_ui():
                 include_nested,
                 generate_exception_btn,
                 refresh_stats_btn,
-            ]
+            ],
         )
 
         update_state_btn.click(
-            fn=update_state,
-            inputs=[state_json],
-            outputs=[state_output]
+            fn=update_state, inputs=[state_json], outputs=[state_output]
         )
 
         log_event_btn.click(
-            fn=log_event,
-            inputs=[event_name, event_data],
-            outputs=[event_output]
+            fn=log_event, inputs=[event_name, event_data], outputs=[event_output]
         )
 
         log_metric_btn.click(
             fn=log_metric,
             inputs=[metric_name, metric_value, metric_tags],
-            outputs=[metric_output]
+            outputs=[metric_output],
         )
 
         log_error_btn.click(
             fn=log_error_message,
             inputs=[error_level, error_message],
-            outputs=[error_output]
+            outputs=[error_output],
         )
 
         generate_exception_btn.click(
             fn=generate_exception,
             inputs=[exception_type, include_nested],
-            outputs=[exception_output]
+            outputs=[exception_output],
         )
 
-        refresh_stats_btn.click(
-            fn=get_session_stats,
-            outputs=[stats_output]
-        )
+        refresh_stats_btn.click(fn=get_session_stats, outputs=[stats_output])
 
         # Footer
         gr.Markdown(
@@ -771,14 +775,14 @@ def create_ui():
 if __name__ == "__main__":
     demo = create_ui()
 
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("Starting datacat Demo GUI")
-    print("="*60)
+    print("=" * 60)
     print("\nMake sure the datacat server is running:")
     print("  Server: http://localhost:9090")
     print("  Web UI: http://localhost:8080")
     print("\nThe demo GUI will open in your browser...")
-    print("="*60 + "\n")
+    print("=" * 60 + "\n")
 
     # Set favicon if it exists
     favicon_path = os.path.join(os.path.dirname(__file__), "logo-small.png")
@@ -786,11 +790,10 @@ if __name__ == "__main__":
         "server_name": "127.0.0.1",
         "server_port": 7860,
         "share": False,
-        "inbrowser": True
+        "inbrowser": True,
     }
 
     if os.path.exists(favicon_path):
         launch_kwargs["favicon_path"] = favicon_path
 
     demo.launch(**launch_kwargs)
-

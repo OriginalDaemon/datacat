@@ -27,6 +27,7 @@ class TestDatacatIntegration(unittest.TestCase):
 
     service_process: subprocess.Popen  # type: ignore
     base_url: str
+    shared_client: DatacatClient  # type: ignore
 
     @classmethod
     def setUpClass(cls):
@@ -56,10 +57,14 @@ class TestDatacatIntegration(unittest.TestCase):
         # Wait for service to start
         time.sleep(2)
 
-        # Verify service is running
+        # Create shared client and daemon for all tests
         try:
-            client = DatacatClient(cls.base_url)
-            client.register_session("IntegrationTest", "1.0.0")
+            cls.shared_client = DatacatClient(cls.base_url)
+            # Verify service is running
+            test_session = cls.shared_client.register_session(
+                "IntegrationTest", "1.0.0"
+            )
+            cls.shared_client.end_session(test_session)
         except Exception as e:
             cls.tearDownClass()
             raise Exception(f"Service failed to start: {e}")
@@ -67,13 +72,17 @@ class TestDatacatIntegration(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         """Stop the datacat service after tests"""
+        # Stop shared daemon
+        if hasattr(cls, "shared_client") and cls.shared_client.daemon_manager:
+            cls.shared_client.daemon_manager.stop()
+        # Stop service
         if cls.service_process:
             cls.service_process.terminate()
             cls.service_process.wait(timeout=5)
 
     def setUp(self):
         """Create a fresh session for each test"""
-        self.client = DatacatClient(self.base_url)
+        self.client = self.shared_client
         self.session_id = self.client.register_session("IntegrationTest", "1.0.0")
 
     def test_session_creation(self):
@@ -91,6 +100,9 @@ class TestDatacatIntegration(unittest.TestCase):
         state1 = {"status": "running", "progress": 0}
         self.client.update_state(self.session_id, state1)
 
+        # Wait for daemon to flush
+        time.sleep(6)
+
         # Retrieve and verify
         session = self.client.get_session(self.session_id)
         self.assertEqual(session["state"]["status"], "running")
@@ -105,9 +117,15 @@ class TestDatacatIntegration(unittest.TestCase):
         }
         self.client.update_state(self.session_id, state1)
 
+        # Wait for daemon to flush
+        time.sleep(6)
+
         # Update only part of window_state
         state2 = {"window_state": {"open": ["w1", "w2", "w3"]}}
         self.client.update_state(self.session_id, state2)
+
+        # Wait for daemon to flush
+        time.sleep(6)
 
         # Verify merge preserved active window
         session = self.client.get_session(self.session_id)
@@ -119,8 +137,11 @@ class TestDatacatIntegration(unittest.TestCase):
         """Test event logging"""
         # Log an event
         self.client.log_event(
-            self.session_id, "test_event", {"user": "alice", "action": "click"}
+            self.session_id, "test_event", data={"user": "alice", "action": "click"}
         )
+
+        # Wait for daemon to flush
+        time.sleep(6)
 
         # Retrieve and verify
         session = self.client.get_session(self.session_id)
@@ -134,6 +155,9 @@ class TestDatacatIntegration(unittest.TestCase):
         self.client.log_metric(
             self.session_id, "cpu_usage", 45.5, tags=["host:server1"]
         )
+
+        # Wait for daemon to flush
+        time.sleep(6)
 
         # Retrieve and verify
         session = self.client.get_session(self.session_id)
@@ -153,13 +177,16 @@ class TestDatacatIntegration(unittest.TestCase):
                 self.session_id, exc_info, extra_data={"context": "test"}
             )
 
+        # Wait for daemon to flush
+        time.sleep(6)
+
         # Retrieve and verify
         session = self.client.get_session(self.session_id)
         self.assertEqual(len(session["events"]), 1)
         self.assertEqual(session["events"][0]["name"], "exception")
-        self.assertEqual(session["events"][0]["data"]["type"], "ValueError")
-        self.assertIn("Test exception", session["events"][0]["data"]["message"])
-        self.assertIn("traceback", session["events"][0]["data"])
+        self.assertEqual(session["events"][0]["exception_type"], "ValueError")
+        self.assertIn("Test exception", session["events"][0]["exception_msg"])
+        self.assertIsNotNone(session["events"][0]["stacktrace"])
         self.assertEqual(session["events"][0]["data"]["context"], "test")
 
     def test_session_end(self):
@@ -174,35 +201,48 @@ class TestDatacatIntegration(unittest.TestCase):
 
     def test_convenience_session_class(self):
         """Test the convenience Session class"""
+        # Use different port to avoid conflict with shared daemon
         session = create_session(
-            self.base_url, product="IntegrationTest", version="1.0.0"
+            self.base_url,
+            daemon_port="8080",
+            product="IntegrationTest",
+            version="1.0.0",
         )
 
-        # Test state update
-        session.update_state({"test": "value"})
-
-        # Test event logging
-        session.log_event("test_event", {"data": "test"})
-
-        # Test metric logging
-        session.log_metric("test_metric", 100.0)
-
-        # Test exception logging
         try:
-            raise RuntimeError("Test error")
-        except RuntimeError:
-            session.log_exception()
+            # Test state update
+            session.update_state({"test": "value"})
 
-        # Verify all data
-        details = session.get_details()
-        self.assertEqual(details["state"]["test"], "value")
-        self.assertEqual(len(details["events"]), 2)  # test_event + exception
-        self.assertEqual(len(details["metrics"]), 1)
+            # Test event logging
+            session.log_event("test_event", data={"data": "test"})
 
-        # End session
-        session.end()
-        details = session.get_details()
-        self.assertFalse(details["active"])
+            # Test metric logging
+            session.log_metric("test_metric", 100.0)
+
+            # Test exception logging
+            try:
+                raise RuntimeError("Test error")
+            except RuntimeError:
+                session.log_exception()
+
+            # Wait for daemon to flush
+            time.sleep(6)
+
+            # Verify all data
+            details = session.get_details()
+            self.assertEqual(details["state"]["test"], "value")
+            self.assertEqual(len(details["events"]), 2)  # test_event + exception
+            self.assertEqual(len(details["metrics"]), 1)
+
+            # End session
+            session.end()
+            time.sleep(1)
+            details = session.get_details()
+            self.assertFalse(details["active"])
+        finally:
+            # Clean up the daemon created by create_session
+            if hasattr(session, "client") and hasattr(session.client, "daemon_manager"):
+                session.client.daemon_manager.stop()
 
 
 class TestDatacatPersistence(unittest.TestCase):
@@ -241,27 +281,34 @@ class TestDatacatPersistence(unittest.TestCase):
         # Start service
         process1 = self.start_service()
 
+        client = None
+        client2 = None
         try:
-            # Create session and log data
-            client = DatacatClient(self.base_url)
+            # Create session and log data with different daemon port
+            client = DatacatClient(self.base_url, daemon_port="8081")
             session_id = client.register_session("PersistenceTest", "1.0.0")
 
             client.update_state(session_id, {"test": "persistent_data"})
-            client.log_event(session_id, "before_restart", {"data": "test"})
+            client.log_event(session_id, "before_restart", data={"data": "test"})
             client.log_metric(session_id, "test_metric", 42.0)
 
-            # Give time for async save
-            time.sleep(1)
+            # Wait for daemon to flush to server
+            time.sleep(6)
 
-            # Stop service
+            # Stop daemon and service
+            client.daemon_manager.stop()
             self.stop_service(process1)
 
             # Start service again
             process2 = self.start_service()
 
             try:
-                # Retrieve session
-                client2 = DatacatClient(self.base_url)
+                # Retrieve session with new daemon instance
+                client2 = DatacatClient(self.base_url, daemon_port="8082")
+
+                # Wait for daemon to start
+                time.sleep(2)
+
                 session = client2.get_session(session_id)
 
                 # Verify data persisted
@@ -273,14 +320,21 @@ class TestDatacatPersistence(unittest.TestCase):
                 self.assertEqual(session["metrics"][0]["value"], 42.0)
 
                 # Add more data after restart
-                client2.log_event(session_id, "after_restart", {"data": "test2"})
+                client2.log_event(session_id, "after_restart", data={"data": "test2"})
+
+                # Wait for daemon to flush
+                time.sleep(6)
 
                 session = client2.get_session(session_id)
                 self.assertEqual(len(session["events"]), 2)
 
             finally:
+                if client2:
+                    client2.daemon_manager.stop()
                 self.stop_service(process2)
         except Exception as e:
+            if client:
+                client.daemon_manager.stop()
             self.stop_service(process1)
             raise
 
