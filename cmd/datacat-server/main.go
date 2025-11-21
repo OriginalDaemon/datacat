@@ -178,8 +178,8 @@ func (s *Store) CreateSession(product, version, machineID, hostname string) *Ses
 					},
 				})
 
-				// Save the updated session
-				go s.saveSessionToDB(existing)
+				// Save the updated session synchronously to ensure event is immediately available
+				s.saveSessionToDB(existing)
 			}
 		}
 	}

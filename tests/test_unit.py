@@ -34,13 +34,26 @@ except ImportError:
 class TestDatacatClientErrorHandling(unittest.TestCase):
     """Test error handling in DatacatClient"""
 
-    def setUp(self):
+    @patch("datacat.DaemonManager")
+    def setUp(self, mock_daemon_class):
         """Set up test client"""
+        mock_daemon = Mock()
+        mock_daemon_class.return_value = mock_daemon
         self.client = DatacatClient("http://localhost:9090")
+        
+    def tearDown(self):
+        """Clean up test client"""
+        if hasattr(self, 'client') and hasattr(self.client, 'daemon_manager'):
+            self.client.daemon_manager.stop()
 
     @patch("datacat.urlopen")
-    def test_http_error_handling(self, mock_urlopen):
+    @patch("datacat.DaemonManager")
+    def test_http_error_handling(self, mock_daemon_class, mock_urlopen):
         """Test handling of HTTP errors"""
+        # Set up daemon mock
+        mock_daemon = Mock()
+        mock_daemon_class.return_value = mock_daemon
+        
         # Create a mock HTTPError
         mock_error = HTTPError(
             url="http://test.com",
@@ -59,8 +72,13 @@ class TestDatacatClientErrorHandling(unittest.TestCase):
         self.assertIn("Not Found", str(context.exception))
 
     @patch("datacat.urlopen")
-    def test_url_error_handling(self, mock_urlopen):
+    @patch("datacat.DaemonManager")
+    def test_url_error_handling(self, mock_daemon_class, mock_urlopen):
         """Test handling of URL errors (network issues)"""
+        # Set up daemon mock
+        mock_daemon = Mock()
+        mock_daemon_class.return_value = mock_daemon
+        
         # Create a mock URLError
         mock_error = URLError("Connection refused")
         mock_urlopen.side_effect = mock_error
@@ -73,8 +91,13 @@ class TestDatacatClientErrorHandling(unittest.TestCase):
         self.assertIn("Connection refused", str(context.exception))
 
     @patch("datacat.urlopen")
-    def test_general_exception_handling(self, mock_urlopen):
+    @patch("datacat.DaemonManager")
+    def test_general_exception_handling(self, mock_daemon_class, mock_urlopen):
         """Test handling of general exceptions"""
+        # Set up daemon mock
+        mock_daemon = Mock()
+        mock_daemon_class.return_value = mock_daemon
+        
         # Create a general exception
         mock_urlopen.side_effect = RuntimeError("Unexpected error")
 
@@ -85,21 +108,32 @@ class TestDatacatClientErrorHandling(unittest.TestCase):
         self.assertIn("Request failed", str(context.exception))
         self.assertIn("Unexpected error", str(context.exception))
 
-    def test_base_url_trailing_slash_removal(self):
+    @patch("datacat.DaemonManager")
+    def test_base_url_trailing_slash_removal(self, mock_daemon_class):
         """Test that trailing slash is removed from base URL"""
+        # Set up daemon mock
+        mock_daemon = Mock()
+        mock_daemon_class.return_value = mock_daemon
+        
         client = DatacatClient("http://localhost:9090/")
-        self.assertEqual(client.base_url, "http://localhost:9090")
+        # Client always uses daemon URL, not the server URL directly
+        self.assertEqual(client.base_url, "http://localhost:8079")
 
         client2 = DatacatClient("http://localhost:9090")
-        self.assertEqual(client2.base_url, "http://localhost:9090")
+        self.assertEqual(client2.base_url, "http://localhost:8079")
 
 
 class TestDatacatClientGetAllSessions(unittest.TestCase):
     """Test get_all_sessions method"""
 
     @patch("datacat.urlopen")
-    def test_get_all_sessions(self, mock_urlopen):
+    @patch("datacat.DaemonManager")
+    def test_get_all_sessions(self, mock_daemon_class, mock_urlopen):
         """Test get_all_sessions calls the correct endpoint"""
+        # Set up daemon mock
+        mock_daemon = Mock()
+        mock_daemon_class.return_value = mock_daemon
+        
         # Mock response
         mock_response = Mock()
         mock_response.read.return_value = b'[{"id": "session1"}, {"id": "session2"}]'
@@ -108,11 +142,11 @@ class TestDatacatClientGetAllSessions(unittest.TestCase):
         client = DatacatClient("http://localhost:9090")
         sessions = client.get_all_sessions()
 
-        # Verify correct endpoint was called
+        # Verify correct endpoint was called (daemon endpoint, not server)
         call_args = mock_urlopen.call_args
         request = call_args[0][0]
         self.assertEqual(
-            request.get_full_url(), "http://localhost:9090/api/data/sessions"
+            request.get_full_url(), "http://localhost:8079/sessions"
         )
 
         # Verify response parsing
@@ -463,41 +497,51 @@ class TestCreateSessionFactory(unittest.TestCase):
 class TestEdgeCases(unittest.TestCase):
     """Test edge cases and additional code paths"""
 
-    def test_log_event_with_none_data(self):
+    @patch("datacat.urlopen")
+    @patch("datacat.DaemonManager")
+    def test_log_event_with_none_data(self, mock_daemon_class, mock_urlopen):
         """Test log_event with None data parameter"""
-        with patch("datacat.urlopen") as mock_urlopen:
-            mock_response = Mock()
-            mock_response.read.return_value = b'{"status": "ok"}'
-            mock_urlopen.return_value = mock_response
+        # Set up daemon mock
+        mock_daemon = Mock()
+        mock_daemon_class.return_value = mock_daemon
+        
+        mock_response = Mock()
+        mock_response.read.return_value = b'{"status": "ok"}'
+        mock_urlopen.return_value = mock_response
 
-            client = DatacatClient("http://localhost:9090")
+        client = DatacatClient("http://localhost:9090")
 
-            # Call log_event with None data (should use empty dict)
-            result = client.log_event("session-123", "test_event", None)
+        # Call log_event with None data (should use empty dict)
+        result = client.log_event("session-123", "test_event", data=None)
 
-            # Verify the request was made with empty data dict
-            call_args = mock_urlopen.call_args
-            request = call_args[0][0]
-            sent_data = json.loads(request.data.decode("utf-8"))
-            self.assertEqual(sent_data["data"], {})
+        # Verify the request was made with empty data dict
+        call_args = mock_urlopen.call_args
+        request = call_args[0][0]
+        sent_data = json.loads(request.data.decode("utf-8"))
+        self.assertEqual(sent_data["data"], {})
 
-    def test_log_event_without_data_parameter(self):
+    @patch("datacat.urlopen")
+    @patch("datacat.DaemonManager")
+    def test_log_event_without_data_parameter(self, mock_daemon_class, mock_urlopen):
         """Test log_event called without data parameter"""
-        with patch("datacat.urlopen") as mock_urlopen:
-            mock_response = Mock()
-            mock_response.read.return_value = b'{"status": "ok"}'
-            mock_urlopen.return_value = mock_response
+        # Set up daemon mock
+        mock_daemon = Mock()
+        mock_daemon_class.return_value = mock_daemon
+        
+        mock_response = Mock()
+        mock_response.read.return_value = b'{"status": "ok"}'
+        mock_urlopen.return_value = mock_response
 
-            client = DatacatClient("http://localhost:9090")
+        client = DatacatClient("http://localhost:9090")
 
-            # Call log_event without data parameter
-            result = client.log_event("session-123", "test_event")
+        # Call log_event without data parameter
+        result = client.log_event("session-123", "test_event")
 
-            # Verify the request was made with empty data dict
-            call_args = mock_urlopen.call_args
-            request = call_args[0][0]
-            sent_data = json.loads(request.data.decode("utf-8"))
-            self.assertEqual(sent_data["data"], {})
+        # Verify the request was made with empty data dict
+        call_args = mock_urlopen.call_args
+        request = call_args[0][0]
+        sent_data = json.loads(request.data.decode("utf-8"))
+        self.assertEqual(sent_data["data"], {})
 
     def test_monitor_recovery_logging_exception_handling(self):
         """Test that recovery logging exception is silently handled"""
@@ -901,7 +945,7 @@ class TestDatacatClientWithDaemon(unittest.TestCase):
         mock_urlopen.return_value = mock_response
 
         client = DatacatClient()
-        client.log_event("session-123", "test_event", {"data": "value"})
+        client.log_event("session-123", "test_event", data={"data": "value"})
 
         # Verify correct endpoint and format
         call_args = mock_urlopen.call_args
@@ -1056,10 +1100,11 @@ class TestSessionConvenienceMethods(unittest.TestCase):
         mock_client.log_event.return_value = {"status": "ok"}
 
         session = Session(mock_client, "session-123")
-        result = session.log_event("test_event", {"data": "value"})
+        result = session.log_event("test_event", data={"data": "value"})
 
         mock_client.log_event.assert_called_once_with(
-            "session-123", "test_event", {"data": "value"}
+            "session-123", "test_event", level=None, category=None, 
+            labels=None, message=None, data={"data": "value"}
         )
         self.assertEqual(result, {"status": "ok"})
 
