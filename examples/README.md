@@ -1,6 +1,19 @@
-# Examples
+<div align="center">
 
-This directory contains example applications demonstrating various features of datacat.
+# DataCat Examples
+
+```
+██████╗  █████╗ ████████╗ █████╗  ██████╗ █████╗ ████████╗
+██╔══██╗██╔══██╗╚══██╔══╝██╔══██╗██╔════╝██╔══██╗╚══██╔══╝
+██║  ██║███████║   ██║   ███████║██║     ███████║   ██║
+██║  ██║██╔══██║   ██║   ██╔══██║██║     ██╔══██║   ██║
+██████╔╝██║  ██║   ██║   ██║  ██║╚██████╗██║  ██║   ██║
+╚═════╝ ╚═╝  ╚═╝   ╚═╝   ╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝   ╚═╝
+```
+
+</div>
+
+This directory contains example applications demonstrating various features of DataCat.
 
 ## 🎨 Interactive Demo GUI
 
@@ -8,7 +21,7 @@ This directory contains example applications demonstrating various features of d
 
 **A comprehensive interactive demo with a modern web UI!**
 
-Features a beautiful web interface (powered by Gradio) that demonstrates all datacat features:
+Features a beautiful web interface (powered by Gradio) that demonstrates all DataCat features:
 - 🌙 Dark mode by default using Gradio's native theme
 - 📝 State management with JSON editor
 - 📢 Event logging
@@ -77,7 +90,7 @@ python examples/exception_logging_example.py
 
 ### [logging_handler_example.py](logging_handler_example.py)
 
-Shows how to integrate datacat with Python's standard `logging` module using a custom handler. Demonstrates:
+Shows how to integrate DataCat with Python's standard `logging` module using a custom handler. Demonstrates:
 - Custom `DatacatLoggingHandler` implementation
 - Exception logging with stack traces
 - Log levels (DEBUG, INFO, WARNING, ERROR, CRITICAL)
@@ -90,7 +103,7 @@ python examples/logging_handler_example.py
 
 ### [testing_example.py](testing_example.py)
 
-Example of using datacat in CI/CD for tracking test runs and build metrics.
+Example of using DataCat in CI/CD for tracking test runs and build metrics.
 
 ```bash
 python examples/testing_example.py

@@ -3,7 +3,9 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>{{.Title}} - Datacat</title>
+    <title>{{.Title}} - DataCat</title>
+    <link rel="icon" type="image/png" href="/static/favicon.png" />
+    <link rel="icon" type="image/x-icon" href="/static/favicon.ico" />
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
@@ -13,15 +15,16 @@
     <script src="/static/json-viewer.js"></script>
     <style>
       :root {
-        --bg-primary: #1a202c;
-        --bg-secondary: #2d3748;
-        --bg-card: #2d3748;
-        --bg-hover: #4a5568;
-        --text-primary: #e2e8f0;
-        --text-secondary: #a0aec0;
-        --border-color: #4a5568;
-        --accent-primary: #667eea;
-        --accent-secondary: #764ba2;
+        --bg-primary: #1a1a17;
+        --bg-secondary: #222220;
+        --bg-card: #282826;
+        --bg-hover: #323230;
+        --text-primary: #e8e8e0;
+        --text-secondary: #a8a8a0;
+        --border-color: #3a3a38;
+        --accent-primary: #819bfc;
+        --accent-secondary: #a77bfc;
+        --accent-tertiary: #b4c0fb;
         --success-color: #48bb78;
         --error-color: #f56565;
         --warning-color: #ed8936;
@@ -48,11 +51,12 @@
       }
 
       header {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        background: linear-gradient(135deg, #1e1e1c 0%, #242422 100%);
+        border-bottom: 2px solid rgba(129, 155, 252, 0.3);
         color: white;
         padding: 20px 0;
         margin-bottom: 30px;
-        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
       }
 
       header .container {
@@ -64,19 +68,30 @@
       h1 {
         font-size: 28px;
         font-weight: 600;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .logo {
+        height: 40px;
+        width: 40px;
       }
 
       nav a {
-        color: white;
+        color: var(--accent-tertiary);
         text-decoration: none;
         margin-left: 25px;
         padding: 8px 16px;
         border-radius: 4px;
-        transition: background 0.2s;
+        transition: all 0.2s;
+        border: 1px solid transparent;
       }
 
       nav a:hover {
-        background: rgba(255, 255, 255, 0.2);
+        background: rgba(129, 155, 252, 0.15);
+        border-color: var(--accent-primary);
+        color: white;
       }
 
       .card {
@@ -86,12 +101,15 @@
         margin-bottom: 20px;
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
         border: 1px solid var(--border-color);
+        border-top: 2px solid rgba(129, 155, 252, 0.4);
       }
 
       .card h2 {
         margin-bottom: 15px;
         color: var(--accent-primary);
         font-size: 22px;
+        border-bottom: 1px solid rgba(129, 155, 252, 0.2);
+        padding-bottom: 10px;
       }
 
       table {
@@ -107,9 +125,10 @@
       }
 
       th {
-        background: var(--bg-hover);
+        background: var(--bg-secondary);
         font-weight: 600;
-        color: var(--text-primary);
+        color: var(--accent-tertiary);
+        border-bottom: 1px solid rgba(129, 155, 252, 0.3);
       }
 
       tr:hover {
@@ -122,22 +141,43 @@
         border-radius: 12px;
         font-size: 12px;
         font-weight: 600;
+        border: 1px solid currentColor;
       }
 
       .badge-active {
-        background: #d4edda;
-        color: #155724;
+        background: rgba(72, 187, 120, 0.15);
+        color: var(--success-color);
+        border-color: var(--success-color);
+      }
+
+      .badge-suspended {
+        background: rgba(237, 137, 54, 0.15);
+        color: #f59e0b;
+        border-color: #f59e0b;
+      }
+
+      .badge-crashed {
+        background: rgba(220, 38, 38, 0.15);
+        color: #dc2626;
+        border-color: #dc2626;
+      }
+
+      .badge-hung {
+        background: rgba(239, 68, 68, 0.15);
+        color: #ef4444;
+        border-color: #ef4444;
       }
 
       .badge-inactive {
-        background: #f8d7da;
-        color: #721c24;
+        background: rgba(245, 101, 101, 0.15);
+        color: var(--error-color);
+        border-color: var(--error-color);
       }
 
       .btn {
         display: inline-block;
         padding: 10px 20px;
-        background: #667eea;
+        background: var(--accent-primary);
         color: white;
         text-decoration: none;
         border-radius: 4px;
@@ -148,7 +188,7 @@
       }
 
       .btn:hover {
-        background: #5568d3;
+        background: var(--accent-secondary);
       }
 
       .btn-secondary {
@@ -193,6 +233,13 @@
         font-size: 14px;
         background: var(--bg-secondary);
         color: var(--text-primary);
+        transition: border-color 0.2s;
+      }
+
+      .form-group input:focus,
+      .form-group select:focus {
+        outline: none;
+        border-color: var(--accent-primary);
       }
 
       .stats-grid {
@@ -203,11 +250,12 @@
       }
 
       .stat-card {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
+        background: var(--bg-card);
+        border: 1px solid var(--accent-primary);
+        color: var(--text-primary);
         padding: 20px;
         border-radius: 8px;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        box-shadow: 0 2px 8px rgba(129, 155, 252, 0.1);
       }
 
       .stat-card h3 {
@@ -219,6 +267,7 @@
       .stat-card .value {
         font-size: 32px;
         font-weight: 700;
+        color: var(--accent-primary);
       }
 
       .htmx-indicator {
@@ -230,8 +279,8 @@
       }
 
       .spinner {
-        border: 2px solid #f3f3f3;
-        border-top: 2px solid #667eea;
+        border: 2px solid var(--border-color);
+        border-top: 2px solid var(--accent-primary);
         border-radius: 50%;
         width: 20px;
         height: 20px;
@@ -250,15 +299,16 @@
 
       /* Light theme */
       body.light-theme {
-        --bg-primary: #f7fafc;
-        --bg-secondary: #edf2f7;
+        --bg-primary: #fbfbf4;
+        --bg-secondary: #f0f0e8;
         --bg-card: #ffffff;
-        --bg-hover: #e2e8f0;
-        --text-primary: #2d3748;
-        --text-secondary: #4a5568;
-        --border-color: #cbd5e0;
-        --accent-primary: #667eea;
-        --accent-secondary: #764ba2;
+        --bg-hover: #e8e8e0;
+        --text-primary: #242420;
+        --text-secondary: #5a5a55;
+        --border-color: #d8d8d0;
+        --accent-primary: #819bfc;
+        --accent-secondary: #a77bfc;
+        --accent-tertiary: #b4c0fb;
         --success-color: #38a169;
         --error-color: #e53e3e;
         --warning-color: #dd6b20;
@@ -266,19 +316,21 @@
 
       /* Theme switcher button */
       .theme-toggle {
-        background: rgba(255, 255, 255, 0.1);
-        border: none;
-        color: white;
+        background: rgba(129, 155, 252, 0.15);
+        border: 1px solid var(--accent-primary);
+        color: var(--accent-tertiary);
         padding: 8px 16px;
         border-radius: 4px;
         cursor: pointer;
         font-size: 14px;
-        transition: background 0.2s;
+        transition: all 0.2s;
         margin-left: 15px;
       }
 
       .theme-toggle:hover {
-        background: rgba(255, 255, 255, 0.2);
+        background: rgba(129, 155, 252, 0.25);
+        color: white;
+        border-color: var(--accent-tertiary);
       }
 
       /* Alert styles */
@@ -330,10 +382,12 @@
   <body>
     <header>
       <div class="container">
-        <h1>📊 Datacat Dashboard</h1>
+        <h1>
+          <img src="/static/logo-small.png" alt="DataCat Logo" class="logo" />
+          DataCat Dashboard
+        </h1>
         <nav>
           <a href="/">Home</a>
-          <a href="/metrics">Metrics</a>
           <a href="http://localhost:9090/api/sessions" target="_blank">API</a>
           <button class="theme-toggle" onclick="toggleTheme()">
             🌓 Toggle Theme

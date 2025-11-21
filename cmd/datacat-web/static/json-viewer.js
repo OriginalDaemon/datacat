@@ -17,6 +17,9 @@ class JSONViewer {
       showCopyButton: options.showCopyButton !== false,
       showRawButton: options.showRawButton !== false,
       maxHeight: options.maxHeight || null,
+      highlightAdded: options.highlightAdded || [],
+      highlightModified: options.highlightModified || [],
+      highlightRemoved: options.highlightRemoved || [],
       ...options,
     };
 
@@ -69,7 +72,7 @@ class JSONViewer {
         `;
 
     if (this.viewMode === "tree") {
-      content.appendChild(this.renderTree(this.jsonData, 0));
+      content.appendChild(this.renderTree(this.jsonData, 0, ""));
     } else {
       const pre = document.createElement("pre");
       pre.style.cssText =
@@ -81,9 +84,23 @@ class JSONViewer {
     this.container.appendChild(content);
   }
 
-  renderTree(data, depth) {
+  renderTree(data, depth, path) {
     const container = document.createElement("div");
     container.style.marginLeft = depth > 0 ? "20px" : "0";
+
+    // Helper to get highlight style for current path
+    const getHighlightStyle = (itemPath) => {
+      if (this.options.highlightAdded.includes(itemPath)) {
+        return "background: rgba(72, 187, 120, 0.1); border-left: 3px solid rgba(72, 187, 120, 0.6); padding-left: 8px; margin-left: -8px;";
+      }
+      if (this.options.highlightModified.includes(itemPath)) {
+        return "background: rgba(129, 155, 252, 0.1); border-left: 3px solid rgba(129, 155, 252, 0.6); padding-left: 8px; margin-left: -8px;";
+      }
+      if (this.options.highlightRemoved.includes(itemPath)) {
+        return "background: rgba(245, 101, 101, 0.1); border-left: 3px solid rgba(245, 101, 101, 0.6); padding-left: 8px; margin-left: -8px;";
+      }
+      return "";
+    };
 
     if (data === null) {
       container.innerHTML = `<span style="color: #999;">null</span>`;
@@ -103,8 +120,15 @@ class JSONViewer {
 
       // For arrays, render each item with index
       data.forEach((item, index) => {
+        const itemPath = path ? `${path}[${index}]` : `[${index}]`;
         const itemDiv = document.createElement("div");
         itemDiv.style.margin = "4px 0";
+
+        // Apply highlight style if this path matches
+        const highlightStyle = getHighlightStyle(itemPath);
+        if (highlightStyle) {
+          itemDiv.style.cssText += highlightStyle;
+        }
 
         // Check if item is complex (object/array)
         const isComplex = typeof item === "object" && item !== null;
@@ -145,7 +169,9 @@ class JSONViewer {
 
           const childContainer = document.createElement("div");
           childContainer.style.display = isCollapsed ? "none" : "block";
-          childContainer.appendChild(this.renderTree(item, depth + 1));
+          childContainer.appendChild(
+            this.renderTree(item, depth + 1, itemPath)
+          );
 
           header.onclick = () => {
             const isHidden = childContainer.style.display === "none";
@@ -176,8 +202,15 @@ class JSONViewer {
       }
 
       keys.forEach((key) => {
+        const itemPath = path ? `${path}.${key}` : key;
         const itemDiv = document.createElement("div");
         itemDiv.style.margin = "4px 0";
+
+        // Apply highlight style if this path matches
+        const highlightStyle = getHighlightStyle(itemPath);
+        if (highlightStyle) {
+          itemDiv.style.cssText += highlightStyle;
+        }
 
         const value = data[key];
         const isComplex = typeof value === "object" && value !== null;
@@ -219,7 +252,9 @@ class JSONViewer {
 
           const childContainer = document.createElement("div");
           childContainer.style.display = isCollapsed ? "none" : "block";
-          childContainer.appendChild(this.renderTree(value, depth + 1));
+          childContainer.appendChild(
+            this.renderTree(value, depth + 1, itemPath)
+          );
 
           header.onclick = () => {
             const isHidden = childContainer.style.display === "none";
@@ -279,7 +314,33 @@ class JSONViewer {
           link.textContent = matchedText;
           link.style.cssText =
             "color: #667eea; text-decoration: underline; cursor: pointer;";
-          link.title = `Open ${filePath}:${lineNumber} in IDE\n\nClick to use: PyCharm | Ctrl+Click: VSCode | Shift+Click: File only`;
+          link.title = `Open ${filePath}:${lineNumber} in IDE\n\nClick: PyCharm\nCtrl+Click: VSCode\nShift+Click: File only\nRight-Click: Copy path`;
+
+          // Add right-click to copy path
+          link.oncontextmenu = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+
+            const copyText = `${filePath}:${lineNumber}`;
+            navigator.clipboard
+              .writeText(copyText)
+              .then(() => {
+                const originalText = link.textContent;
+                const originalColor = link.style.color;
+                link.textContent = "Path copied!";
+                link.style.color = "#48bb78";
+
+                setTimeout(() => {
+                  link.textContent = originalText;
+                  link.style.color = originalColor;
+                }, 1500);
+              })
+              .catch(() => {
+                alert(`Copy this path:\n${copyText}`);
+              });
+
+            return false;
+          };
 
           // Support multiple IDEs based on modifier keys
           link.onclick = (e) => {
@@ -287,20 +348,61 @@ class JSONViewer {
             e.stopPropagation();
 
             let url;
+            let ideName;
             if (e.ctrlKey || e.metaKey) {
               // VSCode
               url = `vscode://file${filePath}:${lineNumber}`;
+              ideName = "VSCode";
             } else if (e.shiftKey) {
               // Generic file:// protocol (opens file, but not at specific line)
               url = `file://${filePath}`;
+              ideName = "File Explorer";
             } else {
               // PyCharm (default)
               url = `pycharm://open?file=${encodeURIComponent(
                 filePath
               )}&line=${lineNumber}`;
+              ideName = "PyCharm";
             }
 
-            window.location.href = url;
+            // Try multiple methods to open the IDE URL
+            // Method 1: Try window.open (works on some browsers)
+            const newWindow = window.open(url, "_blank");
+
+            // Method 2: If that didn't work, try creating a hidden iframe
+            if (
+              !newWindow ||
+              newWindow.closed ||
+              typeof newWindow.closed == "undefined"
+            ) {
+              const iframe = document.createElement("iframe");
+              iframe.style.display = "none";
+              iframe.src = url;
+              document.body.appendChild(iframe);
+
+              // Clean up after a short delay
+              setTimeout(() => {
+                document.body.removeChild(iframe);
+              }, 1000);
+            }
+
+            // Give user feedback
+            const originalText = link.textContent;
+            const originalColor = link.style.color;
+            link.textContent = `Opening in ${ideName}...`;
+            link.style.color = "#48bb78";
+
+            // After a delay, check if user might need help
+            setTimeout(() => {
+              link.textContent = originalText;
+              link.style.color = originalColor;
+
+              // Show a subtle hint after first click
+              if (!link.dataset.clicked) {
+                link.dataset.clicked = "true";
+                link.title = `${link.title}\n\n💡 Not working? Right-click to copy path, or enable IDE protocol handlers in your IDE settings.`;
+              }
+            }, 2000);
           };
 
           span.appendChild(link);

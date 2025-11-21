@@ -33,7 +33,6 @@ def main():
     print("1. Creating session (server unavailable)...")
     session = create_session(
         base_url="http://localhost:19999",  # Invalid server
-        use_daemon=True,
         daemon_port="8079",
         product="OfflineDemo",
         version="1.0.0",

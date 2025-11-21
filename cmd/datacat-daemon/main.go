@@ -2,10 +2,12 @@ package main
 
 import (
 	"bytes"
+	"crypto/md5"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"sync"
@@ -15,26 +17,37 @@ import (
 
 // SessionBuffer holds pending updates for a session
 type SessionBuffer struct {
-	SessionID        string
-	StateUpdates     []map[string]interface{}
-	Events           []EventData
-	Metrics          []MetricData
-	LastHeartbeat    time.Time
-	LastState        map[string]interface{}
-	HangLogged       bool
-	ParentPID        int       // Parent process ID
-	CrashLogged      bool      // Whether crash has been logged
-	CreatedAt        time.Time // When session was created
-	EndedAt          *time.Time // When session was ended
-	Active           bool      // Whether session is active
-	SyncedWithServer bool      // Whether this session exists on the server
-	mu               sync.Mutex
+	SessionID              string
+	StateUpdates           []map[string]interface{}
+	Events                 []EventData
+	Metrics                []MetricData
+	LastHeartbeat          time.Time
+	LastState              map[string]interface{}
+	HangLogged             bool
+	ParentPID              int        // Parent process ID
+	CrashLogged            bool       // Whether crash has been logged
+	CreatedAt              time.Time  // When session was created
+	EndedAt                *time.Time // When session was ended
+	Active                 bool       // Whether session is active
+	SyncedWithServer       bool       // Whether this session exists on the server
+	HeartbeatMonitorPaused bool       // Whether heartbeat monitoring is paused
+	mu                     sync.Mutex
 }
 
 // EventData represents an event to be logged
 type EventData struct {
-	Name string                 `json:"name"`
-	Data map[string]interface{} `json:"data"`
+	Name           string                 `json:"name"`
+	Level          string                 `json:"level"`
+	Category       string                 `json:"category"`
+	Labels         []string               `json:"labels"`
+	Message        string                 `json:"message"`
+	Data           map[string]interface{} `json:"data"`
+	ExceptionType  string                 `json:"exception_type,omitempty"`
+	ExceptionMsg   string                 `json:"exception_msg,omitempty"`
+	Stacktrace     []string               `json:"stacktrace,omitempty"`
+	SourceFile     string                 `json:"source_file,omitempty"`
+	SourceLine     int                    `json:"source_line,omitempty"`
+	SourceFunction string                 `json:"source_function,omitempty"`
 }
 
 // MetricData represents a metric to be logged
@@ -86,12 +99,17 @@ func (d *Daemon) Start() error {
 	// Start retry queue processor goroutine
 	go d.retryQueueProcessor()
 
+	// Start periodic heartbeat sender to server
+	go d.periodicHeartbeatSender()
+
 	// Setup HTTP handlers
 	http.HandleFunc("/register", d.handleRegister)
 	http.HandleFunc("/state", d.handleState)
 	http.HandleFunc("/event", d.handleEvent)
 	http.HandleFunc("/metric", d.handleMetric)
 	http.HandleFunc("/heartbeat", d.handleHeartbeat)
+	http.HandleFunc("/pause_heartbeat", d.handlePauseHeartbeat)
+	http.HandleFunc("/resume_heartbeat", d.handleResumeHeartbeat)
 	http.HandleFunc("/end", d.handleEnd)
 	http.HandleFunc("/health", d.handleHealth)
 	http.HandleFunc("/session", d.handleGetSession)
@@ -129,10 +147,16 @@ func (d *Daemon) handleRegister(w http.ResponseWriter, r *http.Request) {
 	var sessionID string
 	syncedWithServer := false
 
+	// Get machine identification
+	machineID := getMachineID()
+	hostname := getHostname()
+
 	// Try to forward to server to create session
-	reqBody, _ := json.Marshal(map[string]string{
-		"product": req.Product,
-		"version": req.Version,
+	reqBody, _ := json.Marshal(map[string]interface{}{
+		"product":    req.Product,
+		"version":    req.Version,
+		"machine_id": machineID,
+		"hostname":   hostname,
 	})
 	resp, err := http.Post(d.config.ServerURL+"/api/sessions", "application/json", bytes.NewBuffer(reqBody))
 	if err != nil {
@@ -142,15 +166,17 @@ func (d *Daemon) handleRegister(w http.ResponseWriter, r *http.Request) {
 		d.sessionCounter++
 		sessionID = fmt.Sprintf("local-session-%d-%d", time.Now().Unix(), d.sessionCounter)
 		d.mu.Unlock()
-		
+
 		// Queue the session creation for retry
 		d.queueMu.Lock()
 		d.failedQueue = append(d.failedQueue, QueuedOperation{
 			SessionID: sessionID,
 			OpType:    "create_session",
-			Data: map[string]string{
-				"product": req.Product,
-				"version": req.Version,
+			Data: map[string]interface{}{
+				"product":    req.Product,
+				"version":    req.Version,
+				"machine_id": machineID,
+				"hostname":   hostname,
 			},
 			Timestamp: time.Now(),
 		})
@@ -201,7 +227,7 @@ func (d *Daemon) handleRegister(w http.ResponseWriter, r *http.Request) {
 	}
 	d.mu.Unlock()
 
-	log.Printf("Registered session: %s (product: %s, version: %s, parent PID: %d, synced: %v)", 
+	log.Printf("Registered session: %s (product: %s, version: %s, parent PID: %d, synced: %v)",
 		sessionID, req.Product, req.Version, req.ParentPID, syncedWithServer)
 
 	w.Header().Set("Content-Type", "application/json")
@@ -258,9 +284,19 @@ func (d *Daemon) handleEvent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		SessionID string                 `json:"session_id"`
-		Name      string                 `json:"name"`
-		Data      map[string]interface{} `json:"data"`
+		SessionID      string                 `json:"session_id"`
+		Name           string                 `json:"name"`
+		Level          string                 `json:"level"`
+		Category       string                 `json:"category"`
+		Labels         []string               `json:"labels"`
+		Message        string                 `json:"message"`
+		Data           map[string]interface{} `json:"data"`
+		ExceptionType  string                 `json:"exception_type"`
+		ExceptionMsg   string                 `json:"exception_msg"`
+		Stacktrace     []string               `json:"stacktrace"`
+		SourceFile     string                 `json:"source_file"`
+		SourceLine     int                    `json:"source_line"`
+		SourceFunction string                 `json:"source_function"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -279,8 +315,18 @@ func (d *Daemon) handleEvent(w http.ResponseWriter, r *http.Request) {
 
 	buffer.mu.Lock()
 	buffer.Events = append(buffer.Events, EventData{
-		Name: req.Name,
-		Data: req.Data,
+		Name:           req.Name,
+		Level:          req.Level,
+		Category:       req.Category,
+		Labels:         req.Labels,
+		Message:        req.Message,
+		Data:           req.Data,
+		ExceptionType:  req.ExceptionType,
+		ExceptionMsg:   req.ExceptionMsg,
+		Stacktrace:     req.Stacktrace,
+		SourceFile:     req.SourceFile,
+		SourceLine:     req.SourceLine,
+		SourceFunction: req.SourceFunction,
 	})
 	buffer.mu.Unlock()
 
@@ -355,11 +401,20 @@ func (d *Daemon) handleHeartbeat(w http.ResponseWriter, r *http.Request) {
 
 	buffer.mu.Lock()
 	buffer.LastHeartbeat = time.Now()
+	// Reset paused flag if heartbeat received
+	if buffer.HeartbeatMonitorPaused {
+		buffer.HeartbeatMonitorPaused = false
+		log.Printf("Session %s: heartbeat monitoring automatically resumed", req.SessionID)
+	}
 	if buffer.HangLogged {
 		// Application recovered
 		buffer.Events = append(buffer.Events, EventData{
-			Name: "application_recovered",
-			Data: map[string]interface{}{},
+			Name:     "application_recovered",
+			Level:    "info",
+			Category: "datacat.daemon",
+			Labels:   []string{"heartbeat", "recovery"},
+			Message:  "Application heartbeat resumed after hang",
+			Data:     map[string]interface{}{},
 		})
 		buffer.HangLogged = false
 	}
@@ -367,6 +422,77 @@ func (d *Daemon) handleHeartbeat(w http.ResponseWriter, r *http.Request) {
 
 	// Forward heartbeat to server
 	d.sendHeartbeat(req.SessionID)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+}
+
+// handlePauseHeartbeat handles requests to pause heartbeat monitoring
+func (d *Daemon) handlePauseHeartbeat(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		SessionID string `json:"session_id"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+
+	d.mu.RLock()
+	buffer, exists := d.sessions[req.SessionID]
+	d.mu.RUnlock()
+
+	if !exists {
+		http.Error(w, "Session not found", http.StatusNotFound)
+		return
+	}
+
+	buffer.mu.Lock()
+	buffer.HeartbeatMonitorPaused = true
+	buffer.mu.Unlock()
+
+	log.Printf("Session %s: heartbeat monitoring paused", req.SessionID)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+}
+
+// handleResumeHeartbeat handles requests to resume heartbeat monitoring
+func (d *Daemon) handleResumeHeartbeat(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		SessionID string `json:"session_id"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+
+	d.mu.RLock()
+	buffer, exists := d.sessions[req.SessionID]
+	d.mu.RUnlock()
+
+	if !exists {
+		http.Error(w, "Session not found", http.StatusNotFound)
+		return
+	}
+
+	buffer.mu.Lock()
+	buffer.HeartbeatMonitorPaused = false
+	buffer.LastHeartbeat = time.Now() // Reset heartbeat time to avoid immediate hang detection
+	buffer.mu.Unlock()
+
+	log.Printf("Session %s: heartbeat monitoring resumed", req.SessionID)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
@@ -516,7 +642,7 @@ func (d *Daemon) sendStateUpdate(sessionID string, state map[string]interface{})
 		return
 	}
 	_ = resp.Body.Close()
-	
+
 	// Mark session as synced with server on successful operation
 	d.markSessionSynced(sessionID)
 }
@@ -543,7 +669,7 @@ func (d *Daemon) sendEvent(sessionID string, event EventData) {
 		return
 	}
 	_ = resp.Body.Close()
-	
+
 	// Mark session as synced with server on successful operation
 	d.markSessionSynced(sessionID)
 }
@@ -570,7 +696,7 @@ func (d *Daemon) sendMetric(sessionID string, metric MetricData) {
 		return
 	}
 	_ = resp.Body.Close()
-	
+
 	// Mark session as synced with server on successful operation
 	d.markSessionSynced(sessionID)
 }
@@ -621,17 +747,62 @@ func (d *Daemon) checkHeartbeat(sessionID string) {
 	buffer.mu.Lock()
 	defer buffer.mu.Unlock()
 
+	// Skip heartbeat check if monitoring is paused
+	if buffer.HeartbeatMonitorPaused {
+		return
+	}
+
 	timeout := time.Duration(d.config.HeartbeatTimeoutSeconds) * time.Second
 	if time.Since(buffer.LastHeartbeat) > timeout && !buffer.HangLogged {
 		// Application appears hung
 		buffer.Events = append(buffer.Events, EventData{
-			Name: "application_appears_hung",
+			Name:     "application_appears_hung",
+			Level:    "error",
+			Category: "datacat.daemon",
+			Labels:   []string{"heartbeat", "hung"},
+			Message:  fmt.Sprintf("Application has not sent heartbeat for %.0f seconds", time.Since(buffer.LastHeartbeat).Seconds()),
 			Data: map[string]interface{}{
-				"last_heartbeat": buffer.LastHeartbeat.Format(time.RFC3339),
+				"last_heartbeat":          buffer.LastHeartbeat.Format(time.RFC3339),
+				"seconds_since_heartbeat": int(time.Since(buffer.LastHeartbeat).Seconds()),
 			},
 		})
 		buffer.HangLogged = true
 		log.Printf("Session %s appears hung", sessionID)
+	}
+}
+
+// periodicHeartbeatSender sends periodic heartbeats to the server for all active sessions
+func (d *Daemon) periodicHeartbeatSender() {
+	// Send heartbeats every 15 seconds (should be less than server timeout)
+	ticker := time.NewTicker(15 * time.Second)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		d.mu.RLock()
+		sessionIDs := make([]string, 0, len(d.sessions))
+		for id := range d.sessions {
+			sessionIDs = append(sessionIDs, id)
+		}
+		d.mu.RUnlock()
+
+		for _, sessionID := range sessionIDs {
+			d.mu.RLock()
+			buffer, exists := d.sessions[sessionID]
+			d.mu.RUnlock()
+
+			if !exists {
+				continue
+			}
+
+			buffer.mu.Lock()
+			active := buffer.Active && buffer.EndedAt == nil
+			buffer.mu.Unlock()
+
+			// Only send heartbeats for active sessions
+			if active {
+				d.sendHeartbeat(sessionID)
+			}
+		}
 	}
 }
 
@@ -723,7 +894,11 @@ func (d *Daemon) checkParentProcess(sessionID string) {
 	if !isProcessRunning(buffer.ParentPID) {
 		// Parent process has crashed or exited abnormally
 		buffer.Events = append(buffer.Events, EventData{
-			Name: "parent_process_crashed",
+			Name:     "parent_process_crashed",
+			Level:    "critical",
+			Category: "datacat.daemon",
+			Labels:   []string{"crash", "process"},
+			Message:  fmt.Sprintf("Parent process (PID %d) is no longer running", buffer.ParentPID),
 			Data: map[string]interface{}{
 				"parent_pid": buffer.ParentPID,
 			},
@@ -748,6 +923,40 @@ func isProcessRunning(pid int) bool {
 	// On Unix, FindProcess always succeeds, so we need to send signal 0
 	err = process.Signal(syscall.Signal(0))
 	return err == nil
+}
+
+// getMachineID returns a unique identifier for this machine based on MAC address
+func getMachineID() string {
+	interfaces, err := net.Interfaces()
+	if err != nil {
+		log.Printf("Warning: Failed to get network interfaces: %v", err)
+		return ""
+	}
+
+	// Find the first non-loopback interface with a hardware address
+	for _, iface := range interfaces {
+		// Skip loopback and interfaces without hardware address
+		if iface.Flags&net.FlagLoopback != 0 || len(iface.HardwareAddr) == 0 {
+			continue
+		}
+
+		// Use MD5 hash of MAC address as machine ID (for privacy/consistency)
+		hash := md5.Sum([]byte(iface.HardwareAddr.String()))
+		return fmt.Sprintf("%x", hash)
+	}
+
+	log.Printf("Warning: No suitable network interface found for machine ID")
+	return ""
+}
+
+// getHostname returns the hostname of this machine
+func getHostname() string {
+	hostname, err := os.Hostname()
+	if err != nil {
+		log.Printf("Warning: Failed to get hostname: %v", err)
+		return ""
+	}
+	return hostname
 }
 
 // retryQueueProcessor periodically processes the failed queue
@@ -900,12 +1109,12 @@ func (d *Daemon) retryEndSession(sessionID string) bool {
 		return false
 	}
 	_ = resp.Body.Close()
-	
+
 	// Remove session from daemon after successfully ending on server
 	d.mu.Lock()
 	delete(d.sessions, sessionID)
 	d.mu.Unlock()
-	
+
 	log.Printf("Session %s successfully ended on server (from queue)", sessionID)
 	return true
 }
@@ -914,7 +1123,7 @@ func (d *Daemon) retryEndSession(sessionID string) bool {
 func (d *Daemon) markSessionSynced(sessionID string) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	
+
 	if buffer, exists := d.sessions[sessionID]; exists {
 		buffer.SyncedWithServer = true
 	}
@@ -969,7 +1178,7 @@ func (d *Daemon) handleGetSession(w http.ResponseWriter, r *http.Request) {
 		"updated_at": time.Now().Format(time.RFC3339),
 		"active":     buffer.Active,
 		"state":      buffer.LastState,
-		"events":     []interface{}{},  // Empty arrays for consistency
+		"events":     []interface{}{}, // Empty arrays for consistency
 		"metrics":    []interface{}{},
 	}
 	if buffer.EndedAt != nil {

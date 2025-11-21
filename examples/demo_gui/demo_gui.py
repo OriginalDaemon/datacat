@@ -98,7 +98,7 @@ def toggle_dark_mode(is_dark):
     return is_dark
 
 
-def toggle_session(server_url, use_daemon, product_name, product_version):
+def toggle_session(server_url, product_name, product_version):
     """Toggle session - create if none exists, end if one exists"""
     global session, session_info, datacat_client
 
@@ -166,10 +166,10 @@ def toggle_session(server_url, use_daemon, product_name, product_version):
 
     try:
         # Create or reuse the datacat client
-        # This is important for daemon mode - we want to reuse the same daemon process
+        # This is important - we want to reuse the same daemon process
         # across multiple sessions to avoid port conflicts
         if datacat_client is None:
-            datacat_client = DatacatClient(server_url, use_daemon=use_daemon, daemon_port="8079")
+            datacat_client = DatacatClient(server_url, daemon_port="8079")
 
         # Register a new session with the existing client (product and version required)
         session_id = datacat_client.register_session(product_name, product_version)
@@ -487,7 +487,7 @@ function() {
 # Build the Gradio interface
 def create_ui():
     with gr.Blocks(
-        title="datacat Demo GUI",
+        title="DataCat Demo GUI",
         theme=gr.themes.Soft(
             primary_hue="blue",
             secondary_hue="slate",
@@ -496,7 +496,7 @@ def create_ui():
     ) as demo:
         gr.Markdown(
             """
-            # 🐱 datacat Demo GUI
+            # 🐱 DataCat Demo GUI
 
             A modern demonstration of the datacat Python client features.
             """
@@ -541,16 +541,12 @@ def create_ui():
                     )
 
                 gr.Markdown("**Connection Settings**")
-                with gr.Row():
-                    server_url = gr.Textbox(
-                        label="Server URL",
-                        value="http://localhost:9090",
-                        placeholder="http://localhost:9090"
-                    )
-                    use_daemon = gr.Checkbox(
-                        label="Use Daemon",
-                        value=False
-                    )
+                server_url = gr.Textbox(
+                    label="Server URL",
+                    value="http://localhost:9090",
+                    placeholder="http://localhost:9090",
+                    info="DataCat always uses a local daemon for batching and crash detection"
+                )
 
                 session_toggle_btn = gr.Button("Start New Session", variant="primary", size="lg")
 
@@ -692,7 +688,7 @@ def create_ui():
         # Wire up the session toggle button
         session_toggle_btn.click(
             fn=toggle_session,
-            inputs=[server_url, use_daemon, product_name, product_version],
+            inputs=[server_url, product_name, product_version],
             outputs=[
                 session_output,
                 current_session,
@@ -784,10 +780,17 @@ if __name__ == "__main__":
     print("\nThe demo GUI will open in your browser...")
     print("="*60 + "\n")
 
-    demo.launch(
-        server_name="127.0.0.1",
-        server_port=7860,
-        share=False,
-        inbrowser=True
-    )
+    # Set favicon if it exists
+    favicon_path = os.path.join(os.path.dirname(__file__), "logo-small.png")
+    launch_kwargs = {
+        "server_name": "127.0.0.1",
+        "server_port": 7860,
+        "share": False,
+        "inbrowser": True
+    }
+
+    if os.path.exists(favicon_path):
+        launch_kwargs["favicon_path"] = favicon_path
+
+    demo.launch(**launch_kwargs)
 

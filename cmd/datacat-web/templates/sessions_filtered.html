@@ -3,20 +3,22 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sessions - Datacat</title>
+    <title>Sessions - DataCat</title>
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
     <style>
         :root {
-            --bg-primary: #1a202c;
-            --bg-secondary: #2d3748;
-            --bg-card: #2d3748;
-            --bg-hover: #4a5568;
-            --text-primary: #e2e8f0;
-            --text-secondary: #a0aec0;
-            --border-color: #4a5568;
-            --accent-primary: #667eea;
-            --accent-secondary: #764ba2;
+            --bg-primary: #1a1a17;
+            --bg-secondary: #222220;
+            --bg-card: #282826;
+            --bg-hover: #323230;
+            --text-primary: #e8e8e0;
+            --text-secondary: #a8a8a0;
+            --border-color: #3a3a38;
+            --accent-primary: #819bfc;
+            --accent-secondary: #a77bfc;
+            --accent-tertiary: #b4c0fb;
             --success-color: #48bb78;
             --error-color: #f56565;
             --warning-color: #ed8936;
@@ -351,8 +353,15 @@
                             <option value="">All Statuses</option>
                             <option value="active" {{if eq .StatusFilter "active"}}selected{{end}}>Active</option>
                             <option value="ended" {{if eq .StatusFilter "ended"}}selected{{end}}>Ended</option>
+                            <option value="suspended" {{if eq .StatusFilter "suspended"}}selected{{end}}>Suspended</option>
                             <option value="crashed" {{if eq .StatusFilter "crashed"}}selected{{end}}>Crashed</option>
-                            <option value="hung" {{if eq .StatusFilter "hung"}}selected{{end}}>Hung</option>
+                            <optgroup label="Hung Sessions">
+                                <option value="hung" {{if eq .StatusFilter "hung"}}selected{{end}}>Currently Hung</option>
+                                <option value="ever_hung" {{if eq .StatusFilter "ever_hung"}}selected{{end}}>Ever Hung (Any)</option>
+                                <option value="hung_recovered" {{if eq .StatusFilter "hung_recovered"}}selected{{end}}>Hung & Recovered</option>
+                                <option value="hung_ended" {{if eq .StatusFilter "hung_ended"}}selected{{end}}>Hung When Ended</option>
+                                <option value="hung_crashed" {{if eq .StatusFilter "hung_crashed"}}selected{{end}}>Hung When Crashed</option>
+                            </optgroup>
                         </select>
                     </div>
 
@@ -420,7 +429,7 @@
                 {{range .Sessions}}
                 <tr>
                     <td>
-                        <a href="/session/{{.ID}}" style="color: #667eea; text-decoration: none;">
+                        <a href="/session/{{.ID}}" style="color: var(--accent-primary); text-decoration: none;">
                             {{slice .ID 0 8}}...
                         </a>
                     </td>
@@ -430,8 +439,15 @@
                     <td>
                         {{if .Active}}
                             <span class="badge badge-active">Active</span>
+                        {{else if .Crashed}}
+                            <span class="badge badge-crashed">Crashed</span>
+                        {{else if .Suspended}}
+                            <span class="badge badge-suspended">Suspended</span>
                         {{else}}
                             <span class="badge badge-ended">Ended</span>
+                        {{end}}
+                        {{if .Hung}}
+                            <span class="badge badge-hung" style="margin-left: 4px">Hung</span>
                         {{end}}
                     </td>
                     <td>{{len .Events}}</td>
@@ -455,9 +471,9 @@
             {{if .HasPrev}}
                 <a href="/sessions?page={{sub .CurrentPage 1}}&time_range={{.TimeRange}}&start_time={{.StartTime}}&end_time={{.EndTime}}&product={{.Product}}&version={{.Version}}&status={{.StatusFilter}}&state_key={{.StateKey}}&state_value={{.StateValue}}&event_name={{.EventName}}&sort={{.SortBy}}&order={{.SortOrder}}">← Previous</a>
             {{end}}
-            
+
             <span>Page {{.CurrentPage}} of {{.TotalPages}}</span>
-            
+
             {{if .HasNext}}
                 <a href="/sessions?page={{add .CurrentPage 1}}&time_range={{.TimeRange}}&start_time={{.StartTime}}&end_time={{.EndTime}}&product={{.Product}}&version={{.Version}}&status={{.StatusFilter}}&state_key={{.StateKey}}&state_value={{.StateValue}}&event_name={{.EventName}}&sort={{.SortBy}}&order={{.SortOrder}}">Next →</a>
             {{end}}
@@ -486,7 +502,7 @@
             const timeRange = document.getElementById('time_range').value;
             const customStartGroup = document.getElementById('custom_start_group');
             const customEndGroup = document.getElementById('custom_end_group');
-            
+
             if (timeRange === 'custom') {
                 customStartGroup.style.display = 'flex';
                 customEndGroup.style.display = 'flex';
@@ -503,7 +519,7 @@
         function toggleSection(sectionId) {
             const content = document.getElementById(sectionId + '-content');
             const icon = document.getElementById(sectionId + '-icon');
-            
+
             if (content.classList.contains('collapsed')) {
                 content.classList.remove('collapsed');
                 icon.classList.remove('collapsed');
@@ -517,24 +533,24 @@
         function toggleMetric(metricName) {
             const content = document.getElementById('metric-' + metricName + '-content');
             const icon = document.getElementById('metric-' + metricName + '-icon');
-            
+
             if (content.classList.contains('collapsed')) {
                 content.classList.remove('collapsed');
                 icon.classList.remove('collapsed');
-                
+
                 // Save to localStorage
                 const expanded = getExpandedMetrics();
                 if (!expanded.includes(metricName)) {
                     expanded.push(metricName);
                     localStorage.setItem('expandedMetrics', JSON.stringify(expanded));
                 }
-                
+
                 // Trigger HTMX to load the metric data
                 htmx.trigger('#metric-' + metricName + '-content', 'loadMetric');
             } else {
                 content.classList.add('collapsed');
                 icon.classList.add('collapsed');
-                
+
                 // Remove from localStorage
                 const expanded = getExpandedMetrics();
                 const index = expanded.indexOf(metricName);

@@ -41,13 +41,13 @@ func findDaemonBinary() string {
 	if runtime.GOOS == "windows" {
 		binaryName = "datacat-daemon.exe"
 	}
-	
+
 	// Check common locations
 	possiblePaths := []string{
-		binaryName,                                       // In PATH
-		"./" + binaryName,                                // Current directory
-		"./cmd/datacat-daemon/" + binaryName,             // Development
-		"./bin/" + binaryName,                            // Built binaries
+		binaryName,                           // In PATH
+		"./" + binaryName,                    // Current directory
+		"./cmd/datacat-daemon/" + binaryName, // Development
+		"./bin/" + binaryName,                // Built binaries
 	}
 
 	for _, path := range possiblePaths {
@@ -129,15 +129,21 @@ type Client struct {
 
 // Session represents a datacat session
 type Session struct {
-	ID           string                 `json:"id"`
-	CreatedAt    time.Time              `json:"created_at"`
-	UpdatedAt    time.Time              `json:"updated_at"`
-	EndedAt      *time.Time             `json:"ended_at,omitempty"`
-	Active       bool                   `json:"active"`
-	State        map[string]interface{} `json:"state"`
-	StateHistory []StateSnapshot        `json:"state_history"`
-	Events       []Event                `json:"events"`
-	Metrics      []Metric               `json:"metrics"`
+	ID            string                 `json:"id"`
+	CreatedAt     time.Time              `json:"created_at"`
+	UpdatedAt     time.Time              `json:"updated_at"`
+	EndedAt       *time.Time             `json:"ended_at,omitempty"`
+	LastHeartbeat *time.Time             `json:"last_heartbeat,omitempty"`
+	Active        bool                   `json:"active"`
+	Suspended     bool                   `json:"suspended"`
+	Crashed       bool                   `json:"crashed"`
+	Hung          bool                   `json:"hung"`
+	MachineID     string                 `json:"machine_id,omitempty"`
+	Hostname      string                 `json:"hostname,omitempty"`
+	State         map[string]interface{} `json:"state"`
+	StateHistory  []StateSnapshot        `json:"state_history"`
+	Events        []Event                `json:"events"`
+	Metrics       []Metric               `json:"metrics"`
 }
 
 // StateSnapshot represents the state at a specific point in time
@@ -148,9 +154,19 @@ type StateSnapshot struct {
 
 // Event represents an event in a session
 type Event struct {
-	Timestamp time.Time              `json:"timestamp"`
-	Name      string                 `json:"name"`
-	Data      map[string]interface{} `json:"data"`
+	Timestamp      time.Time              `json:"timestamp"`
+	Name           string                 `json:"name"`
+	Level          string                 `json:"level"`
+	Category       string                 `json:"category"`
+	Labels         []string               `json:"labels"`
+	Message        string                 `json:"message"`
+	Data           map[string]interface{} `json:"data"`
+	ExceptionType  string                 `json:"exception_type,omitempty"`
+	ExceptionMsg   string                 `json:"exception_msg,omitempty"`
+	Stacktrace     []string               `json:"stacktrace,omitempty"`
+	SourceFile     string                 `json:"source_file,omitempty"`
+	SourceLine     int                    `json:"source_line,omitempty"`
+	SourceFunction string                 `json:"source_function,omitempty"`
 }
 
 // Metric represents a metric in a session
@@ -253,13 +269,13 @@ func (c *Client) CreateSession(product, version string) (string, error) {
 // GetSession retrieves a session by ID
 func (c *Client) GetSession(sessionID string) (*Session, error) {
 	var url string
-	
+
 	if c.UseDaemon {
 		url = c.BaseURL + "/session?session_id=" + sessionID
 	} else {
 		url = c.BaseURL + "/api/sessions/" + sessionID
 	}
-	
+
 	resp, err := c.HTTPClient.Get(url)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get session: %w", err)
@@ -489,13 +505,13 @@ func (c *Client) Heartbeat(sessionID string) error {
 // GetAllSessions retrieves all sessions
 func (c *Client) GetAllSessions() ([]*Session, error) {
 	var url string
-	
+
 	if c.UseDaemon {
 		url = c.BaseURL + "/sessions"
 	} else {
 		url = c.BaseURL + "/api/data/sessions"
 	}
-	
+
 	resp, err := c.HTTPClient.Get(url)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get sessions: %w", err)

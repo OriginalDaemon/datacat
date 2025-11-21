@@ -22,7 +22,7 @@ examples/demo_gui/
 **Features:**
 - Automatic prerequisite checking
 - Offers to install Gradio if missing
-- Verifies datacat server is running
+- Verifies DataCat server is running
 - Clean error messages
 
 ### Method 2: Direct Python
@@ -33,8 +33,8 @@ python demo_gui.py
 
 **Requirements:**
 - Gradio installed (`pip install gradio`)
-- datacat Python client installed (`pip install -e ../../python`)
-- datacat server running on http://localhost:9090
+- DataCat Python client installed (`pip install -e ../../python`)
+- DataCat server running on http://localhost:9090
 
 ## Key Files
 

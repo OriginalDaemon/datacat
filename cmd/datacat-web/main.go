@@ -101,7 +101,6 @@ func main() {
 	http.HandleFunc("/sessions", handleSessions)
 	http.HandleFunc("/session/", handleSessionDetail)
 	http.HandleFunc("/api/timeseries", handleTimeseriesAPI)
-	http.HandleFunc("/metrics", handleMetrics)
 	http.HandleFunc("/api/server-status", handleServerStatus)
 
 	// HTMX live update endpoints
@@ -481,19 +480,79 @@ func matchesFilters(session *client.Session, product, version, statusFilter, sta
 				return false
 			}
 		case "crashed":
-			if !session.Active {
+			if !session.Crashed {
 				return false
 			}
-			status, _ := session.State["status"].(string)
-			if status != "crashed" {
+		case "suspended":
+			if !session.Suspended {
 				return false
 			}
 		case "hung":
-			if !session.Active {
+			// Sessions currently hung (Hung=true)
+			if !session.Hung {
 				return false
 			}
-			status, _ := session.State["status"].(string)
-			if status != "hung" {
+		case "ever_hung":
+			// Sessions that were hung at any point (check events)
+			hasHangEvent := false
+			for _, event := range session.Events {
+				if event.Name == "application_appears_hung" {
+					hasHangEvent = true
+					break
+				}
+			}
+			if !hasHangEvent {
+				return false
+			}
+		case "hung_crashed":
+			// Sessions that were hung when they crashed
+			if !session.Crashed {
+				return false
+			}
+			// Check if there was a hang event before crash
+			hasHangEvent := false
+			for _, event := range session.Events {
+				if event.Name == "application_appears_hung" {
+					hasHangEvent = true
+					break
+				}
+			}
+			if !hasHangEvent {
+				return false
+			}
+		case "hung_ended":
+			// Sessions that were hung when they ended normally
+			if session.Active || session.Crashed || session.EndedAt == nil {
+				return false
+			}
+			// Check if there was a hang event
+			hasHangEvent := false
+			for _, event := range session.Events {
+				if event.Name == "application_appears_hung" {
+					hasHangEvent = true
+					break
+				}
+			}
+			if !hasHangEvent {
+				return false
+			}
+		case "hung_recovered":
+			// Sessions that had a hang event and recovered (Hung=false after being true)
+			if session.Hung {
+				return false // Still hung, not recovered
+			}
+			// Check for both hang and recovery events
+			hasHangEvent := false
+			hasRecoveryEvent := false
+			for _, event := range session.Events {
+				if event.Name == "application_appears_hung" {
+					hasHangEvent = true
+				}
+				if event.Name == "application_recovered" {
+					hasRecoveryEvent = true
+				}
+			}
+			if !hasHangEvent || !hasRecoveryEvent {
 				return false
 			}
 		}
@@ -620,23 +679,6 @@ func handleSessionDetail(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handleMetrics(w http.ResponseWriter, r *http.Request) {
-	tmpl, err := template.ParseFS(content, "templates/base.html", "templates/metrics.html")
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	data := PageData{
-		Title: "Metrics Visualization",
-	}
-
-	if err := tmpl.ExecuteTemplate(w, "base.html", data); err != nil {
-		log.Printf("Template execution error: %v", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-	}
-}
-
 func handleTimeseriesAPI(w http.ResponseWriter, r *http.Request) {
 	metricName := r.URL.Query().Get("metric")
 	aggregation := r.URL.Query().Get("aggregation")
@@ -709,12 +751,19 @@ func handleTimeseriesAPI(w http.ResponseWriter, r *http.Request) {
 	var overallSum float64
 	var overallCount int
 
+	// Build a session lookup map for timestamps
+	sessionLookup := make(map[string]*client.Session)
+	for _, session := range filteredSessions {
+		sessionLookup[session.ID] = session
+	}
+
 	switch aggregation {
 	case "peak":
 		// One point per session with peak value
 		for _, sessionMetrics := range sessionMetricsMap {
+			session := sessionLookup[sessionMetrics.SessionID]
 			points = append(points, TimeseriesPoint{
-				Timestamp: time.Now(), // Could use session created time
+				Timestamp: session.CreatedAt,
 				Value:     sessionMetrics.Peak,
 				SessionID: sessionMetrics.SessionID,
 			})
@@ -732,8 +781,9 @@ func handleTimeseriesAPI(w http.ResponseWriter, r *http.Request) {
 	case "average":
 		// One point per session with average value
 		for _, sessionMetrics := range sessionMetricsMap {
+			session := sessionLookup[sessionMetrics.SessionID]
 			points = append(points, TimeseriesPoint{
-				Timestamp: time.Now(),
+				Timestamp: session.CreatedAt,
 				Value:     sessionMetrics.Average,
 				SessionID: sessionMetrics.SessionID,
 			})
@@ -751,8 +801,9 @@ func handleTimeseriesAPI(w http.ResponseWriter, r *http.Request) {
 	case "min":
 		// One point per session with min value
 		for _, sessionMetrics := range sessionMetricsMap {
+			session := sessionLookup[sessionMetrics.SessionID]
 			points = append(points, TimeseriesPoint{
-				Timestamp: time.Now(),
+				Timestamp: session.CreatedAt,
 				Value:     sessionMetrics.Min,
 				SessionID: sessionMetrics.SessionID,
 			})
@@ -1293,9 +1344,9 @@ func handleSessionsMetrics(w http.ResponseWriter, r *http.Request) {
 				<h4 style="margin: 0; color: var(--text-primary);">%s</h4>
 				<span class="collapse-icon collapsed" id="metric-%s-icon">▼</span>
 			</div>
-			<div class="collapsible-content collapsed" id="metric-%s-content" 
-				 hx-get="/api/metric-data/%s?%s" 
-				 hx-trigger="loadMetric" 
+			<div class="collapsible-content collapsed" id="metric-%s-content"
+				 hx-get="/api/metric-data/%s?%s"
+				 hx-trigger="loadMetric"
 				 hx-swap="innerHTML">
 				<p style="text-align: center; padding: 20px; color: var(--text-secondary);">Click to expand and load data...</p>
 			</div>
@@ -1386,6 +1437,26 @@ func handleMetricData(w http.ResponseWriter, r *http.Request) {
 		filteredSessions = append(filteredSessions, session)
 	}
 
+	// Find the overall time range across all sessions
+	var globalMinTime, globalMaxTime time.Time
+	for _, session := range filteredSessions {
+		if globalMinTime.IsZero() || session.CreatedAt.Before(globalMinTime) {
+			globalMinTime = session.CreatedAt
+		}
+		if globalMaxTime.IsZero() || session.UpdatedAt.After(globalMaxTime) {
+			globalMaxTime = session.UpdatedAt
+		}
+		// Also check metric timestamps
+		for _, metric := range session.Metrics {
+			if globalMinTime.IsZero() || metric.Timestamp.Before(globalMinTime) {
+				globalMinTime = metric.Timestamp
+			}
+			if metric.Timestamp.After(globalMaxTime) {
+				globalMaxTime = metric.Timestamp
+			}
+		}
+	}
+
 	// Collect all metric values
 	var allValues []float64
 	var points []TimeseriesPoint
@@ -1421,7 +1492,7 @@ func handleMetricData(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Calculate statistics
-	avg, max, min, median, stdDev := calculateStats(allValues)
+	avg, max, min, median, stdDev, mode := calculateStats(allValues)
 
 	// Generate unique chart ID
 	chartID := fmt.Sprintf("chart-%s-%d", metricName, time.Now().UnixNano())
@@ -1450,6 +1521,10 @@ func handleMetricData(w http.ResponseWriter, r *http.Request) {
 				<div class="stat-value">%.2f</div>
 			</div>
 			<div class="stat-item">
+				<div class="stat-label">Mode</div>
+				<div class="stat-value">%.2f</div>
+			</div>
+			<div class="stat-item">
 				<div class="stat-label">Std Dev</div>
 				<div class="stat-value">%.2f</div>
 			</div>
@@ -1458,31 +1533,50 @@ func handleMetricData(w http.ResponseWriter, r *http.Request) {
 		(function() {
 			const ctx = document.getElementById('%s').getContext('2d');
 			const data = %s;
-			
+
+			// Calculate point radius based on data density
+			const pointRadius = data.length > 100 ? 1 : (data.length > 50 ? 2 : 3);
+
 			new Chart(ctx, {
 				type: 'line',
 				data: {
-					labels: data.map(p => new Date(p.timestamp).toLocaleString()),
 					datasets: [{
 						label: '%s',
-						data: data.map(p => p.value),
-						borderColor: 'rgb(102, 126, 234)',
-						backgroundColor: 'rgba(102, 126, 234, 0.1)',
+						data: data.map(p => ({
+							x: new Date(p.timestamp),
+							y: p.value
+						})),
+						borderColor: '#819BFC',
+						backgroundColor: 'rgba(129, 155, 252, 0.1)',
 						tension: 0.1,
 						fill: true,
-						pointRadius: 2,
-						pointHoverRadius: 4
+						pointRadius: pointRadius,
+						pointHoverRadius: pointRadius + 2,
+						pointBackgroundColor: '#819BFC',
+						pointBorderColor: '#ffffff',
+						pointBorderWidth: 1
 					}]
 				},
 				options: {
 					responsive: true,
 					maintainAspectRatio: false,
+					interaction: {
+						mode: 'nearest',
+						axis: 'x',
+						intersect: false
+					},
 					plugins: {
 						legend: {
 							display: false
 						},
 						tooltip: {
 							callbacks: {
+								title: function(context) {
+									return new Date(context[0].parsed.x).toLocaleString();
+								},
+								label: function(context) {
+									return 'Value: ' + context.parsed.y.toFixed(2);
+								},
 								afterLabel: function(context) {
 									const point = data[context.dataIndex];
 									return 'Session: ' + point.session_id.substring(0, 8) + '...';
@@ -1496,16 +1590,41 @@ func handleMetricData(w http.ResponseWriter, r *http.Request) {
 							title: {
 								display: true,
 								text: 'Value'
+							},
+							grid: {
+								color: 'rgba(160, 174, 192, 0.1)'
+							},
+							ticks: {
+								color: '#a0aec0'
 							}
 						},
 						x: {
+							type: 'time',
+							min: %d,
+							max: %d,
+							time: {
+								displayFormats: {
+									millisecond: 'HH:mm:ss.SSS',
+									second: 'HH:mm:ss',
+									minute: 'HH:mm',
+									hour: 'HH:mm',
+									day: 'MMM dd'
+								},
+								tooltipFormat: 'yyyy-MM-dd HH:mm:ss'
+							},
 							title: {
 								display: true,
 								text: 'Time'
 							},
+							grid: {
+								color: 'rgba(160, 174, 192, 0.1)'
+							},
 							ticks: {
+								color: '#a0aec0',
 								maxRotation: 45,
-								minRotation: 45
+								minRotation: 0,
+								autoSkip: true,
+								maxTicksLimit: 10
 							}
 						}
 					}
@@ -1513,15 +1632,15 @@ func handleMetricData(w http.ResponseWriter, r *http.Request) {
 			});
 		})();
 		</script>
-	`, chartID, avg, max, min, median, stdDev, chartID, toJSON(points), metricName))
+	`, chartID, avg, max, min, median, mode, stdDev, chartID, toJSON(points), globalMinTime.UnixMilli(), globalMaxTime.UnixMilli(), metricName))
 
 	w.Write([]byte(html.String()))
 }
 
 // calculateStats calculates statistical measures for a slice of values
-func calculateStats(values []float64) (avg, max, min, median, stdDev float64) {
+func calculateStats(values []float64) (avg, max, min, median, stdDev, mode float64) {
 	if len(values) == 0 {
-		return 0, 0, 0, 0, 0
+		return 0, 0, 0, 0, 0, 0
 	}
 
 	// Average and sum for std dev
@@ -1550,7 +1669,7 @@ func calculateStats(values []float64) (avg, max, min, median, stdDev float64) {
 	variance /= float64(len(values))
 	stdDev = math.Sqrt(variance)
 
-	// Median
+	// Median and Mode
 	sortedValues := make([]float64, len(values))
 	copy(sortedValues, values)
 	sort.Float64s(sortedValues)
@@ -1559,6 +1678,17 @@ func calculateStats(values []float64) (avg, max, min, median, stdDev float64) {
 		median = (sortedValues[len(sortedValues)/2-1] + sortedValues[len(sortedValues)/2]) / 2
 	} else {
 		median = sortedValues[len(sortedValues)/2]
+	}
+
+	// Mode - most frequently occurring value
+	frequencyMap := make(map[float64]int)
+	maxFrequency := 0
+	for _, v := range values {
+		frequencyMap[v]++
+		if frequencyMap[v] > maxFrequency {
+			maxFrequency = frequencyMap[v]
+			mode = v
+		}
 	}
 
 	return
@@ -1613,16 +1743,48 @@ func handleSessionInfo(w http.ResponseWriter, r *http.Request) {
 		</tr>`)
 	}
 
+	// Determine status badge
 	statusBadge := `<span class="badge badge-inactive">Ended</span>`
 	if session.Active {
 		statusBadge = `<span class="badge badge-active">Active</span>`
+	} else if session.Crashed {
+		statusBadge = `<span class="badge badge-crashed">Crashed</span>`
+	} else if session.Suspended {
+		statusBadge = `<span class="badge badge-suspended">Suspended</span>`
+	}
+
+	// Add hung badge if applicable
+	if session.Hung {
+		statusBadge += ` <span class="badge badge-hung" style="margin-left: 8px;">Hung</span>`
 	}
 
 	html.WriteString(`<tr>
 		<th>Status</th>
 		<td>` + statusBadge + `</td>
-	</tr>
-	<tr>
+	</tr>`)
+
+	// Add machine/hostname if available
+	if session.Hostname != "" {
+		html.WriteString(`<tr>
+			<th>Machine</th>
+			<td>` + session.Hostname + `</td>
+		</tr>`)
+	}
+
+	// Add last heartbeat row
+	if session.LastHeartbeat != nil {
+		html.WriteString(`<tr>
+			<th>Last Heartbeat</th>
+			<td>` + session.LastHeartbeat.Format("2006-01-02 15:04:05") + `</td>
+		</tr>`)
+	} else {
+		html.WriteString(`<tr>
+			<th>Last Heartbeat</th>
+			<td style="color: var(--text-secondary);">No heartbeats received</td>
+		</tr>`)
+	}
+
+	html.WriteString(`<tr>
 		<th>State Changes</th>
 		<td>` + fmt.Sprintf("%d", len(session.StateHistory)) + ` updates recorded</td>
 	</tr>
@@ -1688,29 +1850,37 @@ No sessions found. Start logging data to see products here.
 <div class="versions-list">`, product.Name))
 
 			for _, version := range product.Versions {
+				productParam := url.QueryEscape(product.Name)
+				versionParam := url.QueryEscape(version.Version)
+				baseURL := fmt.Sprintf("/sessions?product=%s&version=%s", productParam, versionParam)
+
 				html.WriteString(fmt.Sprintf(`
-<div class="version-item">
-<a href="/sessions?product=%s&version=%s" class="version-link">
+<div class="version-item" onclick="window.location.href='%s'" style="cursor: pointer;">
+<a href="%s" class="version-link" onclick="event.stopPropagation();">
 <span class="version-number">v%s</span>
 <span class="session-count">%d sessions</span>
 </a>
-<div class="version-stats">`,
-					url.QueryEscape(product.Name),
-					url.QueryEscape(version.Version),
+<div class="version-stats" onclick="event.stopPropagation();">`,
+					baseURL,
+					baseURL,
 					version.Version,
 					version.SessionCount))
 
 				if version.ActiveCount > 0 {
-					html.WriteString(fmt.Sprintf(`<span class="stat-badge stat-active">%d active</span>`, version.ActiveCount))
+					activeURL := fmt.Sprintf("%s&status=active", baseURL)
+					html.WriteString(fmt.Sprintf(`<a href="%s" class="stat-badge stat-active" style="text-decoration: none;">%d active</a>`, activeURL, version.ActiveCount))
 				}
 				if version.EndedCount > 0 {
-					html.WriteString(fmt.Sprintf(`<span class="stat-badge stat-ended">%d ended</span>`, version.EndedCount))
+					endedURL := fmt.Sprintf("%s&status=ended", baseURL)
+					html.WriteString(fmt.Sprintf(`<a href="%s" class="stat-badge stat-ended" style="text-decoration: none;">%d ended</a>`, endedURL, version.EndedCount))
 				}
 				if version.CrashedCount > 0 {
-					html.WriteString(fmt.Sprintf(`<span class="stat-badge stat-crashed">%d crashed</span>`, version.CrashedCount))
+					crashedURL := fmt.Sprintf("%s&status=crashed", baseURL)
+					html.WriteString(fmt.Sprintf(`<a href="%s" class="stat-badge stat-crashed" style="text-decoration: none;">%d crashed</a>`, crashedURL, version.CrashedCount))
 				}
 				if version.HungCount > 0 {
-					html.WriteString(fmt.Sprintf(`<span class="stat-badge stat-hung">%d hung</span>`, version.HungCount))
+					hungURL := fmt.Sprintf("%s&status=hung", baseURL)
+					html.WriteString(fmt.Sprintf(`<a href="%s" class="stat-badge stat-hung" style="text-decoration: none;">%d hung</a>`, hungURL, version.HungCount))
 				}
 
 				html.WriteString(`</div>

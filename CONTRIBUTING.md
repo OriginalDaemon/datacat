@@ -1,10 +1,10 @@
-# Contributing to datacat
+# Contributing to DataCat
 
-We welcome contributions to datacat! This document provides guidelines for contributing to the project.
+We welcome contributions to DataCat! This document provides guidelines for contributing to the project.
 
 ## Repository Structure
 
-datacat is organized as a monorepo containing multiple programs and libraries:
+DataCat is organized as a monorepo containing multiple programs and libraries:
 
 ```
 datacat/

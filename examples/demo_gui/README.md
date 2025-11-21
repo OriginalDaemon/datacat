@@ -1,13 +1,13 @@
-# 🐱 datacat Demo GUI
+# 🐱 DataCat Demo GUI
 
-A modern, web-based demonstration GUI for the datacat Python client.
+A modern, web-based demonstration GUI for the DataCat Python client.
 
 ![Python](https://img.shields.io/badge/python-3.6%2B-blue)
 ![Gradio](https://img.shields.io/badge/UI-Gradio-orange)
 
 ## Features
 
-This demo showcases all major features of the datacat Python client:
+This demo showcases all major features of the DataCat Python client:
 
 ### 🌙 Dark Mode (Built-in)
 - Launches in dark mode by default
@@ -54,7 +54,7 @@ This demo showcases all major features of the datacat Python client:
 
 ## Installation
 
-### 1. Install the datacat Python client
+### 1. Install the DataCat Python client
 
 ```bash
 cd python
@@ -73,7 +73,7 @@ Or install Gradio directly:
 pip install gradio
 ```
 
-### 3. Make sure datacat server is running
+### 3. Make sure the DataCat server is running
 
 ```bash
 # In one terminal, start the server
@@ -141,7 +141,7 @@ The demo will automatically:
 
 2. **Update State** (requires active session)
    - Edit the JSON in the State Management section
-   - Click "Update State" to send it to datacat
+   - Click "Update State" to send it to DataCat
    - View the current state in the result
 
 3. **Log Events** (requires active session)
@@ -185,7 +185,7 @@ The demo includes a custom `DatacatLoggingHandler` that integrates with Python's
 ```python
 class DatacatLoggingHandler(logging.Handler):
     """
-    Custom logging handler that sends log messages to datacat.
+    Custom logging handler that sends log messages to DataCat.
 
     Formats exceptions with full stack traces and sends them as events.
     """
@@ -194,7 +194,7 @@ class DatacatLoggingHandler(logging.Handler):
 **Features:**
 - Automatically captures exception info with `exc_info=True`
 - Formats stack traces using `traceback.format_exception()`
-- Sends logs as structured events to datacat
+- Sends logs as structured events to DataCat
 - Includes metadata: level, logger name, timestamp
 - Gracefully handles logging errors
 
@@ -204,7 +204,7 @@ logger = logging.getLogger("my_app")
 handler = DatacatLoggingHandler(session)
 logger.addHandler(handler)
 
-# This will be logged to datacat with full traceback
+# This will be logged to DataCat with full traceback
 try:
     risky_operation()
 except Exception:
@@ -314,7 +314,7 @@ The session ID is displayed in the demo GUI after creation.
 ## Troubleshooting
 
 **"Error creating session: Connection refused"**
-- Make sure the datacat server is running on port 9090
+- Make sure the DataCat server is running on port 9090
 - Check the server URL is correct
 
 **"Module 'gradio' not found"**
@@ -353,5 +353,5 @@ Perfect for late-night coding sessions or reducing eye strain!
 
 ## License
 
-Same as the datacat project.
+Same as the DataCat project.
 

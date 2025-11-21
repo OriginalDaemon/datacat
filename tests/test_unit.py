@@ -449,7 +449,7 @@ class TestCreateSessionFactory(unittest.TestCase):
 
         # Verify client was created with correct URL and default parameters
         mock_client_class.assert_called_once_with(
-            "http://test.example.com:8080", use_daemon=True, daemon_port="8079"
+            "http://test.example.com:8080", daemon_port="8079"
         )
 
         # Verify session was registered with product and version
@@ -825,7 +825,7 @@ class TestDatacatClientWithDaemon(unittest.TestCase):
         mock_daemon_class.return_value = mock_daemon
 
         client = DatacatClient(
-            base_url="http://example.com:8080", use_daemon=True, daemon_port="9999"
+            base_url="http://example.com:8080", daemon_port="9999"
         )
 
         # Verify daemon was created and started
@@ -849,7 +849,7 @@ class TestDatacatClientWithDaemon(unittest.TestCase):
         mock_response.read.return_value = b'{"session_id": "test-123"}'
         mock_urlopen.return_value = mock_response
 
-        client = DatacatClient(use_daemon=True)
+        client = DatacatClient()
         session_id = client.register_session("TestProduct", "1.0.0")
 
         # Verify correct endpoint was called
@@ -877,7 +877,7 @@ class TestDatacatClientWithDaemon(unittest.TestCase):
         mock_response.read.return_value = b'{"status": "ok"}'
         mock_urlopen.return_value = mock_response
 
-        client = DatacatClient(use_daemon=True)
+        client = DatacatClient()
         client.update_state("session-123", {"key": "value"})
 
         # Verify correct endpoint and format
@@ -900,7 +900,7 @@ class TestDatacatClientWithDaemon(unittest.TestCase):
         mock_response.read.return_value = b'{"status": "ok"}'
         mock_urlopen.return_value = mock_response
 
-        client = DatacatClient(use_daemon=True)
+        client = DatacatClient()
         client.log_event("session-123", "test_event", {"data": "value"})
 
         # Verify correct endpoint and format
@@ -924,7 +924,7 @@ class TestDatacatClientWithDaemon(unittest.TestCase):
         mock_response.read.return_value = b'{"status": "ok"}'
         mock_urlopen.return_value = mock_response
 
-        client = DatacatClient(use_daemon=True)
+        client = DatacatClient()
         client.log_metric("session-123", "cpu_usage", 45.5, ["tag1", "tag2"])
 
         # Verify correct endpoint and format
@@ -949,7 +949,7 @@ class TestDatacatClientWithDaemon(unittest.TestCase):
         mock_response.read.return_value = b'{"status": "ok"}'
         mock_urlopen.return_value = mock_response
 
-        client = DatacatClient(use_daemon=True)
+        client = DatacatClient()
         client.end_session("session-123")
 
         # Verify correct endpoint and format
@@ -970,7 +970,7 @@ class TestHeartbeatMonitorWithDaemon(unittest.TestCase):
         mock_daemon = Mock()
         mock_daemon_class.return_value = mock_daemon
 
-        mock_client = DatacatClient(use_daemon=True)
+        mock_client = DatacatClient()
         mock_client.log_event = Mock()
 
         monitor = HeartbeatMonitor(
@@ -1001,7 +1001,7 @@ class TestHeartbeatMonitorWithDaemon(unittest.TestCase):
         mock_response.read.return_value = b'{"status": "ok"}'
         mock_urlopen.return_value = mock_response
 
-        client = DatacatClient(use_daemon=True, daemon_port="9999")
+        client = DatacatClient(daemon_port="9999")
         monitor = HeartbeatMonitor(client, "test-session")
 
         monitor.heartbeat()
@@ -1027,7 +1027,7 @@ class TestHeartbeatMonitorWithDaemon(unittest.TestCase):
         # Mock network failure
         mock_urlopen.side_effect = Exception("Network error")
 
-        client = DatacatClient(use_daemon=True)
+        client = DatacatClient()
         monitor = HeartbeatMonitor(client, "test-session")
 
         # Should not raise exception
@@ -1091,30 +1091,38 @@ class TestSessionConvenienceMethods(unittest.TestCase):
 class TestProductVersionValidation(unittest.TestCase):
     """Test that product and version are required for session creation"""
 
-    def test_register_session_requires_product(self):
+    @patch("datacat.DaemonManager")
+    def test_register_session_requires_product(self, mock_daemon):
         """Test that register_session requires product parameter"""
-        client = DatacatClient("http://localhost:9090", use_daemon=False)
+        mock_daemon.return_value.start = Mock()
+        client = DatacatClient("http://localhost:9090")
         with self.assertRaises(Exception) as context:
             client.register_session(None, "1.0.0")
         self.assertIn("Product and version are required", str(context.exception))
 
-    def test_register_session_requires_version(self):
+    @patch("datacat.DaemonManager")
+    def test_register_session_requires_version(self, mock_daemon):
         """Test that register_session requires version parameter"""
-        client = DatacatClient("http://localhost:9090", use_daemon=False)
+        mock_daemon.return_value.start = Mock()
+        client = DatacatClient("http://localhost:9090")
         with self.assertRaises(Exception) as context:
             client.register_session("TestProduct", None)
         self.assertIn("Product and version are required", str(context.exception))
 
-    def test_register_session_rejects_empty_product(self):
+    @patch("datacat.DaemonManager")
+    def test_register_session_rejects_empty_product(self, mock_daemon):
         """Test that register_session rejects empty product string"""
-        client = DatacatClient("http://localhost:9090", use_daemon=False)
+        mock_daemon.return_value.start = Mock()
+        client = DatacatClient("http://localhost:9090")
         with self.assertRaises(Exception) as context:
             client.register_session("", "1.0.0")
         self.assertIn("Product and version are required", str(context.exception))
 
-    def test_register_session_rejects_empty_version(self):
+    @patch("datacat.DaemonManager")
+    def test_register_session_rejects_empty_version(self, mock_daemon):
         """Test that register_session rejects empty version string"""
-        client = DatacatClient("http://localhost:9090", use_daemon=False)
+        mock_daemon.return_value.start = Mock()
+        client = DatacatClient("http://localhost:9090")
         with self.assertRaises(Exception) as context:
             client.register_session("TestProduct", "")
         self.assertIn("Product and version are required", str(context.exception))
@@ -1130,6 +1138,105 @@ class TestProductVersionValidation(unittest.TestCase):
         with self.assertRaises(Exception) as context:
             create_session("http://localhost:9090", product="TestProduct", version=None)
         self.assertIn("Product and version are required", str(context.exception))
+
+
+    @patch("datacat.urlopen")
+    @patch("datacat.DaemonManager")
+    def test_log_exception_with_all_fields(self, mock_daemon_class, mock_urlopen):
+        """Test log_exception sends all exception-specific fields"""
+        mock_daemon = Mock()
+        mock_daemon_class.return_value = mock_daemon
+
+        mock_response = Mock()
+        mock_response.read.return_value = b'{"status": "ok"}'
+        mock_urlopen.return_value = mock_response
+
+        client = DatacatClient()
+
+        # Create a fake exception
+        try:
+            raise ValueError("test error")
+        except ValueError:
+            exc_info = sys.exc_info()
+            client.log_exception("session-123", exc_info=exc_info)
+
+        # Verify correct endpoint and format
+        call_args = mock_urlopen.call_args
+        request = call_args[0][0]
+        self.assertTrue(request.get_full_url().endswith("/event"))
+
+        sent_data = json.loads(request.data.decode("utf-8"))
+        self.assertEqual(sent_data["session_id"], "session-123")
+        self.assertEqual(sent_data["name"], "exception")
+        self.assertEqual(sent_data["level"], "error")
+        self.assertEqual(sent_data["category"], "exception")
+        self.assertIn("exception", sent_data["labels"])
+        self.assertIn("ValueError", sent_data["labels"])
+        self.assertEqual(sent_data["exception_type"], "ValueError")
+        self.assertEqual(sent_data["exception_msg"], "test error")
+        self.assertIsInstance(sent_data["stacktrace"], list)
+        self.assertTrue(len(sent_data["stacktrace"]) > 0)
+        self.assertIsNotNone(sent_data["source_file"])
+        self.assertIsNotNone(sent_data["source_line"])
+        self.assertIsNotNone(sent_data["source_function"])
+
+    @patch("datacat.urlopen")
+    @patch("datacat.DaemonManager")
+    def test_log_event_with_all_optional_fields(self, mock_daemon_class, mock_urlopen):
+        """Test log_event with level, category, labels, and message"""
+        mock_daemon = Mock()
+        mock_daemon_class.return_value = mock_daemon
+
+        mock_response = Mock()
+        mock_response.read.return_value = b'{"status": "ok"}'
+        mock_urlopen.return_value = mock_response
+
+        client = DatacatClient()
+        client.log_event(
+            "session-123",
+            "custom_event",
+            level="warning",
+            category="my.component",
+            labels=["tag1", "tag2"],
+            message="This is a warning",
+            data={"key": "value"}
+        )
+
+        # Verify all fields were sent
+        call_args = mock_urlopen.call_args
+        request = call_args[0][0]
+        sent_data = json.loads(request.data.decode("utf-8"))
+
+        self.assertEqual(sent_data["name"], "custom_event")
+        self.assertEqual(sent_data["level"], "warning")
+        self.assertEqual(sent_data["category"], "my.component")
+        self.assertEqual(sent_data["labels"], ["tag1", "tag2"])
+        self.assertEqual(sent_data["message"], "This is a warning")
+        self.assertEqual(sent_data["data"], {"key": "value"})
+
+    @patch("datacat.urlopen")
+    @patch("datacat.DaemonManager")
+    def test_update_state_with_null_deletes_keys(self, mock_daemon_class, mock_urlopen):
+        """Test that passing None as a value deletes state keys"""
+        mock_daemon = Mock()
+        mock_daemon_class.return_value = mock_daemon
+
+        mock_response = Mock()
+        mock_response.read.return_value = b'{"status": "ok"}'
+        mock_urlopen.return_value = mock_response
+
+        client = DatacatClient()
+
+        # Update state with None value to delete key
+        client.update_state("session-123", {"user": None, "count": 10})
+
+        # Verify None was sent (will be serialized as null in JSON)
+        call_args = mock_urlopen.call_args
+        request = call_args[0][0]
+        sent_data = json.loads(request.data.decode("utf-8"))
+
+        self.assertIsNone(sent_data["state"]["user"])
+        self.assertEqual(sent_data["state"]["count"], 10)
 
 
 if __name__ == "__main__":

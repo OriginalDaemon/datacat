@@ -74,7 +74,7 @@
   <div
     id="session-info"
     hx-get="/api/session-info/{{.Session.ID}}"
-    hx-trigger="load"
+    hx-trigger="load{{if .Session.Active}}, every 3s{{end}}"
     hx-swap="outerHTML"
   >
     <table style="margin-bottom: 20px">
@@ -97,11 +97,33 @@
         <td>
           {{if .Session.Active}}
           <span class="badge badge-active">Active</span>
+          {{else if .Session.Crashed}}
+          <span class="badge badge-crashed">Crashed</span>
+          {{else if .Session.Suspended}}
+          <span class="badge badge-suspended">Suspended</span>
           {{else}}
           <span class="badge badge-inactive">Ended</span>
+          {{end}} {{if .Session.Hung}}
+          <span class="badge badge-hung" style="margin-left: 8px">Hung</span>
           {{end}}
         </td>
       </tr>
+      {{if .Session.Hostname}}
+      <tr>
+        <th>Machine</th>
+        <td>{{.Session.Hostname}}</td>
+      </tr>
+      {{end}} {{if .Session.LastHeartbeat}}
+      <tr>
+        <th>Last Heartbeat</th>
+        <td>{{.Session.LastHeartbeat.Format "2006-01-02 15:04:05"}}</td>
+      </tr>
+      {{else}}
+      <tr>
+        <th>Last Heartbeat</th>
+        <td style="color: var(--text-secondary)">No heartbeats received</td>
+      </tr>
+      {{end}}
       <tr>
         <th>State Changes</th>
         <td>{{len .Session.StateHistory}} updates recorded</td>
@@ -136,7 +158,7 @@
             width: 14px;
             height: 14px;
             border-radius: 50%;
-            background: #667eea;
+            background: var(--accent-primary);
             border: 2px solid var(--bg-card);
             box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
           "
@@ -219,8 +241,8 @@
           position: absolute;
           top: 0;
           bottom: 0;
-          background: rgba(102, 126, 234, 0.2);
-          border: 1px solid #667eea;
+          background: rgba(129, 155, 252, 0.2);
+          border: 1px solid var(--accent-primary);
           display: none;
         "
       ></div>
@@ -368,12 +390,24 @@
       const variance = values.reduce((sum, val) => sum + Math.pow(val - avg, 2), 0) / values.length;
       const stdDev = Math.sqrt(variance);
 
-      // Calculate mean (median)
+      // Calculate median
       const sortedValues = [...values].sort((a, b) => a - b);
       const mid = Math.floor(sortedValues.length / 2);
       const median = sortedValues.length % 2 === 0
           ? (sortedValues[mid - 1] + sortedValues[mid]) / 2
           : sortedValues[mid];
+
+      // Calculate mode (most frequently occurring value)
+      const frequencyMap = {};
+      let maxFrequency = 0;
+      let mode = values[0];
+      values.forEach(val => {
+          frequencyMap[val] = (frequencyMap[val] || 0) + 1;
+          if (frequencyMap[val] > maxFrequency) {
+              maxFrequency = frequencyMap[val];
+              mode = val;
+          }
+      });
 
       const safeMetricName = metricName.replace(/\./g, '_');
 
@@ -391,10 +425,11 @@
                   <h3 style="margin: 0 0 8px 0; font-size: 16px; color: var(--accent-primary);">${metricName}</h3>
                   <div style="font-size: 13px; color: var(--text-secondary); display: flex; gap: 20px; flex-wrap: wrap;">
                       <span><strong>Average:</strong> ${avg.toFixed(2)}</span>
-                      <span><strong>Std Dev:</strong> ${stdDev.toFixed(2)}</span>
-                      <span><strong>Median:</strong> ${median.toFixed(2)}</span>
-                      <span><strong>Min:</strong> ${min.toFixed(2)}</span>
                       <span><strong>Max:</strong> ${peak.toFixed(2)}</span>
+                      <span><strong>Min:</strong> ${min.toFixed(2)}</span>
+                      <span><strong>Median:</strong> ${median.toFixed(2)}</span>
+                      <span><strong>Mode:</strong> ${mode.toFixed(2)}</span>
+                      <span><strong>Std Dev:</strong> ${stdDev.toFixed(2)}</span>
                       <span><strong>Points:</strong> ${values.length}</span>
                   </div>
               </div>
@@ -480,13 +515,13 @@
                       x: m.timestamp.getTime(), // Use timestamp as x value
                       y: m.value
                   })),
-                  borderColor: '#667eea',
-                  backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                  borderColor: '#819BFC',
+                  backgroundColor: 'rgba(129, 155, 252, 0.1)',
                   tension: 0.1, // Less curve for more accurate representation
                   fill: true,
                   pointRadius: pointRadius,
                   pointHoverRadius: pointRadius + 2,
-                  pointBackgroundColor: '#667eea',
+                  pointBackgroundColor: '#819BFC',
                   pointBorderColor: '#ffffff',
                   pointBorderWidth: 1
               }]
@@ -567,18 +602,16 @@
                   mode: 'x',
                   onZoomComplete: function({chart}) {
                       const xScale = chart.scales.x;
-                      const minIndex = Math.max(0, Math.floor(xScale.min));
-                      const maxIndex = Math.min(filteredMetrics.length - 1, Math.ceil(xScale.max));
+                      // xScale.min and max are now timestamps (milliseconds)
+                      const newStart = new Date(xScale.min);
+                      const newEnd = new Date(xScale.max);
 
-                      if (minIndex < filteredMetrics.length && maxIndex >= 0) {
-                          const newStart = filteredMetrics[minIndex].timestamp;
-                          const newEnd = filteredMetrics[maxIndex].timestamp;
-
-                          zoomStart = newStart;
-                          zoomEnd = newEnd;
-                          updateTimeRangeFromZoom(newStart, newEnd);
-                          renderTimeline();
-                      }
+                      zoomStart = newStart;
+                      zoomEnd = newEnd;
+                      updateTimeRangeFromZoom(newStart, newEnd);
+                      renderTimeline();
+                      // Update all other charts to match the new range
+                      updateAllMetricCharts();
                   }
               }
           };
@@ -613,78 +646,43 @@
 {{end}}
 
 <!-- Events -->
+{{if .Session.Events}}
 <div class="card">
-  <h2>Events (<span id="events-count">{{len .Session.Events}}</span>)</h2>
-  <div id="events-container" hx-get="/api/session-events/{{.Session.ID}}" hx-trigger="load" hx-swap="outerHTML">
-    {{if .Session.Events}}
-    <table>
-      <thead>
-        <tr>
-          <th style="width: 120px">Timestamp</th>
-          <th style="width: 200px">Name</th>
-          <th>Data</th>
-        </tr>
-      </thead>
-      <tbody>
-        {{range $index, $event := .Session.Events}}
-        <tr>
-          <td style="font-family: monospace">
-            {{$event.Timestamp.Format "15:04:05"}}
-          </td>
-          <td>{{$event.Name}}</td>
-          <td>
-            <div id="event-data-{{$index}}" class="json-viewer-container"></div>
-            <script>
-              (function() {
-                  const eventData = {{$event.Data | toJSONSafe}};
-                  new JSONViewer('event-data-{{$index}}', eventData, {
-                      collapsed: true,
-                      showCopyButton: true,
-                      showRawButton: true
-                  });
-              })();
-            </script>
-          </td>
-        </tr>
-        {{end}}
-      </tbody>
-    </table>
-    {{else}}
-    <p style="color: var(--text-secondary); padding: 20px;">No events recorded</p>
-    {{end}}
-  </div>
+  <h2>Events ({{len .Session.Events}})</h2>
+  <table>
+    <thead>
+      <tr>
+        <th style="width: 120px">Timestamp</th>
+        <th style="width: 200px">Name</th>
+        <th>Data</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{range $index, $event := .Session.Events}}
+      <tr>
+        <td style="font-family: monospace">
+          {{$event.Timestamp.Format "15:04:05"}}
+        </td>
+        <td>{{$event.Name}}</td>
+        <td>
+          <div id="event-data-{{$index}}" class="json-viewer-container"></div>
+          <script>
+            (function() {
+                const eventData = {{$event.Data | toJSONSafe}};
+                new JSONViewer('event-data-{{$index}}', eventData, {
+                    collapsed: true,
+                    showCopyButton: true,
+                    showRawButton: true
+                });
+            })();
+          </script>
+        </td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
 </div>
-
-<!-- Metrics Data -->
-<div class="card">
-  <h2>Metrics Data (<span id="metrics-count">{{len .Session.Metrics}}</span>)</h2>
-  <div id="metrics-table-container" hx-get="/api/session-metrics-table/{{.Session.ID}}" hx-trigger="load" hx-swap="outerHTML">
-    {{if .Session.Metrics}}
-    <table>
-      <thead>
-        <tr>
-          <th>Timestamp</th>
-          <th>Name</th>
-          <th>Value</th>
-          <th>Tags</th>
-        </tr>
-      </thead>
-      <tbody>
-        {{range .Session.Metrics}}
-        <tr>
-          <td style="font-family: monospace">{{.Timestamp.Format "15:04:05"}}</td>
-          <td>{{.Name}}</td>
-          <td>{{.Value}}</td>
-          <td>{{range .Tags}}{{.}} {{end}}</td>
-        </tr>
-        {{end}}
-      </tbody>
-    </table>
-    {{else}}
-    <p style="color: var(--text-secondary); padding: 20px;">No metrics recorded</p>
-    {{end}}
-  </div>
-</div>
+{{end}}
 
 <div style="margin: 20px 0">
   <a href="/" class="btn btn-secondary">Back to Dashboard</a>
@@ -949,7 +947,7 @@
 
                 // Color based on type
                 if (item.type === 'state') {
-                    point.style.background = '#667eea';
+                    point.style.background = '#819BFC';
                 } else if (item.type === 'exception') {
                     point.style.background = '#f56565';
                 } else {
@@ -1087,16 +1085,16 @@
                 contentDiv.innerHTML = `
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px;">
                         <div>
-                            <div style="background: rgba(244, 67, 54, 0.1); padding: 8px; border-radius: 4px; margin-bottom: 10px; font-weight: bold; color: #f44336;">
+                            <div style="background: rgba(245, 101, 101, 0.12); padding: 8px; border-radius: 4px; margin-bottom: 10px; font-weight: bold; color: var(--error-color); border: 1px solid rgba(245, 101, 101, 0.25);">
                                 Previous State
                             </div>
-                            <div id="timeline-state-old" style="border: 1px solid var(--border-color); border-radius: 4px; overflow: hidden;"></div>
+                            <div id="timeline-state-old" style="border: 1px solid var(--border-color); border-radius: 4px; overflow: hidden; background: var(--bg-secondary);"></div>
                         </div>
                         <div>
-                            <div style="background: rgba(76, 175, 80, 0.1); padding: 8px; border-radius: 4px; margin-bottom: 10px; font-weight: bold; color: #4caf50;">
+                            <div style="background: rgba(72, 187, 120, 0.12); padding: 8px; border-radius: 4px; margin-bottom: 10px; font-weight: bold; color: var(--success-color); border: 1px solid rgba(72, 187, 120, 0.25);">
                                 New State
                             </div>
-                            <div id="timeline-state-new" style="border: 1px solid var(--border-color); border-radius: 4px; overflow: hidden;"></div>
+                            <div id="timeline-state-new" style="border: 1px solid var(--border-color); border-radius: 4px; overflow: hidden; background: var(--bg-secondary);"></div>
                         </div>
                     </div>
                     <details style="margin-top: 15px; padding-top: 15px; border-top: 1px solid var(--border-color);">
@@ -1107,18 +1105,51 @@
                     </details>
                 `;
 
+                // Show changes summary in details
+                const diff = computeDiff(previousState, item.state);
+
+                // Extract keys for highlighting
+                const addedKeys = Object.keys(diff.added);
+                const modifiedKeys = Object.keys(diff.modified);
+                const removedKeys = Object.keys(diff.removed);
+
                 new JSONViewer('timeline-state-old', previousState, {
                     collapsed: false,
-                    maxHeight: '400px'
+                    maxHeight: '400px',
+                    highlightModified: modifiedKeys,
+                    highlightRemoved: removedKeys
                 });
 
                 new JSONViewer('timeline-state-new', item.state, {
                     collapsed: false,
-                    maxHeight: '400px'
+                    maxHeight: '400px',
+                    highlightAdded: addedKeys,
+                    highlightModified: modifiedKeys
                 });
 
-                // Show changes summary in details
-                const diff = computeDiff(previousState, item.state);
+                // Synchronize scrolling between left and right panels
+                const oldContainer = document.querySelector('#timeline-state-old .json-viewer-container');
+                const newContainer = document.querySelector('#timeline-state-new .json-viewer-container');
+
+                if (oldContainer && newContainer) {
+                    let isSyncing = false;
+
+                    oldContainer.addEventListener('scroll', function() {
+                        if (!isSyncing) {
+                            isSyncing = true;
+                            newContainer.scrollTop = oldContainer.scrollTop;
+                            requestAnimationFrame(() => isSyncing = false);
+                        }
+                    });
+
+                    newContainer.addEventListener('scroll', function() {
+                        if (!isSyncing) {
+                            isSyncing = true;
+                            oldContainer.scrollTop = newContainer.scrollTop;
+                            requestAnimationFrame(() => isSyncing = false);
+                        }
+                    });
+                }
                 let changesHtml = '';
 
                 if (Object.keys(diff.added).length > 0) {
@@ -1329,39 +1360,54 @@
     const innerWrapper = document.getElementById('timeline-inner');
     const selectionOverlay = document.getElementById('selection-overlay');
 
+    // Helper to get X position relative to innerWrapper
+    const getRelativeX = (e) => {
+        const rect = innerWrapper.getBoundingClientRect();
+        return e.clientX - rect.left;
+    };
+
     innerWrapper.addEventListener('mousedown', (e) => {
-        if (e.target === innerWrapper || e.target === document.getElementById('timeline-line') || e.target === document.getElementById('timeline-container')) {
+        // Only handle clicks on the timeline area, not on the points themselves
+        const clickedElement = e.target;
+        const isTimelineArea = clickedElement === innerWrapper ||
+                              clickedElement === document.getElementById('timeline-line') ||
+                              clickedElement === document.getElementById('timeline-container');
+
+        if (isTimelineArea) {
             isDragging = true;
-            dragStartX = e.offsetX;
+            dragStartX = getRelativeX(e);
             dragStartTime = Date.now();
-            selectionOverlay.style.left = dragStartX + 'px';
-            selectionOverlay.style.width = '0px';
-            selectionOverlay.style.display = 'block';
+            // Don't show overlay yet - wait for actual drag
         }
     });
 
     innerWrapper.addEventListener('mousemove', (e) => {
         if (isDragging) {
-            const currentX = e.offsetX;
-            const left = Math.min(dragStartX, currentX);
+            const currentX = getRelativeX(e);
             const width = Math.abs(currentX - dragStartX);
-            selectionOverlay.style.left = left + 'px';
-            selectionOverlay.style.width = width + 'px';
+
+            // Only show overlay if we've moved more than 5 pixels (actual drag)
+            if (width > 5) {
+                const left = Math.min(dragStartX, currentX);
+                selectionOverlay.style.left = left + 'px';
+                selectionOverlay.style.width = width + 'px';
+                selectionOverlay.style.display = 'block';
+            }
         }
     });
 
     innerWrapper.addEventListener('mouseup', (e) => {
         if (isDragging) {
             isDragging = false;
-            const currentX = e.offsetX;
+            const currentX = getRelativeX(e);
             const width = Math.abs(currentX - dragStartX);
             const dragDuration = Date.now() - dragStartTime;
 
-            // If drag width is small and duration is short, treat as click
-            if (width < 10 && dragDuration < 300) {
+            // If drag width is small (less than 5px), treat as click
+            if (width < 5) {
                 // Click behavior - set time marker
                 const containerWidth = innerWrapper.offsetWidth;
-                const clickPercent = currentX / containerWidth;
+                const clickPercent = dragStartX / containerWidth;
 
                 const timeRange = getTimeRange();
                 const totalDuration = timeRange.end - timeRange.start;
@@ -1370,8 +1416,8 @@
                 selectedTime = clickedTime;
                 showTimeMarker(clickPercent * 100, clickedTime);
                 updateCurrentStateDisplay(clickedTime, clickedTime.toLocaleString());
-            } else if (width > 20) {
-                // Drag behavior - zoom to selection
+            } else if (width > 30) {
+                // Drag behavior - zoom to selection (require 30px minimum for zoom)
                 const containerWidth = innerWrapper.offsetWidth;
                 const startPercent = Math.min(dragStartX, currentX) / containerWidth;
                 const endPercent = Math.max(dragStartX, currentX) / containerWidth;
@@ -1393,6 +1439,7 @@
                 renderTimeline();
             }
 
+            // Always hide overlay on mouseup
             selectionOverlay.style.display = 'none';
         }
     });

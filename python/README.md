@@ -1,6 +1,6 @@
-# datacat Python Client
+# DataCat Python Client
 
-Python client library for interacting with the datacat REST API. Compatible with Python 2.7+ and Python 3.x.
+Python client library for interacting with the DataCat REST API. Compatible with Python 2.7+ and Python 3.x.
 
 ## Installation
 

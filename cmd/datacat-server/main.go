@@ -21,6 +21,11 @@ type Session struct {
 	EndedAt       *time.Time             `json:"ended_at,omitempty"`
 	LastHeartbeat *time.Time             `json:"last_heartbeat,omitempty"`
 	Active        bool                   `json:"active"`
+	Suspended     bool                   `json:"suspended"`            // True when heartbeats stopped but likely asleep/hibernating
+	Crashed       bool                   `json:"crashed"`              // True when machine came back but session didn't resume
+	Hung          bool                   `json:"hung"`                 // True if session ever had a hang event
+	MachineID     string                 `json:"machine_id,omitempty"` // Unique machine identifier
+	Hostname      string                 `json:"hostname,omitempty"`   // Machine hostname for display
 	State         map[string]interface{} `json:"state"`
 	StateHistory  []StateSnapshot        `json:"state_history"`
 	Events        []Event                `json:"events"`
@@ -37,7 +42,19 @@ type StateSnapshot struct {
 type Event struct {
 	Timestamp time.Time              `json:"timestamp"`
 	Name      string                 `json:"name"`
-	Data      map[string]interface{} `json:"data"`
+	Level     string                 `json:"level"`    // debug, info, warning, error, critical
+	Category  string                 `json:"category"` // e.g., logger name, component name
+	Labels    []string               `json:"labels"`   // arbitrary tags for filtering
+	Message   string                 `json:"message"`  // human-readable message
+	Data      map[string]interface{} `json:"data"`     // additional structured data
+
+	// Exception-specific fields (when this is an exception event)
+	ExceptionType  string   `json:"exception_type,omitempty"`  // e.g., "ValueError", "NullPointerException"
+	ExceptionMsg   string   `json:"exception_msg,omitempty"`   // exception message
+	Stacktrace     []string `json:"stacktrace,omitempty"`      // array of stack trace lines
+	SourceFile     string   `json:"source_file,omitempty"`     // file where exception occurred
+	SourceLine     int      `json:"source_line,omitempty"`     // line number where exception occurred
+	SourceFunction string   `json:"source_function,omitempty"` // function where exception occurred
 }
 
 // Metric represents a metric logged in a session
@@ -137,15 +154,43 @@ func (s *Store) loadFromDB() error {
 }
 
 // CreateSession creates a new session with product and version
-func (s *Store) CreateSession(product, version string) *Session {
+func (s *Store) CreateSession(product, version, machineID, hostname string) *Session {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
+	// Check for suspended sessions from the same machine
+	// If found, mark them as crashed (machine came back but session didn't resume)
+	if machineID != "" {
+		for _, existing := range s.sessions {
+			if existing.MachineID == machineID && existing.Suspended && !existing.Crashed {
+				existing.Crashed = true
+				existing.Suspended = false
+				log.Printf("Marked session %s as crashed (machine %s came back but session didn't resume)",
+					existing.ID, machineID)
+
+				// Add crash event
+				existing.Events = append(existing.Events, Event{
+					Timestamp: time.Now(),
+					Name:      "session_crashed_detected",
+					Data: map[string]interface{}{
+						"reason":     "machine_returned_session_not_resumed",
+						"machine_id": machineID,
+					},
+				})
+
+				// Save the updated session
+				go s.saveSessionToDB(existing)
+			}
+		}
+	}
 
 	session := &Session{
 		ID:           uuid.New().String(),
 		CreatedAt:    time.Now(),
 		UpdatedAt:    time.Now(),
 		Active:       true,
+		MachineID:    machineID,
+		Hostname:     hostname,
 		State:        make(map[string]interface{}),
 		StateHistory: []StateSnapshot{},
 		Events:       []Event{},
@@ -182,30 +227,36 @@ func (s *Store) GetSession(id string) (*Session, bool) {
 	// Make a copy to avoid modifying the stored session without lock
 	sessionCopy := *session
 	s.updateActiveStatusReadOnly(&sessionCopy)
-	
+
 	return &sessionCopy, true
 }
 
 // updateActiveStatusReadOnly updates active status without modifying the original session
 // Used when we have read lock only
 func (s *Store) updateActiveStatusReadOnly(session *Session) {
-	// If session is ended, it's not active
+	// If session is ended, it's not active and not suspended
 	if session.EndedAt != nil {
 		session.Active = false
+		session.Suspended = false
 		return
 	}
 
 	// If no heartbeat has been received yet, keep initial active status
 	if session.LastHeartbeat == nil {
+		session.Suspended = false
 		return
 	}
 
 	// Check if heartbeat is within timeout
 	timeout := time.Duration(s.config.HeartbeatTimeoutSeconds) * time.Second
 	if time.Since(*session.LastHeartbeat) > timeout {
+		// No heartbeats - likely suspended/sleeping
 		session.Active = false
+		session.Suspended = true
 	} else {
+		// Receiving heartbeats - active and not suspended
 		session.Active = true
+		session.Suspended = false
 	}
 }
 
@@ -227,6 +278,12 @@ func (s *Store) GetAllSessions() []*Session {
 // deepMerge recursively merges src into dst
 func deepMerge(dst, src map[string]interface{}) {
 	for k, v := range src {
+		// If value is nil, delete the key from destination
+		if v == nil {
+			delete(dst, k)
+			continue
+		}
+
 		if srcMap, ok := v.(map[string]interface{}); ok {
 			if dstMap, ok := dst[k].(map[string]interface{}); ok {
 				// Both are maps, merge recursively
@@ -318,23 +375,32 @@ func (s *Store) UpdateHeartbeat(id string) error {
 // updateActiveStatus updates the active status based on heartbeat and ended state
 // This should be called with the mutex already locked
 func (s *Store) updateActiveStatus(session *Session) {
-	// If session is ended, it's not active
+	// If session is ended, it's not active and not suspended
 	if session.EndedAt != nil {
 		session.Active = false
+		session.Suspended = false
 		return
 	}
 
 	// If no heartbeat has been received yet, keep initial active status
 	if session.LastHeartbeat == nil {
+		session.Suspended = false
 		return
 	}
 
 	// Check if heartbeat is within timeout
 	timeout := time.Duration(s.config.HeartbeatTimeoutSeconds) * time.Second
-	if time.Since(*session.LastHeartbeat) > timeout {
+	timeSinceHeartbeat := time.Since(*session.LastHeartbeat)
+
+	if timeSinceHeartbeat > timeout {
+		// No heartbeats - likely suspended/sleeping (system sleep, not crashed)
+		// This allows the session to resume if heartbeats start again
 		session.Active = false
+		session.Suspended = true
 	} else {
+		// Receiving heartbeats - active and not suspended
 		session.Active = true
+		session.Suspended = false
 	}
 }
 
@@ -410,7 +476,7 @@ func (s *Store) StartCleanupRoutine() {
 }
 
 // AddEvent adds an event to a session
-func (s *Store) AddEvent(id string, name string, data map[string]interface{}) error {
+func (s *Store) AddEvent(id string, name string, level string, category string, labels []string, message string, data map[string]interface{}, exceptionType string, exceptionMsg string, stacktrace []string, sourceFile string, sourceLine int, sourceFunction string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -419,13 +485,45 @@ func (s *Store) AddEvent(id string, name string, data map[string]interface{}) er
 		return fmt.Errorf("session not found")
 	}
 
+	// Default level to "info" if not specified
+	if level == "" {
+		level = "info"
+	}
+
+	// For exceptions, default level to "error" if not specified
+	if exceptionType != "" && level == "info" {
+		level = "error"
+	}
+
 	event := Event{
-		Timestamp: time.Now(),
-		Name:      name,
-		Data:      data,
+		Timestamp:      time.Now(),
+		Name:           name,
+		Level:          level,
+		Category:       category,
+		Labels:         labels,
+		Message:        message,
+		Data:           data,
+		ExceptionType:  exceptionType,
+		ExceptionMsg:   exceptionMsg,
+		Stacktrace:     stacktrace,
+		SourceFile:     sourceFile,
+		SourceLine:     sourceLine,
+		SourceFunction: sourceFunction,
 	}
 	session.Events = append(session.Events, event)
 	session.UpdatedAt = time.Now()
+
+	// Mark session as hung if we receive a hang event
+	if name == "application_appears_hung" {
+		session.Hung = true
+		log.Printf("Session %s marked as hung", id)
+	}
+
+	// Clear hung flag if application recovers
+	if name == "application_recovered" {
+		session.Hung = false
+		log.Printf("Session %s recovered from hang", id)
+	}
 
 	// Save to database asynchronously
 	go s.saveSessionToDB(session)
@@ -490,12 +588,14 @@ func main() {
 // handleSessions handles POST /api/sessions to create a new session
 func handleSessions(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "POST" {
-		// Parse request body to get product and version
+		// Parse request body to get product, version, and machine info
 		var req struct {
-			Product string `json:"product"`
-			Version string `json:"version"`
+			Product   string `json:"product"`
+			Version   string `json:"version"`
+			MachineID string `json:"machine_id,omitempty"`
+			Hostname  string `json:"hostname,omitempty"`
 		}
-		
+
 		// Try to decode the request body
 		if r.Body != nil {
 			json.NewDecoder(r.Body).Decode(&req)
@@ -507,7 +607,7 @@ func handleSessions(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		session := store.CreateSession(req.Product, req.Version)
+		session := store.CreateSession(req.Product, req.Version, req.MachineID, req.Hostname)
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"session_id": session.ID})
 		return
@@ -568,15 +668,25 @@ func handleSessionOperations(w http.ResponseWriter, r *http.Request) {
 	// POST /api/sessions/{id}/events - Add event
 	if r.Method == "POST" && operation == "events" {
 		var eventData struct {
-			Name string                 `json:"name"`
-			Data map[string]interface{} `json:"data"`
+			Name           string                 `json:"name"`
+			Level          string                 `json:"level"`           // optional: debug, info, warning, error, critical
+			Category       string                 `json:"category"`        // optional: logger name, component
+			Labels         []string               `json:"labels"`          // optional: tags for filtering
+			Message        string                 `json:"message"`         // optional: human-readable message
+			Data           map[string]interface{} `json:"data"`            // optional: additional structured data
+			ExceptionType  string                 `json:"exception_type"`  // optional: for exceptions
+			ExceptionMsg   string                 `json:"exception_msg"`   // optional: for exceptions
+			Stacktrace     []string               `json:"stacktrace"`      // optional: for exceptions
+			SourceFile     string                 `json:"source_file"`     // optional: for exceptions
+			SourceLine     int                    `json:"source_line"`     // optional: for exceptions
+			SourceFunction string                 `json:"source_function"` // optional: for exceptions
 		}
 		if err := json.NewDecoder(r.Body).Decode(&eventData); err != nil {
 			http.Error(w, "Invalid request body", http.StatusBadRequest)
 			return
 		}
 
-		if err := store.AddEvent(sessionID, eventData.Name, eventData.Data); err != nil {
+		if err := store.AddEvent(sessionID, eventData.Name, eventData.Level, eventData.Category, eventData.Labels, eventData.Message, eventData.Data, eventData.ExceptionType, eventData.ExceptionMsg, eventData.Stacktrace, eventData.SourceFile, eventData.SourceLine, eventData.SourceFunction); err != nil {
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}

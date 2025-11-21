@@ -91,7 +91,6 @@ class TestProgramWorkflow(unittest.TestCase):
         """
         session = create_session(
             self.base_url,
-            use_daemon=False,
             product="GraphiteWorkflow",
             version="2025.10.1",
         )
@@ -284,7 +283,7 @@ class TestProgramWorkflow(unittest.TestCase):
         used to reconstruct application state at any point in time.
         """
         session = create_session(
-            self.base_url, use_daemon=False, product="StateHistoryTest", version="1.0"
+            self.base_url, product="StateHistoryTest", version="1.0"
         )
 
         # Create a series of state updates
