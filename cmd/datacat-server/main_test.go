@@ -909,7 +909,7 @@ func TestCloseStore(t *testing.T) {
 	// BadgerDB returns error when closing an already closed DB, which is expected
 }
 
-	// Test StartCleanupRoutine execution
+// Test StartCleanupRoutine execution
 func TestStartCleanupRoutineExecution(t *testing.T) {
 	tmpDir := t.TempDir()
 	config := DefaultConfig()
@@ -1100,4 +1100,340 @@ func TestHeartbeatHTTPHandler(t *testing.T) {
 			t.Errorf("Expected status 404, got %d", w.Code)
 		}
 	})
+}
+
+func TestMachineTracking(t *testing.T) {
+	tmpDir := t.TempDir()
+	config := DefaultConfig()
+	store, err := NewStore(tmpDir, config)
+	if err != nil {
+		t.Fatalf("NewStore failed: %v", err)
+	}
+	defer store.Close()
+
+	machineID := "test-machine-123"
+	hostname := "test-host"
+
+	// Create session with machine info
+	session := store.CreateSession("TestProduct", "1.0.0", machineID, hostname)
+
+	if session.MachineID != machineID {
+		t.Errorf("Expected MachineID %s, got %s", machineID, session.MachineID)
+	}
+	if session.Hostname != hostname {
+		t.Errorf("Expected Hostname %s, got %s", hostname, session.Hostname)
+	}
+}
+
+func TestCrashDetection(t *testing.T) {
+	tmpDir := t.TempDir()
+	config := DefaultConfig()
+	config.HeartbeatTimeoutSeconds = 1 // Short timeout for testing
+	store, err := NewStore(tmpDir, config)
+	if err != nil {
+		t.Fatalf("NewStore failed: %v", err)
+	}
+	defer store.Close()
+
+	machineID := "test-machine-456"
+
+	// Create first session
+	session1 := store.CreateSession("TestProduct", "1.0.0", machineID, "host1")
+
+	// Send heartbeat then stop
+	store.UpdateHeartbeat(session1.ID)
+
+	// Wait for heartbeat timeout to mark as suspended
+	time.Sleep(2 * time.Second)
+
+	retrieved1, _ := store.GetSession(session1.ID)
+	if !retrieved1.Suspended {
+		t.Error("Session should be marked as suspended after heartbeat timeout")
+	}
+
+	// Create new session from same machine
+	session2 := store.CreateSession("TestProduct", "1.0.0", machineID, "host1")
+
+	// First session should now be marked as crashed
+	retrieved1Again, _ := store.GetSession(session1.ID)
+	if !retrieved1Again.Crashed {
+		t.Error("Old session should be marked as crashed when machine returns with new session")
+	}
+	if retrieved1Again.Suspended {
+		t.Error("Crashed session should not be suspended")
+	}
+
+	// Verify crash event was logged
+	hasCrashEvent := false
+	for _, event := range retrieved1Again.Events {
+		if event.Name == "session_crashed_detected" {
+			hasCrashEvent = true
+			break
+		}
+	}
+	if !hasCrashEvent {
+		t.Error("Expected session_crashed_detected event to be logged")
+	}
+
+	// New session should not be crashed
+	if session2.Crashed {
+		t.Error("New session should not be marked as crashed")
+	}
+}
+
+func TestSuspendedStatus(t *testing.T) {
+	tmpDir := t.TempDir()
+	config := DefaultConfig()
+	config.HeartbeatTimeoutSeconds = 1
+	store, err := NewStore(tmpDir, config)
+	if err != nil {
+		t.Fatalf("NewStore failed: %v", err)
+	}
+	defer store.Close()
+
+	session := store.CreateSession("TestProduct", "1.0.0", "", "")
+
+	// Send heartbeat
+	store.UpdateHeartbeat(session.ID)
+
+	// Session should be active
+	retrieved, _ := store.GetSession(session.ID)
+	if !retrieved.Active {
+		t.Error("Session should be active after recent heartbeat")
+	}
+	if retrieved.Suspended {
+		t.Error("Session should not be suspended with recent heartbeat")
+	}
+
+	// Wait for timeout
+	time.Sleep(2 * time.Second)
+
+	// Session should now be suspended
+	retrieved, _ = store.GetSession(session.ID)
+	if retrieved.Active {
+		t.Error("Session should not be active after heartbeat timeout")
+	}
+	if !retrieved.Suspended {
+		t.Error("Session should be suspended after heartbeat timeout")
+	}
+
+	// Resume heartbeats
+	store.UpdateHeartbeat(session.ID)
+
+	// Session should be active again and not suspended
+	retrieved, _ = store.GetSession(session.ID)
+	if !retrieved.Active {
+		t.Error("Session should be active after heartbeat resumes")
+	}
+	if retrieved.Suspended {
+		t.Error("Session should not be suspended after heartbeat resumes")
+	}
+}
+
+func TestHungTracking(t *testing.T) {
+	tmpDir := t.TempDir()
+	config := DefaultConfig()
+	store, err := NewStore(tmpDir, config)
+	if err != nil {
+		t.Fatalf("NewStore failed: %v", err)
+	}
+	defer store.Close()
+
+	session := store.CreateSession("TestProduct", "1.0.0", "", "")
+
+	// Session should not be hung initially
+	if session.Hung {
+		t.Error("Session should not be hung initially")
+	}
+
+	// Log hung event
+	err = store.AddEvent(session.ID, "application_appears_hung", map[string]interface{}{
+		"last_heartbeat": time.Now().Format(time.RFC3339),
+	})
+	if err != nil {
+		t.Fatalf("AddEvent failed: %v", err)
+	}
+
+	// Session should now be marked as hung
+	retrieved, _ := store.GetSession(session.ID)
+	if !retrieved.Hung {
+		t.Error("Session should be marked as hung after application_appears_hung event")
+	}
+
+	// Log recovery event
+	err = store.AddEvent(session.ID, "application_recovered", map[string]interface{}{})
+	if err != nil {
+		t.Fatalf("AddEvent failed: %v", err)
+	}
+
+	// Session should no longer be hung
+	retrieved, _ = store.GetSession(session.ID)
+	if retrieved.Hung {
+		t.Error("Session should not be hung after application_recovered event")
+	}
+
+	// Verify both events were logged
+	if len(retrieved.Events) != 2 {
+		t.Errorf("Expected 2 events, got %d", len(retrieved.Events))
+	}
+}
+
+func TestHungWhileCrashed(t *testing.T) {
+	tmpDir := t.TempDir()
+	config := DefaultConfig()
+	config.HeartbeatTimeoutSeconds = 1
+	store, err := NewStore(tmpDir, config)
+	if err != nil {
+		t.Fatalf("NewStore failed: %v", err)
+	}
+	defer store.Close()
+
+	machineID := "test-machine-789"
+
+	// Create session
+	session1 := store.CreateSession("TestProduct", "1.0.0", machineID, "host1")
+
+	// Send heartbeat
+	store.UpdateHeartbeat(session1.ID)
+
+	// Log hung event
+	store.AddEvent(session1.ID, "application_appears_hung", map[string]interface{}{})
+
+	// Verify it's hung
+	retrieved, _ := store.GetSession(session1.ID)
+	if !retrieved.Hung {
+		t.Error("Session should be hung")
+	}
+
+	// Wait for heartbeat timeout
+	time.Sleep(2 * time.Second)
+
+	// Create new session from same machine (simulating crash)
+	store.CreateSession("TestProduct", "1.0.0", machineID, "host1")
+
+	// Original session should be both crashed AND hung
+	retrieved1, _ := store.GetSession(session1.ID)
+	if !retrieved1.Crashed {
+		t.Error("Session should be marked as crashed")
+	}
+	if !retrieved1.Hung {
+		t.Error("Session should still be hung (crashed while hung)")
+	}
+}
+
+func TestSessionWithoutMachineID(t *testing.T) {
+	tmpDir := t.TempDir()
+	config := DefaultConfig()
+	store, err := NewStore(tmpDir, config)
+	if err != nil {
+		t.Fatalf("NewStore failed: %v", err)
+	}
+	defer store.Close()
+
+	// Create sessions without machine ID
+	session1 := store.CreateSession("TestProduct", "1.0.0", "", "")
+	session2 := store.CreateSession("TestProduct", "1.0.0", "", "")
+
+	// Neither should be marked as crashed
+	if session1.Crashed {
+		t.Error("Session without machine ID should not be marked as crashed")
+	}
+	if session2.Crashed {
+		t.Error("Session without machine ID should not trigger crash detection")
+	}
+}
+
+func TestMultipleMachines(t *testing.T) {
+	tmpDir := t.TempDir()
+	config := DefaultConfig()
+	config.HeartbeatTimeoutSeconds = 1
+	store, err := NewStore(tmpDir, config)
+	if err != nil {
+		t.Fatalf("NewStore failed: %v", err)
+	}
+	defer store.Close()
+
+	machine1ID := "machine-001"
+	machine2ID := "machine-002"
+
+	// Create sessions on different machines
+	session1 := store.CreateSession("TestProduct", "1.0.0", machine1ID, "host1")
+	session2 := store.CreateSession("TestProduct", "1.0.0", machine2ID, "host2")
+
+	// Send heartbeats
+	store.UpdateHeartbeat(session1.ID)
+	store.UpdateHeartbeat(session2.ID)
+
+	// Wait for timeout
+	time.Sleep(2 * time.Second)
+
+	// Both should be suspended
+	r1, _ := store.GetSession(session1.ID)
+	r2, _ := store.GetSession(session2.ID)
+	if !r1.Suspended || !r2.Suspended {
+		t.Error("Both sessions should be suspended")
+	}
+
+	// New session on machine1
+	store.CreateSession("TestProduct", "1.0.0", machine1ID, "host1")
+
+	// Only session1 should be crashed, not session2
+	r1, _ = store.GetSession(session1.ID)
+	r2, _ = store.GetSession(session2.ID)
+
+	if !r1.Crashed {
+		t.Error("Session on machine1 should be crashed")
+	}
+	if r2.Crashed {
+		t.Error("Session on machine2 should not be crashed")
+	}
+	if !r2.Suspended {
+		t.Error("Session on machine2 should still be suspended")
+	}
+}
+
+func TestCreateSessionHTTPWithMachineInfo(t *testing.T) {
+	tmpDir := t.TempDir()
+	config := DefaultConfig()
+	var err error
+	store, err = NewStore(tmpDir, config)
+	if err != nil {
+		t.Fatalf("NewStore failed: %v", err)
+	}
+	defer store.Close()
+
+	reqData := map[string]interface{}{
+		"product":    "TestProduct",
+		"version":    "1.0.0",
+		"machine_id": "test-machine-http",
+		"hostname":   "test-host-http",
+	}
+	body, _ := json.Marshal(reqData)
+
+	req := httptest.NewRequest("POST", "/api/sessions", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	handleSessions(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+
+	var response map[string]string
+	json.NewDecoder(w.Body).Decode(&response)
+	sessionID := response["session_id"]
+
+	if sessionID == "" {
+		t.Fatal("Expected session_id in response")
+	}
+
+	// Verify machine info was stored
+	session, _ := store.GetSession(sessionID)
+	if session.MachineID != "test-machine-http" {
+		t.Errorf("Expected MachineID test-machine-http, got %s", session.MachineID)
+	}
+	if session.Hostname != "test-host-http" {
+		t.Errorf("Expected Hostname test-host-http, got %s", session.Hostname)
+	}
 }

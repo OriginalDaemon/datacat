@@ -42,7 +42,11 @@ type StateSnapshot struct {
 type Event struct {
 	Timestamp time.Time              `json:"timestamp"`
 	Name      string                 `json:"name"`
-	Data      map[string]interface{} `json:"data"`
+	Level     string                 `json:"level"`    // debug, info, warning, error, critical
+	Category  string                 `json:"category"` // e.g., logger name, component name
+	Labels    []string               `json:"labels"`   // arbitrary tags for filtering
+	Message   string                 `json:"message"`  // human-readable message
+	Data      map[string]interface{} `json:"data"`     // additional structured data
 }
 
 // Metric represents a metric logged in a session
@@ -458,7 +462,7 @@ func (s *Store) StartCleanupRoutine() {
 }
 
 // AddEvent adds an event to a session
-func (s *Store) AddEvent(id string, name string, data map[string]interface{}) error {
+func (s *Store) AddEvent(id string, name string, level string, category string, labels []string, message string, data map[string]interface{}) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -467,9 +471,18 @@ func (s *Store) AddEvent(id string, name string, data map[string]interface{}) er
 		return fmt.Errorf("session not found")
 	}
 
+	// Default level to "info" if not specified
+	if level == "" {
+		level = "info"
+	}
+
 	event := Event{
 		Timestamp: time.Now(),
 		Name:      name,
+		Level:     level,
+		Category:  category,
+		Labels:    labels,
+		Message:   message,
 		Data:      data,
 	}
 	session.Events = append(session.Events, event)
@@ -630,15 +643,19 @@ func handleSessionOperations(w http.ResponseWriter, r *http.Request) {
 	// POST /api/sessions/{id}/events - Add event
 	if r.Method == "POST" && operation == "events" {
 		var eventData struct {
-			Name string                 `json:"name"`
-			Data map[string]interface{} `json:"data"`
+			Name     string                 `json:"name"`
+			Level    string                 `json:"level"`    // optional: debug, info, warning, error, critical
+			Category string                 `json:"category"` // optional: logger name, component
+			Labels   []string               `json:"labels"`   // optional: tags for filtering
+			Message  string                 `json:"message"`  // optional: human-readable message
+			Data     map[string]interface{} `json:"data"`     // optional: additional structured data
 		}
 		if err := json.NewDecoder(r.Body).Decode(&eventData); err != nil {
 			http.Error(w, "Invalid request body", http.StatusBadRequest)
 			return
 		}
 
-		if err := store.AddEvent(sessionID, eventData.Name, eventData.Data); err != nil {
+		if err := store.AddEvent(sessionID, eventData.Name, eventData.Level, eventData.Category, eventData.Labels, eventData.Message, eventData.Data); err != nil {
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}
