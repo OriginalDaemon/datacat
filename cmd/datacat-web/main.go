@@ -1736,29 +1736,37 @@ No sessions found. Start logging data to see products here.
 <div class="versions-list">`, product.Name))
 
 			for _, version := range product.Versions {
+				productParam := url.QueryEscape(product.Name)
+				versionParam := url.QueryEscape(version.Version)
+				baseURL := fmt.Sprintf("/sessions?product=%s&version=%s", productParam, versionParam)
+
 				html.WriteString(fmt.Sprintf(`
-<div class="version-item">
-<a href="/sessions?product=%s&version=%s" class="version-link">
+<div class="version-item" onclick="window.location.href='%s'" style="cursor: pointer;">
+<a href="%s" class="version-link" onclick="event.stopPropagation();">
 <span class="version-number">v%s</span>
 <span class="session-count">%d sessions</span>
 </a>
-<div class="version-stats">`,
-					url.QueryEscape(product.Name),
-					url.QueryEscape(version.Version),
+<div class="version-stats" onclick="event.stopPropagation();">`,
+					baseURL,
+					baseURL,
 					version.Version,
 					version.SessionCount))
 
 				if version.ActiveCount > 0 {
-					html.WriteString(fmt.Sprintf(`<span class="stat-badge stat-active">%d active</span>`, version.ActiveCount))
+					activeURL := fmt.Sprintf("%s&status=active", baseURL)
+					html.WriteString(fmt.Sprintf(`<a href="%s" class="stat-badge stat-active" style="text-decoration: none;">%d active</a>`, activeURL, version.ActiveCount))
 				}
 				if version.EndedCount > 0 {
-					html.WriteString(fmt.Sprintf(`<span class="stat-badge stat-ended">%d ended</span>`, version.EndedCount))
+					endedURL := fmt.Sprintf("%s&status=ended", baseURL)
+					html.WriteString(fmt.Sprintf(`<a href="%s" class="stat-badge stat-ended" style="text-decoration: none;">%d ended</a>`, endedURL, version.EndedCount))
 				}
 				if version.CrashedCount > 0 {
-					html.WriteString(fmt.Sprintf(`<span class="stat-badge stat-crashed">%d crashed</span>`, version.CrashedCount))
+					crashedURL := fmt.Sprintf("%s&status=crashed", baseURL)
+					html.WriteString(fmt.Sprintf(`<a href="%s" class="stat-badge stat-crashed" style="text-decoration: none;">%d crashed</a>`, crashedURL, version.CrashedCount))
 				}
 				if version.HungCount > 0 {
-					html.WriteString(fmt.Sprintf(`<span class="stat-badge stat-hung">%d hung</span>`, version.HungCount))
+					hungURL := fmt.Sprintf("%s&status=hung", baseURL)
+					html.WriteString(fmt.Sprintf(`<a href="%s" class="stat-badge stat-hung" style="text-decoration: none;">%d hung</a>`, hungURL, version.HungCount))
 				}
 
 				html.WriteString(`</div>
