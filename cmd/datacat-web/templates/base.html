@@ -15,15 +15,16 @@
     <script src="/static/json-viewer.js"></script>
     <style>
       :root {
-        --bg-primary: #1a202c;
-        --bg-secondary: #2d3748;
-        --bg-card: #2d3748;
-        --bg-hover: #4a5568;
-        --text-primary: #e2e8f0;
-        --text-secondary: #a0aec0;
-        --border-color: #4a5568;
-        --accent-primary: #667eea;
-        --accent-secondary: #764ba2;
+        --bg-primary: #242420;
+        --bg-secondary: #2d2d28;
+        --bg-card: #323230;
+        --bg-hover: #3d3d38;
+        --text-primary: #e8e8e0;
+        --text-secondary: #a8a8a0;
+        --border-color: #4a4a45;
+        --accent-primary: #819bfc;
+        --accent-secondary: #a77bfc;
+        --accent-tertiary: #b4c0fb;
         --success-color: #48bb78;
         --error-color: #f56565;
         --warning-color: #ed8936;
@@ -50,7 +51,7 @@
       }
 
       header {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        background: linear-gradient(135deg, #819bfc 0%, #a77bfc 100%);
         color: white;
         padding: 20px 0;
         margin-bottom: 30px;
@@ -147,7 +148,7 @@
       .btn {
         display: inline-block;
         padding: 10px 20px;
-        background: #667eea;
+        background: var(--accent-primary);
         color: white;
         text-decoration: none;
         border-radius: 4px;
@@ -158,7 +159,7 @@
       }
 
       .btn:hover {
-        background: #5568d3;
+        background: var(--accent-secondary);
       }
 
       .btn-secondary {
@@ -213,7 +214,11 @@
       }
 
       .stat-card {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        background: linear-gradient(
+          135deg,
+          var(--accent-primary) 0%,
+          var(--accent-secondary) 100%
+        );
         color: white;
         padding: 20px;
         border-radius: 8px;
@@ -240,8 +245,8 @@
       }
 
       .spinner {
-        border: 2px solid #f3f3f3;
-        border-top: 2px solid #667eea;
+        border: 2px solid var(--border-color);
+        border-top: 2px solid var(--accent-primary);
         border-radius: 50%;
         width: 20px;
         height: 20px;
@@ -260,15 +265,16 @@
 
       /* Light theme */
       body.light-theme {
-        --bg-primary: #f7fafc;
-        --bg-secondary: #edf2f7;
+        --bg-primary: #fbfbf4;
+        --bg-secondary: #f0f0e8;
         --bg-card: #ffffff;
-        --bg-hover: #e2e8f0;
-        --text-primary: #2d3748;
-        --text-secondary: #4a5568;
-        --border-color: #cbd5e0;
-        --accent-primary: #667eea;
-        --accent-secondary: #764ba2;
+        --bg-hover: #e8e8e0;
+        --text-primary: #242420;
+        --text-secondary: #5a5a55;
+        --border-color: #d8d8d0;
+        --accent-primary: #819bfc;
+        --accent-secondary: #a77bfc;
+        --accent-tertiary: #b4c0fb;
         --success-color: #38a169;
         --error-color: #e53e3e;
         --warning-color: #dd6b20;

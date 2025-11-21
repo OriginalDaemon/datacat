@@ -9,15 +9,16 @@
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
     <style>
         :root {
-            --bg-primary: #1a202c;
-            --bg-secondary: #2d3748;
-            --bg-card: #2d3748;
-            --bg-hover: #4a5568;
-            --text-primary: #e2e8f0;
-            --text-secondary: #a0aec0;
-            --border-color: #4a5568;
-            --accent-primary: #667eea;
-            --accent-secondary: #764ba2;
+            --bg-primary: #242420;
+            --bg-secondary: #2d2d28;
+            --bg-card: #323230;
+            --bg-hover: #3d3d38;
+            --text-primary: #e8e8e0;
+            --text-secondary: #a8a8a0;
+            --border-color: #4a4a45;
+            --accent-primary: #819BFC;
+            --accent-secondary: #A77BFC;
+            --accent-tertiary: #B4C0FB;
             --success-color: #48bb78;
             --error-color: #f56565;
             --warning-color: #ed8936;
@@ -421,7 +422,7 @@
                 {{range .Sessions}}
                 <tr>
                     <td>
-                        <a href="/session/{{.ID}}" style="color: #667eea; text-decoration: none;">
+                        <a href="/session/{{.ID}}" style="color: var(--accent-primary); text-decoration: none;">
                             {{slice .ID 0 8}}...
                         </a>
                     </td>

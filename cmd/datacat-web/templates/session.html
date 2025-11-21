@@ -136,7 +136,7 @@
             width: 14px;
             height: 14px;
             border-radius: 50%;
-            background: #667eea;
+            background: var(--accent-primary);
             border: 2px solid var(--bg-card);
             box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
           "
@@ -219,8 +219,8 @@
           position: absolute;
           top: 0;
           bottom: 0;
-          background: rgba(102, 126, 234, 0.2);
-          border: 1px solid #667eea;
+          background: rgba(129, 155, 252, 0.2);
+          border: 1px solid var(--accent-primary);
           display: none;
         "
       ></div>
@@ -480,13 +480,13 @@
                       x: m.timestamp.getTime(), // Use timestamp as x value
                       y: m.value
                   })),
-                  borderColor: '#667eea',
-                  backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                  borderColor: '#819BFC',
+                  backgroundColor: 'rgba(129, 155, 252, 0.1)',
                   tension: 0.1, // Less curve for more accurate representation
                   fill: true,
                   pointRadius: pointRadius,
                   pointHoverRadius: pointRadius + 2,
-                  pointBackgroundColor: '#667eea',
+                  pointBackgroundColor: '#819BFC',
                   pointBorderColor: '#ffffff',
                   pointBorderWidth: 1
               }]
@@ -912,7 +912,7 @@
 
                 // Color based on type
                 if (item.type === 'state') {
-                    point.style.background = '#667eea';
+                    point.style.background = '#819BFC';
                 } else if (item.type === 'exception') {
                     point.style.background = '#f56565';
                 } else {

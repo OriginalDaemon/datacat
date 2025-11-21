@@ -1466,13 +1466,13 @@ func handleMetricData(w http.ResponseWriter, r *http.Request) {
 							x: new Date(p.timestamp),
 							y: p.value
 						})),
-						borderColor: 'rgb(102, 126, 234)',
-						backgroundColor: 'rgba(102, 126, 234, 0.1)',
+						borderColor: '#819BFC',
+						backgroundColor: 'rgba(129, 155, 252, 0.1)',
 						tension: 0.1,
 						fill: true,
 						pointRadius: pointRadius,
 						pointHoverRadius: pointRadius + 2,
-						pointBackgroundColor: 'rgb(102, 126, 234)',
+						pointBackgroundColor: '#819BFC',
 						pointBorderColor: '#ffffff',
 						pointBorderWidth: 1
 					}]
