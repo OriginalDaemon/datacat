@@ -101,7 +101,6 @@ func main() {
 	http.HandleFunc("/sessions", handleSessions)
 	http.HandleFunc("/session/", handleSessionDetail)
 	http.HandleFunc("/api/timeseries", handleTimeseriesAPI)
-	http.HandleFunc("/metrics", handleMetrics)
 	http.HandleFunc("/api/server-status", handleServerStatus)
 
 	// HTMX live update endpoints
@@ -612,23 +611,6 @@ func handleSessionDetail(w http.ResponseWriter, r *http.Request) {
 	data := PageData{
 		Title:   "Session Detail",
 		Session: session,
-	}
-
-	if err := tmpl.ExecuteTemplate(w, "base.html", data); err != nil {
-		log.Printf("Template execution error: %v", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-	}
-}
-
-func handleMetrics(w http.ResponseWriter, r *http.Request) {
-	tmpl, err := template.ParseFS(content, "templates/base.html", "templates/metrics.html")
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	data := PageData{
-		Title: "Metrics Visualization",
 	}
 
 	if err := tmpl.ExecuteTemplate(w, "base.html", data); err != nil {
@@ -1430,7 +1412,7 @@ func handleMetricData(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Calculate statistics
-	avg, max, min, median, stdDev := calculateStats(allValues)
+	avg, max, min, median, stdDev, mode := calculateStats(allValues)
 
 	// Generate unique chart ID
 	chartID := fmt.Sprintf("chart-%s-%d", metricName, time.Now().UnixNano())
@@ -1456,6 +1438,10 @@ func handleMetricData(w http.ResponseWriter, r *http.Request) {
 			</div>
 			<div class="stat-item">
 				<div class="stat-label">Median</div>
+				<div class="stat-value">%.2f</div>
+			</div>
+			<div class="stat-item">
+				<div class="stat-label">Mode</div>
 				<div class="stat-value">%.2f</div>
 			</div>
 			<div class="stat-item">
@@ -1564,15 +1550,15 @@ func handleMetricData(w http.ResponseWriter, r *http.Request) {
 			});
 		})();
 		</script>
-	`, chartID, avg, max, min, median, stdDev, chartID, toJSON(points), metricName))
+	`, chartID, avg, max, min, median, mode, stdDev, chartID, toJSON(points), metricName))
 
 	w.Write([]byte(html.String()))
 }
 
 // calculateStats calculates statistical measures for a slice of values
-func calculateStats(values []float64) (avg, max, min, median, stdDev float64) {
+func calculateStats(values []float64) (avg, max, min, median, stdDev, mode float64) {
 	if len(values) == 0 {
-		return 0, 0, 0, 0, 0
+		return 0, 0, 0, 0, 0, 0
 	}
 
 	// Average and sum for std dev
@@ -1601,7 +1587,7 @@ func calculateStats(values []float64) (avg, max, min, median, stdDev float64) {
 	variance /= float64(len(values))
 	stdDev = math.Sqrt(variance)
 
-	// Median
+	// Median and Mode
 	sortedValues := make([]float64, len(values))
 	copy(sortedValues, values)
 	sort.Float64s(sortedValues)
@@ -1610,6 +1596,17 @@ func calculateStats(values []float64) (avg, max, min, median, stdDev float64) {
 		median = (sortedValues[len(sortedValues)/2-1] + sortedValues[len(sortedValues)/2]) / 2
 	} else {
 		median = sortedValues[len(sortedValues)/2]
+	}
+
+	// Mode - most frequently occurring value
+	frequencyMap := make(map[float64]int)
+	maxFrequency := 0
+	for _, v := range values {
+		frequencyMap[v]++
+		if frequencyMap[v] > maxFrequency {
+			maxFrequency = frequencyMap[v]
+			mode = v
+		}
 	}
 
 	return

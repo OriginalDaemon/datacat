@@ -649,33 +649,6 @@
 </div>
 {{end}}
 
-<!-- Metrics Data -->
-{{if .Session.Metrics}}
-<div class="card">
-  <h2>Metrics Data ({{len .Session.Metrics}})</h2>
-  <table>
-    <thead>
-      <tr>
-        <th>Timestamp</th>
-        <th>Name</th>
-        <th>Value</th>
-        <th>Tags</th>
-      </tr>
-    </thead>
-    <tbody>
-      {{range .Session.Metrics}}
-      <tr>
-        <td style="font-family: monospace">{{.Timestamp.Format "15:04:05"}}</td>
-        <td>{{.Name}}</td>
-        <td>{{.Value}}</td>
-        <td>{{range .Tags}}{{.}} {{end}}</td>
-      </tr>
-      {{end}}
-    </tbody>
-  </table>
-</div>
-{{end}}
-
 <div style="margin: 20px 0">
   <a href="/" class="btn btn-secondary">Back to Dashboard</a>
 </div>
