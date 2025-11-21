@@ -6,7 +6,10 @@ These tests verify:
 2. State updates and nested state merging
 3. Event and metric logging
 4. Exception logging
-5. Data persistence across service restarts
+
+Note: Data persistence across service restarts is tested in the Go unit tests
+(TestPersistence and TestComprehensivePersistence in cmd/datacat-server/main_test.go)
+to avoid race conditions with async saves and daemon batching.
 """
 
 import json
@@ -243,100 +246,6 @@ class TestDatacatIntegration(unittest.TestCase):
             # Clean up the daemon created by create_session
             if hasattr(session, "client") and hasattr(session.client, "daemon_manager"):
                 session.client.daemon_manager.stop()
-
-
-class TestDatacatPersistence(unittest.TestCase):
-    """Test data persistence across service restarts"""
-
-    def setUp(self):
-        """Set up test environment"""
-        self.base_url = "http://localhost:9090"
-        self.db_path = os.path.join(os.path.dirname(__file__), "..", "datacat_db")
-
-    def tearDown(self):
-        """Clean up"""
-        # Stop any running service
-        subprocess.run(["pkill", "-f", "datacat"], capture_output=True)
-        time.sleep(1)
-
-    def start_service(self):
-        """Start the datacat service"""
-        process = subprocess.Popen(
-            ["./datacat"],
-            cwd=os.path.join(os.path.dirname(__file__), ".."),
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        )
-        time.sleep(2)
-        return process
-
-    def stop_service(self, process):
-        """Stop the datacat service"""
-        process.terminate()
-        process.wait(timeout=5)
-        time.sleep(1)
-
-    def test_persistence_across_restarts(self):
-        """Test that data persists across service restarts"""
-        # Start service
-        process1 = self.start_service()
-
-        client = None
-        client2 = None
-        try:
-            # Create session and log data with different daemon port
-            client = DatacatClient(self.base_url, daemon_port="8081")
-            session_id = client.register_session("PersistenceTest", "1.0.0")
-
-            client.update_state(session_id, {"test": "persistent_data"})
-            client.log_event(session_id, "before_restart", data={"data": "test"})
-            client.log_metric(session_id, "test_metric", 42.0)
-
-            # Wait for daemon to flush to server
-            time.sleep(6)
-
-            # Stop daemon and service
-            client.daemon_manager.stop()
-            self.stop_service(process1)
-
-            # Start service again
-            process2 = self.start_service()
-
-            try:
-                # Retrieve session with new daemon instance
-                client2 = DatacatClient(self.base_url, daemon_port="8082")
-
-                # Wait for daemon to start
-                time.sleep(2)
-
-                session = client2.get_session(session_id)
-
-                # Verify data persisted
-                self.assertEqual(session["id"], session_id)
-                self.assertEqual(session["state"]["test"], "persistent_data")
-                self.assertEqual(len(session["events"]), 1)
-                self.assertEqual(session["events"][0]["name"], "before_restart")
-                self.assertEqual(len(session["metrics"]), 1)
-                self.assertEqual(session["metrics"][0]["value"], 42.0)
-
-                # Add more data after restart
-                client2.log_event(session_id, "after_restart", data={"data": "test2"})
-
-                # Wait for daemon to flush
-                time.sleep(6)
-
-                session = client2.get_session(session_id)
-                self.assertEqual(len(session["events"]), 2)
-
-            finally:
-                if client2:
-                    client2.daemon_manager.stop()
-                self.stop_service(process2)
-        except Exception as e:
-            if client:
-                client.daemon_manager.stop()
-            self.stop_service(process1)
-            raise
 
 
 if __name__ == "__main__":
