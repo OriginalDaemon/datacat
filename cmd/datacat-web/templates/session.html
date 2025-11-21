@@ -102,6 +102,17 @@
           {{end}}
         </td>
       </tr>
+      {{if .Session.LastHeartbeat}}
+      <tr>
+        <th>Last Heartbeat</th>
+        <td>{{.Session.LastHeartbeat.Format "2006-01-02 15:04:05"}}</td>
+      </tr>
+      {{else}}
+      <tr>
+        <th>Last Heartbeat</th>
+        <td style="color: var(--text-secondary)">No heartbeats received</td>
+      </tr>
+      {{end}}
       <tr>
         <th>State Changes</th>
         <td>{{len .Session.StateHistory}} updates recorded</td>

@@ -1669,8 +1669,22 @@ func handleSessionInfo(w http.ResponseWriter, r *http.Request) {
 	html.WriteString(`<tr>
 		<th>Status</th>
 		<td>` + statusBadge + `</td>
-	</tr>
-	<tr>
+	</tr>`)
+
+	// Add last heartbeat row
+	if session.LastHeartbeat != nil {
+		html.WriteString(`<tr>
+			<th>Last Heartbeat</th>
+			<td>` + session.LastHeartbeat.Format("2006-01-02 15:04:05") + `</td>
+		</tr>`)
+	} else {
+		html.WriteString(`<tr>
+			<th>Last Heartbeat</th>
+			<td style="color: var(--text-secondary);">No heartbeats received</td>
+		</tr>`)
+	}
+
+	html.WriteString(`<tr>
 		<th>State Changes</th>
 		<td>` + fmt.Sprintf("%d", len(session.StateHistory)) + ` updates recorded</td>
 	</tr>
