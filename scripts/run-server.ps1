@@ -49,7 +49,7 @@ while ($attempt -lt $maxAttempts -and -not $serverReady) {
 }
 
 if ($serverReady) {
-    Write-Host "✓ Server is healthy!" -ForegroundColor Green
+    Write-Host "[OK] Server is healthy!" -ForegroundColor Green
     Write-Host ""
     Write-Host "==================================================================" -ForegroundColor Green
     Write-Host "DataCat Server is running!" -ForegroundColor Green
@@ -60,7 +60,7 @@ if ($serverReady) {
     Write-Host "Press Ctrl+C to stop the server" -ForegroundColor Yellow
     Write-Host ""
 } else {
-    Write-Host "✗ Server failed to start within 15 seconds" -ForegroundColor Red
+    Write-Host "[ERROR] Server failed to start within 15 seconds" -ForegroundColor Red
     Stop-Job -Job $serverJob -ErrorAction SilentlyContinue
     Receive-Job -Job $serverJob
     Remove-Job -Job $serverJob -Force -ErrorAction SilentlyContinue

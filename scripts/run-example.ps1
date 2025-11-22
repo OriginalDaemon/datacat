@@ -29,9 +29,9 @@ Write-Host ""
 Write-Host "Checking if datacat server is running..." -ForegroundColor Yellow
 try {
     $response = Invoke-WebRequest -Uri "http://localhost:9090/health" -Method GET -UseBasicParsing -ErrorAction Stop -TimeoutSec 2
-    Write-Host "✓ Server is running and healthy!" -ForegroundColor Green
+    Write-Host "[OK] Server is running and healthy!" -ForegroundColor Green
 } catch {
-    Write-Host "✗ Server is not running!" -ForegroundColor Red
+    Write-Host "[ERROR] Server is not running!" -ForegroundColor Red
     Write-Host "Please start the server first with: .\scripts\run-server.ps1" -ForegroundColor Yellow
     exit 1
 }

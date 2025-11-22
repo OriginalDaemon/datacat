@@ -27,7 +27,7 @@ if (-not $serverCheck) {
         exit 1
     }
 } else {
-    Write-Host "✓ Server is running and healthy" -ForegroundColor Green
+    Write-Host "[OK] Server is running and healthy" -ForegroundColor Green
 }
 
 Write-Host ""
@@ -65,7 +65,7 @@ while ($attempt -lt $maxAttempts -and -not $webReady) {
         $response = Invoke-WebRequest -Uri "http://localhost:8080/health" -TimeoutSec 1 -ErrorAction SilentlyContinue
         if ($response.StatusCode -eq 200) {
             $webReady = $true
-            Write-Host "✓ Web UI is healthy!" -ForegroundColor Green
+            Write-Host "[OK] Web UI is healthy!" -ForegroundColor Green
         }
     } catch {
         # Not ready yet
@@ -77,7 +77,7 @@ while ($attempt -lt $maxAttempts -and -not $webReady) {
 }
 
 if (-not $webReady) {
-    Write-Host "✗ Web UI failed to start within 15 seconds" -ForegroundColor Red
+    Write-Host "[ERROR] Web UI failed to start within 15 seconds" -ForegroundColor Red
     Stop-Job -Job $webJob -ErrorAction SilentlyContinue
     Remove-Job -Job $webJob -Force -ErrorAction SilentlyContinue
     exit 1
