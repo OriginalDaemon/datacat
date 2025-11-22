@@ -121,7 +121,7 @@ curl http://localhost:9090/api/sessions/550e8400-e29b-41d4-a716-446655440000
 
 ## End Session
 
-Mark a session as ended.
+Mark a session as ended (normal termination).
 
 **Endpoint:** `POST /api/sessions/{id}/end`
 
@@ -141,10 +141,54 @@ Mark a session as ended.
 - Sets `active` to `false`
 - Sets `ended_at` timestamp
 - Session remains in database until retention cleanup
+- Use this for normal session termination (when application calls `session.end()`)
 
 **Example:**
 ```bash
 curl -X POST http://localhost:9090/api/sessions/550e8400/end
+```
+
+---
+
+## Mark Session as Crashed
+
+Mark a session as crashed (abnormal termination). This is typically called by the daemon when it detects the parent process has terminated without calling `end()`.
+
+**Endpoint:** `POST /api/sessions/{id}/crash`
+
+**Path Parameters:**
+- `id` (string, required) - Session UUID
+
+**Request Body:**
+```json
+{
+  "reason": "parent_process_terminated"
+}
+```
+
+**Response:** `200 OK`
+```json
+{
+  "status": "ok"
+}
+```
+
+**Behavior:**
+- Sets `ended_at` timestamp
+- Sets `crashed` flag to `true`
+- Sets `active` to `false`
+- Logs a `session_crashed_detected` event with the provided reason
+- Used to distinguish abnormal termination from normal session end
+
+**Common Reasons:**
+- `parent_process_terminated` - Daemon detected parent process ended without calling `end()`
+- `abnormal_termination` - Generic crash reason
+
+**Example:**
+```bash
+curl -X POST http://localhost:9090/api/sessions/550e8400/crash \
+  -H "Content-Type: application/json" \
+  -d '{"reason":"parent_process_terminated"}'
 ```
 
 ---

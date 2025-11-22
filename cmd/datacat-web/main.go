@@ -1212,9 +1212,19 @@ func handleSessionsTable(w http.ResponseWriter, r *http.Request) {
 		</tr>`)
 	} else {
 		for _, session := range sessions {
-			statusBadge := `<span class="badge badge-inactive">Ended</span>`
+			// Build status badges with consistent logic
+			var statusBadges strings.Builder
 			if session.Active {
-				statusBadge = `<span class="badge badge-active">Active</span>`
+				statusBadges.WriteString(`<span class="badge badge-active">Active</span>`)
+			} else if session.Crashed {
+				statusBadges.WriteString(`<span class="badge badge-crashed">Crashed</span>`)
+			} else if session.Suspended {
+				statusBadges.WriteString(`<span class="badge badge-suspended">Suspended</span>`)
+			} else {
+				statusBadges.WriteString(`<span class="badge badge-ended">Ended</span>`)
+			}
+			if session.Hung {
+				statusBadges.WriteString(`<span class="badge badge-hung" style="margin-left: 4px">Hung</span>`)
 			}
 
 			sessionIDShort := session.ID
@@ -1241,7 +1251,7 @@ func handleSessionsTable(w http.ResponseWriter, r *http.Request) {
 				sessionIDShort,
 				session.CreatedAt.Format("2006-01-02 15:04:05"),
 				session.UpdatedAt.Format("2006-01-02 15:04:05"),
-				statusBadge,
+				statusBadges.String(),
 				len(session.Events),
 				len(session.Metrics),
 				session.ID))

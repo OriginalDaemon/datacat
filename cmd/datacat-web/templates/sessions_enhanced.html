@@ -21,7 +21,7 @@
 </head>
 <body>
     <h1>Sessions</h1>
-    
+
     <div class="info">
         <p>Total Sessions: {{.TotalCount}}</p>
         <p>Page {{.CurrentPage}} of {{.TotalPages}}</p>
@@ -50,8 +50,15 @@
                 <td>
                     {{if .Active}}
                         <span class="badge badge-active">Active</span>
+                    {{else if .Crashed}}
+                        <span class="badge badge-crashed">Crashed</span>
+                    {{else if .Suspended}}
+                        <span class="badge badge-suspended">Suspended</span>
                     {{else}}
-                        <span class="badge badge-inactive">Ended</span>
+                        <span class="badge badge-ended">Ended</span>
+                    {{end}}
+                    {{if .Hung}}
+                        <span class="badge badge-hung" style="margin-left: 4px">Hung</span>
                     {{end}}
                 </td>
                 <td>{{len .Events}}</td>
@@ -74,9 +81,9 @@
         {{if .HasPrev}}
             <a href="/sessions?page={{sub .CurrentPage 1}}&sort={{.SortBy}}&order={{.SortOrder}}">Previous</a>
         {{end}}
-        
+
         <span>Page {{.CurrentPage}} of {{.TotalPages}}</span>
-        
+
         {{if .HasNext}}
             <a href="/sessions?page={{add .CurrentPage 1}}&sort={{.SortBy}}&order={{.SortOrder}}">Next</a>
         {{end}}

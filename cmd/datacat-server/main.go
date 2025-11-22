@@ -464,6 +464,44 @@ func (s *Store) EndSession(id string) error {
 	return nil
 }
 
+// CrashSession marks a session as crashed (abnormal termination)
+func (s *Store) CrashSession(id, reason string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	session, ok := s.sessions[id]
+	if !ok {
+		return fmt.Errorf("session not found")
+	}
+
+	now := time.Now()
+	session.EndedAt = &now
+	session.Active = false
+	session.Crashed = true
+	session.Suspended = false
+	session.Hung = false // Clear hung flag when crashed
+	session.UpdatedAt = now
+
+	// Add crash event
+	session.Events = append(session.Events, Event{
+		Timestamp: now,
+		Name:      "session_crashed_detected",
+		Level:     "critical",
+		Data: map[string]interface{}{
+			"reason": reason,
+		},
+	})
+
+	log.Printf("Session %s marked as crashed: %s", id, reason)
+
+	// Save to database synchronously to ensure crash is recorded
+	if err := s.saveSessionToDB(session); err != nil {
+		log.Printf("Error saving crashed session to database: %v", err)
+	}
+
+	return nil
+}
+
 // CleanupOldSessions removes sessions older than retention period
 func (s *Store) CleanupOldSessions() (int, error) {
 	s.mu.Lock()
@@ -786,6 +824,26 @@ func handleSessionOperations(w http.ResponseWriter, r *http.Request) {
 	// POST /api/sessions/{id}/end - End session
 	if r.Method == "POST" && operation == "end" {
 		if err := store.EndSession(sessionID); err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+		return
+	}
+
+	// POST /api/sessions/{id}/crash - Mark session as crashed
+	if r.Method == "POST" && operation == "crash" {
+		var crashData struct {
+			Reason string `json:"reason"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&crashData); err != nil {
+			// Default reason if body is empty or invalid
+			crashData.Reason = "abnormal_termination"
+		}
+
+		if err := store.CrashSession(sessionID, crashData.Reason); err != nil {
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}

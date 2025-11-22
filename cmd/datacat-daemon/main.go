@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/md5"
 	"encoding/json"
 	"fmt"
@@ -10,7 +11,10 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"runtime"
+	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -81,6 +85,8 @@ type Daemon struct {
 	failedQueue    []QueuedOperation
 	queueMu        sync.Mutex
 	sessionCounter int // Counter for generating local session IDs
+	shutdownChan   chan struct{} // Channel to signal shutdown
+	httpServer     *http.Server  // HTTP server instance for graceful shutdown
 }
 
 // NewDaemon creates a new daemon instance
@@ -90,6 +96,7 @@ func NewDaemon(config *Config) *Daemon {
 		sessions:       make(map[string]*SessionBuffer),
 		failedQueue:    make([]QueuedOperation, 0),
 		sessionCounter: 0,
+		shutdownChan:   make(chan struct{}),
 	}
 }
 
@@ -125,7 +132,16 @@ func (d *Daemon) Start() error {
 
 	addr := ":" + d.config.DaemonPort
 	log.Printf("Daemon listening on %s, forwarding to %s", addr, d.config.ServerURL)
-	return http.ListenAndServe(addr, nil)
+
+	// Create HTTP server instance for graceful shutdown
+	d.httpServer = &http.Server{
+		Addr: addr,
+	}
+
+	// Start shutdown monitor
+	go d.shutdownMonitor()
+
+	return d.httpServer.ListenAndServe()
 }
 
 // createSessionOnServer attempts to create a session on the server
@@ -558,7 +574,21 @@ func (d *Daemon) handleEnd(w http.ResponseWriter, r *http.Request) {
 		// Remove session from daemon after successfully ending on server
 		d.mu.Lock()
 		delete(d.sessions, req.SessionID)
+		remainingSessions := len(d.sessions)
 		d.mu.Unlock()
+
+		// If no sessions remain, trigger shutdown
+		if remainingSessions == 0 {
+			log.Printf("All sessions ended, initiating daemon shutdown")
+			// Signal shutdown in a goroutine to avoid blocking the response
+			go func() {
+				time.Sleep(2 * time.Second) // Give time for response to be sent
+				select {
+				case d.shutdownChan <- struct{}{}:
+				default:
+				}
+			}()
+		}
 	}
 
 	log.Printf("Session ended: %s", req.SessionID)
@@ -863,59 +893,151 @@ func (d *Daemon) checkParentProcess(sessionID string) {
 	}
 
 	buffer.mu.Lock()
-	defer buffer.mu.Unlock()
+	parentPID := buffer.ParentPID
+	crashLogged := buffer.CrashLogged
+	endedAt := buffer.EndedAt
+	buffer.mu.Unlock()
 
-	// Skip if no parent PID set or already logged
-	if buffer.ParentPID == 0 || buffer.CrashLogged {
+	// Skip if no parent PID set, already logged, or session already ended
+	if parentPID == 0 || crashLogged || endedAt != nil {
 		return
 	}
 
 	// Check if process is still running
-	if !isProcessRunning(buffer.ParentPID) {
+	if !isProcessRunning(parentPID) {
 		// Parent process has crashed or exited abnormally
+		buffer.mu.Lock()
 		buffer.Events = append(buffer.Events, EventData{
 			Name:     "parent_process_crashed",
 			Level:    "critical",
 			Category: "datacat.daemon",
 			Labels:   []string{"crash", "process"},
-			Message:  fmt.Sprintf("Parent process (PID %d) is no longer running", buffer.ParentPID),
+			Message:  fmt.Sprintf("Parent process (PID %d) is no longer running", parentPID),
 			Data: map[string]interface{}{
-				"parent_pid": buffer.ParentPID,
+				"parent_pid": parentPID,
 			},
 		})
 		buffer.CrashLogged = true
-		log.Printf("Session %s: parent process %d crashed/exited", sessionID, buffer.ParentPID)
+		now := time.Now()
+		buffer.EndedAt = &now
+		buffer.Active = false
+		buffer.mu.Unlock()
+
+		log.Printf("Session %s: parent process %d crashed/exited, marking as crashed", sessionID, parentPID)
 
 		// Immediately flush this event
-		go d.flushSession(sessionID)
+		d.flushSession(sessionID)
+
+		// Mark session as crashed on server
+		go func() {
+			crashData, _ := json.Marshal(map[string]interface{}{
+				"reason": "parent_process_terminated",
+			})
+			resp, err := http.Post(
+				d.config.ServerURL+"/api/sessions/"+sessionID+"/crash",
+				"application/json",
+				bytes.NewBuffer(crashData),
+			)
+			if err != nil {
+				log.Printf("Failed to mark session as crashed on server: %v", err)
+				// Queue for retry
+				d.queueMu.Lock()
+				d.failedQueue = append(d.failedQueue, QueuedOperation{
+					SessionID: sessionID,
+					OpType:    "crash",
+					Data:      map[string]interface{}{"reason": "parent_process_terminated"},
+					Timestamp: time.Now(),
+				})
+				d.queueMu.Unlock()
+			} else {
+				resp.Body.Close()
+				// Remove session from daemon after successfully marking as crashed
+				d.mu.Lock()
+				delete(d.sessions, sessionID)
+				remainingSessions := len(d.sessions)
+				d.mu.Unlock()
+
+				log.Printf("Session %s removed after parent process crash", sessionID)
+
+				// If no sessions remain, trigger shutdown
+				if remainingSessions == 0 {
+					log.Printf("All sessions ended, initiating daemon shutdown")
+					time.Sleep(1 * time.Second)
+					select {
+					case d.shutdownChan <- struct{}{}:
+					default:
+					}
+				}
+			}
+		}()
 	}
 }
 
 // isProcessRunning checks if a process with the given PID is running
 // This function is cross-platform compatible (Windows and Unix-like systems)
 func isProcessRunning(pid int) bool {
+	// Platform-specific process checking
+	if runtime.GOOS == "windows" {
+		// On Windows, use tasklist command to check if process exists
+		// This is more reliable than os.FindProcess which always succeeds
+		cmd := exec.Command("tasklist", "/FI", fmt.Sprintf("PID eq %d", pid), "/FO", "CSV", "/NH")
+		output, err := cmd.Output()
+		if err != nil {
+			log.Printf("Error checking process %d: %v", pid, err)
+			return false
+		}
+
+		// If process exists, output will contain the PID
+		// If not, output will be empty or contain "INFO: No tasks are running..."
+		outputStr := strings.TrimSpace(string(output))
+		if outputStr == "" || strings.Contains(outputStr, "INFO:") {
+			return false
+		}
+
+		// Parse CSV output to verify PID matches
+		// Format: "ImageName","PID","SessionName","SessionNumber","MemUsage"
+		parts := strings.Split(outputStr, ",")
+		if len(parts) >= 2 {
+			// Remove quotes from PID field
+			pidStr := strings.Trim(parts[1], "\"")
+			foundPID, err := strconv.Atoi(pidStr)
+			if err == nil && foundPID == pid {
+				return true
+			}
+		}
+		return false
+	}
+
+	// On Unix systems, use kill -0 signal to check if process exists
 	process, err := os.FindProcess(pid)
 	if err != nil {
 		return false
 	}
 
-	// Platform-specific process checking
-	if runtime.GOOS == "windows" {
-		// On Windows, process.Signal doesn't work the same way
-		// We need to check using process state methods
-		// If we can send a "signal 0" (which on Windows is handled differently)
-		// or if the process object is valid, the process exists
-		// On Windows, FindProcess always succeeds if the PID format is valid,
-		// so we return true to be conservative. The daemon will only log once anyway.
-		// A more robust solution would use Windows-specific APIs, but this is sufficient
-		// for the daemon's purpose (detecting when parent exits)
-		return true
-	}
-
-	// On Unix systems, FindProcess always succeeds, so we need to send signal 0
-	// Signal 0 is a special signal that doesn't actually send anything but checks if the process exists
+	// Signal 0 doesn't actually send a signal, just checks if process exists
 	err = process.Signal(syscall.Signal(0))
 	return err == nil
+}
+
+// shutdownMonitor waits for shutdown signal and performs graceful shutdown
+func (d *Daemon) shutdownMonitor() {
+	<-d.shutdownChan
+	log.Printf("Shutdown signal received, beginning graceful shutdown...")
+
+	// Give time for any pending operations to complete
+	time.Sleep(1 * time.Second)
+
+	// Shut down the HTTP server
+	if d.httpServer != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := d.httpServer.Shutdown(ctx); err != nil {
+			log.Printf("Error during shutdown: %v", err)
+		}
+	}
+
+	log.Printf("Daemon shutdown complete")
+	os.Exit(0)
 }
 
 // getMachineID returns a unique identifier for this machine based on MAC address
@@ -1000,6 +1122,10 @@ func (d *Daemon) processFailedQueue() {
 			}
 		case "end":
 			success = d.retryEndSession(op.SessionID)
+		case "crash":
+			if data, ok := op.Data.(map[string]interface{}); ok {
+				success = d.retryCrashSession(op.SessionID, data)
+			}
 		}
 
 		// If retry failed, add it back to the queue
@@ -1156,6 +1282,35 @@ func (d *Daemon) retryEndSession(sessionID string) bool {
 	d.mu.Unlock()
 
 	log.Printf("Session %s successfully ended on server (from queue)", sessionID)
+	return true
+}
+
+// retryCrashSession retries marking a session as crashed
+func (d *Daemon) retryCrashSession(sessionID string, data map[string]interface{}) bool {
+	crashData, _ := json.Marshal(data)
+	resp, err := http.Post(
+		d.config.ServerURL+"/api/sessions/"+sessionID+"/crash",
+		"application/json",
+		bytes.NewBuffer(crashData),
+	)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+
+	// Check status code
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		log.Printf("Failed to mark session as crashed on retry (status %d): %s", resp.StatusCode, string(body))
+		return false
+	}
+
+	// Remove session from daemon after successfully marking as crashed
+	d.mu.Lock()
+	delete(d.sessions, sessionID)
+	d.mu.Unlock()
+
+	log.Printf("Session %s successfully marked as crashed on server (from queue)", sessionID)
 	return true
 }
 
