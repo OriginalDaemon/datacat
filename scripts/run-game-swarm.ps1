@@ -179,6 +179,21 @@ Write-Host "====================================================================
 Write-Host "Game Swarm Complete!" -ForegroundColor Cyan
 Write-Host "=====================================================================" -ForegroundColor Cyan
 Write-Host ""
+
+# Clean up daemon configs
+Write-Host "Cleaning up daemon configs..." -ForegroundColor Yellow
+if (Test-Path "tmp\daemon_configs") {
+    try {
+        Remove-Item -Recurse -Force "tmp\daemon_configs" -ErrorAction Stop
+        Write-Host "[OK] Cleaned up daemon configs" -ForegroundColor Green
+    } catch {
+        Write-Host "Warning: Could not clean up daemon configs: $_" -ForegroundColor Yellow
+    }
+} else {
+    Write-Host "[OK] No daemon configs to clean up" -ForegroundColor Gray
+}
+
+Write-Host ""
 Write-Host "View all sessions in the web UI:" -ForegroundColor Green
 Write-Host "  http://localhost:8080" -ForegroundColor Cyan
 Write-Host ""

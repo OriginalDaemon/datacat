@@ -31,6 +31,18 @@ if (Test-Path "config.json") {
     Remove-Item -Force config.json
 }
 
+# Remove daemon configs directory
+if (Test-Path "tmp/daemon_configs") {
+    Write-Host "  Removing tmp/daemon_configs/" -ForegroundColor Gray
+    Remove-Item -Recurse -Force tmp/daemon_configs
+}
+
+# Remove any stray daemon config files in root
+Get-ChildItem -Filter "daemon_config_*.json" -ErrorAction SilentlyContinue | ForEach-Object {
+    Write-Host "  Removing $($_.Name)" -ForegroundColor Gray
+    Remove-Item -Force $_.FullName
+}
+
 # Remove coverage files
 Get-ChildItem -Recurse -Filter "coverage.out" | ForEach-Object {
     Write-Host "  Removing $($_.FullName)" -ForegroundColor Gray

@@ -230,6 +230,19 @@ def main():
     print("=" * 70)
     print()
     print("Total time: %.1f seconds" % (time.time() - start_time))
+
+    # Cleanup daemon configs
+    print()
+    print("Cleaning up daemon configs...")
+    import shutil
+    config_dir = os.path.join("tmp", "daemon_configs")
+    if os.path.exists(config_dir):
+        try:
+            shutil.rmtree(config_dir)
+            print("[OK] Cleaned up daemon configs")
+        except Exception as e:
+            print("Warning: Could not clean up daemon configs: %s" % str(e))
+
     print()
     print("Check the DataCat web UI at http://localhost:8080 to see:")
     print("  - All %d sessions" % args.count)

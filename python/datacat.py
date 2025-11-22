@@ -128,7 +128,11 @@ class DaemonManager(object):
             self.daemon_port = self._find_available_port()
 
         # Set config path now that we have the port
-        self.config_path = "daemon_config_{}.json".format(self.daemon_port)
+        # Create tmp directory for daemon configs
+        config_dir = os.path.join("tmp", "daemon_configs")
+        if not os.path.exists(config_dir):
+            os.makedirs(config_dir)
+        self.config_path = os.path.join(config_dir, "daemon_config_{}.json".format(self.daemon_port))
 
         # Create config for daemon with this instance's unique port
         config = {
