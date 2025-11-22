@@ -20,6 +20,7 @@ The DataCat REST API provides HTTP endpoints for all operations.
 ### Core Endpoints
 
 - **[Sessions](api/sessions.html)** - Create, retrieve, and manage sessions
+
   - POST /api/sessions - Create session
   - GET /api/sessions/{id} - Get session details
   - POST /api/sessions/{id}/end - End session
@@ -27,12 +28,15 @@ The DataCat REST API provides HTTP endpoints for all operations.
   - GET /api/data/sessions - Get all sessions
 
 - **[State Updates](api/state.html)** - Deep merge state management
+
   - POST /api/sessions/{id}/state - Update session state
 
 - **[Events](api/events.html)** - Log events and exceptions
+
   - POST /api/sessions/{id}/events - Log event
 
 - **[Metrics](api/metrics.html)** - Record numeric measurements
+
   - POST /api/sessions/{id}/metrics - Log metric
 
 - **[Error Handling](api/errors.html)** - Error codes and troubleshooting
@@ -56,6 +60,7 @@ Language-specific API references.
 ### Create Session and Log Data
 
 **Python:**
+
 ```python
 from datacat import create_session
 
@@ -72,6 +77,7 @@ session.end()
 ```
 
 **curl:**
+
 ```bash
 # Create session
 SESSION_ID=$(curl -s -X POST http://localhost:9090/api/sessions \
@@ -128,6 +134,7 @@ Currently, DataCat does not require authentication. Ensure the server is deploye
 ### Use the Daemon
 
 For optimal performance, use the local daemon instead of calling the API directly:
+
 - 10-100x reduction in network traffic
 - Automatic batching and filtering
 - Built-in crash and hang detection
@@ -137,6 +144,7 @@ See the [Architecture Guide](guides/architecture.html) for more details.
 ### Heartbeat Frequency
 
 Send heartbeats based on your application's characteristics:
+
 - **Interactive apps:** Every 5-10 seconds
 - **Batch processing:** Every 30-60 seconds
 - **Long-running jobs:** Every 1-2 minutes

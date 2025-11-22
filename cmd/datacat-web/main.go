@@ -97,6 +97,17 @@ func main() {
 	http.Handle("/static/", http.FileServer(http.FS(content)))
 
 	// Routes
+	// Health check endpoint
+	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status":  "healthy",
+			"service": "datacat-web",
+			"version": "1.0.0",
+		})
+	})
+
 	http.HandleFunc("/", handleIndex)
 	http.HandleFunc("/sessions", handleSessions)
 	http.HandleFunc("/session/", handleSessionDetail)
@@ -1035,24 +1046,56 @@ func arrayContainsAll(stateArray, filterArray []interface{}) bool {
 	return true
 }
 
+// ServerHealthResponse represents the health endpoint response
+type ServerHealthResponse struct {
+	Status  string `json:"status"`
+	Service string `json:"service"`
+	Version string `json:"version"`
+}
+
 // handleServerStatus checks if the server is online and returns status
 func handleServerStatus(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html")
 
-	// Try to get sessions to check if server is online
-	_, err := datacatClient.GetAllSessions()
+	// Check server health endpoint
+	healthURL := "http://localhost:9090/health"
+	resp, err := http.Get(healthURL)
 
 	if err != nil {
 		// Server is offline
 		w.Write([]byte(`<div id="server-status" class="alert alert-danger" hx-get="/api/server-status" hx-trigger="every 5s" hx-swap="outerHTML">
-			<strong>⚠️ Server Offline:</strong> Cannot connect to datacat server at http://localhost:9090. Please start the server.
+			<strong>⚠️ Server Offline:</strong> Cannot connect to datacat server at http://localhost:9090
+			<br/><small>Error: ` + err.Error() + `</small>
+			<br/><small>Health endpoint: ` + healthURL + `</small>
 		</div>`))
-	} else {
-		// Server is online
-		w.Write([]byte(`<div id="server-status" class="alert alert-success" hx-get="/api/server-status" hx-trigger="every 10s" hx-swap="outerHTML">
-			<strong>✓ Server Online:</strong> Connected to datacat server at http://localhost:9090
-		</div>`))
+		return
 	}
+	defer resp.Body.Close()
+
+	// Check status code
+	if resp.StatusCode != http.StatusOK {
+		w.Write([]byte(`<div id="server-status" class="alert alert-danger" hx-get="/api/server-status" hx-trigger="every 5s" hx-swap="outerHTML">
+			<strong>⚠️ Server Unhealthy:</strong> Server returned status ` + resp.Status + `
+			<br/><small>Health endpoint: ` + healthURL + `</small>
+		</div>`))
+		return
+	}
+
+	// Parse health response
+	var healthResp ServerHealthResponse
+	if err := json.NewDecoder(resp.Body).Decode(&healthResp); err != nil {
+		w.Write([]byte(`<div id="server-status" class="alert alert-danger" hx-get="/api/server-status" hx-trigger="every 5s" hx-swap="outerHTML">
+			<strong>⚠️ Server Error:</strong> Could not parse health response
+			<br/><small>Error: ` + err.Error() + `</small>
+		</div>`))
+		return
+	}
+
+	// Server is healthy
+	w.Write([]byte(`<div id="server-status" class="alert alert-success" hx-get="/api/server-status" hx-trigger="every 10s" hx-swap="outerHTML">
+		<strong>✓ Server Healthy:</strong> ` + healthResp.Service + ` v` + healthResp.Version + ` at http://localhost:9090
+		<br/><small>Status: ` + healthResp.Status + ` | Health: <a href="` + healthURL + `" target="_blank" style="color: var(--success-color)">` + healthURL + `</a></small>
+	</div>`))
 }
 
 // handleStatsCards returns the stats cards with live session counts

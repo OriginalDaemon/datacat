@@ -1,0 +1,7 @@
+{
+  "daemon_port": "59005",
+  "server_url": "http://localhost:9090",
+  "batch_interval_seconds": 5,
+  "max_batch_size": 100,
+  "heartbeat_timeout_seconds": 60
+}

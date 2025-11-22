@@ -4,6 +4,54 @@ This directory contains example code demonstrating how to use DataCat in various
 
 ## Examples
 
+### Example Game (Interactive Demo)
+
+**[example_game.py](example_game.py)** + **[run_game_swarm.py](run_game_swarm.py)**
+
+A complete simulated game that demonstrates DataCat in a realistic scenario. Features:
+- Main update/render loop running at 60 FPS
+- Real-time metrics (FPS, memory, player stats)
+- Random gameplay events (enemies, powerups, achievements)
+- Random errors and exceptions
+- Different modes: normal, hang, crash
+- Multi-instance swarm launcher
+
+**Single Game Usage:**
+```bash
+# Run normally for 60 seconds
+python examples/example_game.py --duration 60
+
+# Run with hang behavior
+python examples/example_game.py --mode hang --duration 30
+
+# Run with crash behavior
+python examples/example_game.py --mode crash --duration 20
+
+# Or use PowerShell script
+.\scripts\run-example-game.ps1 -Mode normal -Duration 60
+```
+
+**Swarm Mode (Multiple Players):**
+```bash
+# Launch 10 concurrent games
+python examples/run_game_swarm.py --count 10 --duration 60
+
+# Launch 20 games with custom hang/crash rates
+python examples/run_game_swarm.py --count 20 --hang-rate 0.2 --crash-rate 0.1
+
+# Or use PowerShell script
+.\scripts\run-game-swarm.ps1 -Count 10 -Duration 60
+```
+
+**What You'll See:**
+- Real-time game sessions in the web UI
+- Live metrics updating every second
+- Crash detection for crashed games
+- Hang detection for frozen games
+- Complete event timeline for each player
+
+---
+
 ### Game Logging (Async, Non-Blocking)
 
 **[game_logging_example.py](game_logging_example.py)**
@@ -100,12 +148,14 @@ go run client-example.go
 
 ## Quick Comparison
 
-| Example                   | Language | Use Case          | Blocking         | Python 2.7.4        |
-| ------------------------- | -------- | ----------------- | ---------------- | ------------------- |
-| `game_logging_example.py` | Python   | Real-time / Games | ❌ No (< 0.01ms) | ✅ Yes              |
-| `test_async_py27.py`      | Python   | Testing           | ❌ No            | ✅ Yes              |
-| `demo_gui.py`             | Python   | General Demo      | ✅ Yes (~2ms)    | ⚠️ Tkinter required |
-| `client-example.go`       | Go       | Go Applications   | ✅ Yes           | N/A                 |
+| Example                   | Language | Use Case                  | Blocking         | Python 2.7.4        |
+| ------------------------- | -------- | ------------------------- | ---------------- | ------------------- |
+| `example_game.py`         | Python   | **Interactive Game Demo** | ❌ No (< 0.01ms) | ✅ Yes              |
+| `run_game_swarm.py`       | Python   | **Multi-Player Demo**     | ❌ No (< 0.01ms) | ✅ Yes              |
+| `game_logging_example.py` | Python   | Performance Testing       | ❌ No (< 0.01ms) | ✅ Yes              |
+| `test_async_py27.py`      | Python   | Compatibility Testing     | ❌ No            | ✅ Yes              |
+| `demo_gui.py`             | Python   | General Demo              | ✅ Yes (~2ms)    | ⚠️ Tkinter required |
+| `client-example.go`       | Go       | Go Applications           | ✅ Yes           | N/A                 |
 
 ---
 
@@ -152,10 +202,12 @@ python examples/demo_gui.py
 
 If you're building a game or real-time application:
 
-1. **Read the guide**: [docs/GAME_LOGGING.md](../docs/GAME_LOGGING.md)
-2. **Run the example**: `python examples/game_logging_example.py`
-3. **Test compatibility**: `python examples/test_async_py27.py` (if using Python 2.7.4)
-4. **Use async mode**:
+1. **Try the interactive demo**: `python examples/example_game.py` or `.\scripts\run-example-game.ps1`
+2. **Launch the swarm**: `python examples/run_game_swarm.py --count 10` to see multiple concurrent sessions
+3. **Read the guide**: [docs/GAME_LOGGING.md](../docs/GAME_LOGGING.md)
+4. **Run performance tests**: `python examples/game_logging_example.py`
+5. **Test compatibility**: `python examples/test_async_py27.py` (if using Python 2.7.4)
+6. **Use async mode in your game**:
 
 ```python
 from datacat import create_session

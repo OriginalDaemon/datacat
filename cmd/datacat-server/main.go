@@ -647,6 +647,17 @@ func main() {
 	store.StartCleanupRoutine()
 	log.Printf("Started cleanup routine (interval: %v)", config.CleanupInterval)
 
+	// Health check endpoint
+	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status":  "healthy",
+			"service": "datacat-server",
+			"version": "1.0.0",
+		})
+	})
+
 	http.HandleFunc("/api/sessions", handleSessions)
 	http.HandleFunc("/api/sessions/", handleSessionOperations)
 	http.HandleFunc("/api/data/sessions", handleGetAllSessions)

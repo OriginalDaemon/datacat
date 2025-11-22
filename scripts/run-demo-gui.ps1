@@ -99,8 +99,8 @@ Write-Host ""
 # Check if server is running
 Write-Host "Checking if datacat server is running..." -ForegroundColor Yellow
 try {
-    Invoke-WebRequest -Uri "http://localhost:9090/api/data/sessions" -Method GET -UseBasicParsing -ErrorAction Stop -TimeoutSec 2 | Out-Null
-    Write-Host "Server: Running on http://localhost:9090" -ForegroundColor Green
+    Invoke-WebRequest -Uri "http://localhost:9090/health" -Method GET -UseBasicParsing -ErrorAction Stop -TimeoutSec 2 | Out-Null
+    Write-Host "Server: Running and healthy on http://localhost:9090" -ForegroundColor Green
 } catch {
     Write-Host "Server: NOT RUNNING" -ForegroundColor Red
     Write-Host ""

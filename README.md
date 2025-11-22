@@ -75,6 +75,8 @@ go run main.go
 
 Server runs on `http://localhost:9090` with BadgerDB persistence.
 
+**Health Check:** `http://localhost:9090/health`
+
 #### 2. Start the Web UI (Optional)
 
 ```bash
@@ -83,6 +85,8 @@ go run main.go
 ```
 
 Dashboard available at `http://localhost:8080`
+
+**Health Check:** `http://localhost:8080/health`
 
 #### 3. Use a Client Library
 
