@@ -126,9 +126,184 @@ func main() {
 	http.HandleFunc("/api/session-events/", handleSessionEvents)
 	http.HandleFunc("/api/session-metrics-table/", handleSessionMetricsTable)
 
+	// New improved infinite scroll endpoints
+	http.HandleFunc("/api/session/", handleSessionAPI)
+
 	port := ":8080"
 	log.Printf("Starting datacat web UI on %s", port)
 	log.Fatal(http.ListenAndServe(port, nil))
+}
+
+// handleSessionAPI routes session-related API calls
+func handleSessionAPI(w http.ResponseWriter, r *http.Request) {
+	path := strings.TrimPrefix(r.URL.Path, "/api/session/")
+	parts := strings.Split(path, "/")
+
+	if len(parts) < 2 {
+		http.Error(w, "Invalid path", http.StatusBadRequest)
+		return
+	}
+
+	sessionID := parts[0]
+	endpoint := parts[1]
+
+	switch endpoint {
+	case "events":
+		handlePaginatedEvents(w, r, sessionID)
+	case "event":
+		if len(parts) >= 3 && parts[2] != "" {
+			eventIndex, err := strconv.Atoi(parts[2])
+			if err != nil {
+				http.Error(w, "Invalid event index", http.StatusBadRequest)
+				return
+			}
+			if len(parts) >= 4 && parts[3] == "details" {
+				handleEventDetails(w, r, sessionID, eventIndex)
+			}
+		}
+	default:
+		http.Error(w, "Unknown endpoint", http.StatusNotFound)
+	}
+}
+
+// EventRowsData for template
+type EventRowsData struct {
+	SessionID   string
+	Events      []client.Event
+	Offset      int
+	Limit       int
+	NextOffset  int
+	HasMore     bool
+	TotalEvents int
+}
+
+// EventDetailsData for template
+type EventDetailsData struct {
+	Event client.Event
+	Index int
+}
+
+// Template helper function to add numbers
+var templateFuncs = template.FuncMap{
+	"add": func(a, b int) int { return a + b },
+}
+
+// handlePaginatedEvents returns a page of events
+func handlePaginatedEvents(w http.ResponseWriter, r *http.Request, sessionID string) {
+	w.Header().Set("Content-Type", "text/html")
+
+	// Parse pagination parameters
+	offsetStr := r.URL.Query().Get("offset")
+	limitStr := r.URL.Query().Get("limit")
+
+	offset := 0
+	limit := 50 // Default page size
+
+	if offsetStr != "" {
+		if val, err := strconv.Atoi(offsetStr); err == nil {
+			offset = val
+		}
+	}
+	if limitStr != "" {
+		if val, err := strconv.Atoi(limitStr); err == nil && val > 0 && val <= 200 {
+			limit = val
+		}
+	}
+
+	// Get session
+	session, err := datacatClient.GetSession(sessionID)
+	if err != nil {
+		w.Write([]byte(`<div style="color: var(--error-color); padding: 10px;">Error loading events</div>`))
+		return
+	}
+
+	totalEvents := len(session.Events)
+
+	// Calculate slice bounds
+	start := offset
+	end := offset + limit
+	if start > totalEvents {
+		start = totalEvents
+	}
+	if end > totalEvents {
+		end = totalEvents
+	}
+
+	// Slice events
+	events := []client.Event{}
+	if start < totalEvents {
+		events = session.Events[start:end]
+	}
+
+	// Prepare template data
+	data := EventRowsData{
+		SessionID:   sessionID,
+		Events:      events,
+		Offset:      offset,
+		Limit:       limit,
+		NextOffset:  end,
+		HasMore:     end < totalEvents,
+		TotalEvents: totalEvents,
+	}
+
+	// Load and execute template
+	tmpl, err := template.New("event_rows.html").Funcs(templateFuncs).ParseFS(content, "templates/event_rows.html")
+	if err != nil {
+		log.Printf("Template parse error: %v", err)
+		http.Error(w, "Template error", http.StatusInternalServerError)
+		return
+	}
+
+	if err := tmpl.ExecuteTemplate(w, "event_rows", data); err != nil {
+		log.Printf("Template execution error: %v", err)
+	}
+}
+
+// handleEventDetails returns the full details for a specific event
+func handleEventDetails(w http.ResponseWriter, r *http.Request, sessionID string, eventIndex int) {
+	w.Header().Set("Content-Type", "text/html")
+
+	// Get session
+	session, err := datacatClient.GetSession(sessionID)
+	if err != nil {
+		w.Write([]byte(`<div style="color: var(--error-color);">Error loading event details</div>`))
+		return
+	}
+
+	// Validate index
+	if eventIndex < 0 || eventIndex >= len(session.Events) {
+		w.Write([]byte(`<div style="color: var(--error-color);">Event not found</div>`))
+		return
+	}
+
+	// Get event
+	event := session.Events[eventIndex]
+
+	// Prepare template data
+	data := EventDetailsData{
+		Event: event,
+		Index: eventIndex,
+	}
+
+	// Load and execute template
+	tmpl, err := template.New("event_details.html").Funcs(template.FuncMap{
+		"toJSONSafe": func(v interface{}) template.JS {
+			b, err := json.Marshal(v)
+			if err != nil {
+				return "{}"
+			}
+			return template.JS(b)
+		},
+	}).ParseFS(content, "templates/event_details.html")
+	if err != nil {
+		log.Printf("Template parse error: %v", err)
+		http.Error(w, "Template error", http.StatusInternalServerError)
+		return
+	}
+
+	if err := tmpl.ExecuteTemplate(w, "event_details", data); err != nil {
+		log.Printf("Template execution error: %v", err)
+	}
 }
 
 func handleIndex(w http.ResponseWriter, r *http.Request) {
