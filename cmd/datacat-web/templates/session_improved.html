@@ -1,0 +1,518 @@
+{{define "content"}}
+<style>
+  /* Compact styling overrides */
+  .card { padding: 12px; margin-bottom: 12px; }
+  .card h2 { font-size: 18px; margin-bottom: 8px; }
+  .card h3 { font-size: 16px; margin-bottom: 6px; }
+  .compact-table { font-size: 13px; }
+  .compact-table th, .compact-table td { padding: 6px 10px; }
+  .metric-summary { border: 1px solid var(--border-color); border-radius: 4px; margin-bottom: 8px; }
+  .metric-header { padding: 10px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; background: var(--bg-hover); }
+  .metric-header:hover { background: var(--bg-secondary); }
+  .metric-stats { font-size: 12px; color: var(--text-secondary); display: flex; gap: 15px; flex-wrap: wrap; }
+  .event-row { border-bottom: 1px solid var(--border-color); padding: 8px; cursor: pointer; font-size: 13px; }
+  .event-row:hover { background: var(--bg-hover); }
+  .event-row.expanded { background: var(--bg-secondary); }
+  .timeline-compact { max-height: 300px; }
+  .filter-controls { display: flex; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+  .filter-controls select, .filter-controls input { padding: 6px; font-size: 13px; background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 4px; }
+  .histogram-viz { display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: center; font-size: 12px; padding: 4px 0; }
+  .histogram-bar { height: 20px; background: var(--accent-primary); border-radius: 2px; position: relative; }
+  .counter-display { display: flex; align-items: center; gap: 15px; padding: 10px; background: var(--bg-hover); border-radius: 4px; }
+  .counter-value { font-size: 24px; font-weight: bold; color: var(--accent-primary); }
+</style>
+
+<!-- Compact Time Range -->
+<div class="card">
+  <h2>Time Range</h2>
+  <div class="filter-controls">
+    <input type="datetime-local" id="time-range-start" />
+    <input type="datetime-local" id="time-range-end" />
+    <button onclick="applyTimeRange()" class="btn" style="padding: 6px 12px; font-size: 13px;">Apply</button>
+    <button onclick="resetTimeRange()" class="btn btn-secondary" style="padding: 6px 12px; font-size: 13px;">Reset</button>
+    <span id="time-range-info" style="font-size: 12px; color: var(--text-secondary); align-self: center;"></span>
+  </div>
+</div>
+
+<!-- Compact Session Info -->
+<div class="card">
+  <h2>Session: {{slice .Session.ID 0 16}}...</h2>
+  <div id="session-info" hx-get="/api/session-info/{{.Session.ID}}" hx-trigger="load{{if .Session.Active}}, every 3s{{end}}" hx-swap="outerHTML">
+    <table class="compact-table" style="width: 100%;">
+      <tr>
+        <th style="width: 150px">Created</th>
+        <td>{{.Session.CreatedAt.Format "2006-01-02 15:04:05"}}</td>
+        <th style="width: 150px">Status</th>
+        <td>
+          {{if .Session.Active}}<span class="badge badge-active">Active</span>
+          {{else if .Session.Crashed}}<span class="badge badge-crashed">Crashed</span>
+          {{else if .Session.Suspended}}<span class="badge badge-suspended">Suspended</span>
+          {{else}}<span class="badge badge-inactive">Ended</span>{{end}}
+        </td>
+      </tr>
+    </table>
+  </div>
+</div>
+
+<!-- Compact Timeline -->
+<div class="card">
+  <h2>Timeline</h2>
+  <div id="timeline-wrapper" class="timeline-compact" style="position: relative; overflow-y: auto; overflow-x: hidden; user-select: none;">
+    <div id="timeline-inner" style="position: relative; min-height: 100px;">
+      <div id="timeline-line" style="position: absolute; top: 50%; left: 0; right: 0; height: 2px; background: var(--border-color);"></div>
+      <div id="timeline-container" style="position: relative;"></div>
+    </div>
+  </div>
+  <script>
+    // Scroll timeline to bottom on load
+    document.addEventListener('DOMContentLoaded', function() {
+      const wrapper = document.getElementById('timeline-wrapper');
+      if (wrapper) wrapper.scrollTop = wrapper.scrollHeight;
+    });
+  </script>
+</div>
+
+<!-- Current State -->
+<div class="card">
+  <h2>{{if .Session.Active}}Current State{{else}}Final State{{end}}</h2>
+  <div id="current-state-json" class="json-viewer-container"></div>
+  <script>
+    (function() {
+      const stateData = {{.Session.State | toJSONSafe}};
+      new JSONViewer('current-state-json', stateData, { collapsed: false, maxHeight: '400px' });
+    })();
+  </script>
+</div>
+
+<!-- Metrics with HTMX Lazy Loading -->
+{{if .Session.Metrics}}
+<div class="card">
+  <h2>Metrics Summary ({{len .Session.Metrics}} data points)</h2>
+  <div id="metrics-summary"></div>
+</div>
+
+<script>
+  const metricsByName = {};
+  let chartInstances = {};
+
+  // Group metrics by name and type
+  {{range .Session.Metrics}}
+  (function() {
+    const metricName = "{{.Name}}";
+    const metricType = "{{.Type}}";
+    const key = metricName;
+
+    if (!metricsByName[key]) {
+      metricsByName[key] = {
+        name: metricName,
+        type: metricType || "gauge",
+        data: []
+      };
+    }
+
+    metricsByName[key].data.push({
+      timestamp: new Date("{{.Timestamp.Format "2006-01-02T15:04:05Z07:00"}}"),
+      value: {{.Value}},
+      type: metricType || "gauge",
+      tags: {{.Tags | toJSONSafe}},
+      {{if .Metadata}}metadata: {{.Metadata | toJSONSafe}}{{else}}metadata: {}{{end}}
+    });
+  })();
+  {{end}}
+
+  // Create metric summaries
+  const summaryContainer = document.getElementById('metrics-summary');
+
+  Object.keys(metricsByName).forEach(metricKey => {
+    const metricInfo = metricsByName[metricKey];
+    const metrics = metricInfo.data;
+    const metricType = metricInfo.type;
+    const metricName = metricInfo.name;
+
+    // Calculate stats for gauges/timers
+    let statsHTML = '';
+    if (metricType === 'gauge' || metricType === 'timer' || !metricType) {
+      const values = metrics.map(m => m.value);
+      const avg = (values.reduce((a,b) => a+b, 0) / values.length).toFixed(2);
+      const max = Math.max(...values).toFixed(2);
+      const min = Math.min(...values).toFixed(2);
+      statsHTML = `<span><strong>Avg:</strong> ${avg}</span><span><strong>Max:</strong> ${max}</span><span><strong>Min:</strong> ${min}</span><span><strong>Points:</strong> ${values.length}</span>`;
+    } else if (metricType === 'counter') {
+      // Counter shows latest total
+      const latestValue = metrics[metrics.length - 1].value.toFixed(0);
+      statsHTML = `<span><strong>Total:</strong> ${latestValue}</span><span><strong>Updates:</strong> ${metrics.length}</span>`;
+    } else if (metricType === 'histogram') {
+      // Histogram shows bucket info from metadata
+      const latestMetric = metrics[metrics.length - 1];
+      if (latestMetric.metadata && latestMetric.metadata.count) {
+        statsHTML = `<span><strong>Samples:</strong> ${latestMetric.metadata.count}</span><span><strong>Buckets:</strong> ${latestMetric.metadata.buckets ? latestMetric.metadata.buckets.length : 0}</span>`;
+      }
+    }
+
+    const safeMetricName = metricName.replace(/\./g, '_');
+
+    const container = document.createElement('div');
+    container.className = 'metric-summary';
+    container.innerHTML = `
+      <div class="metric-header" onclick="toggleMetric('${safeMetricName}', '${metricType}')">
+        <div>
+          <h3 style="margin: 0 0 4px 0; color: var(--accent-primary);">${metricName} <span style="font-size: 12px; color: var(--text-secondary);">[${metricType}]</span></h3>
+          <div class="metric-stats">${statsHTML}</div>
+        </div>
+        <div id="arrow-${safeMetricName}" style="font-size: 16px; transition: transform 0.3s;">▼</div>
+      </div>
+      <div id="chart-container-${safeMetricName}" style="display: none; padding: 12px; background: var(--bg-card);"></div>
+    `;
+    summaryContainer.appendChild(container);
+  });
+
+  // Toggle metric visualization
+  function toggleMetric(safeMetricName, metricType) {
+    const chartContainer = document.getElementById(`chart-container-${safeMetricName}`);
+    const arrow = document.getElementById(`arrow-${safeMetricName}`);
+    const isHidden = chartContainer.style.display === 'none';
+
+    if (isHidden) {
+      chartContainer.style.display = 'block';
+      arrow.style.transform = 'rotate(180deg)';
+
+      // Destroy old chart if exists
+      if (chartInstances[safeMetricName]) {
+        chartInstances[safeMetricName].destroy();
+        delete chartInstances[safeMetricName];
+      }
+
+      // Create visualization based on type
+      if (metricType === 'histogram') {
+        createHistogramViz(safeMetricName);
+      } else if (metricType === 'counter') {
+        createCounterViz(safeMetricName);
+      } else {
+        createMetricChart(safeMetricName);
+      }
+    } else {
+      chartContainer.style.display = 'none';
+      arrow.style.transform = 'rotate(0deg)';
+      // Destroy chart to save memory
+      if (chartInstances[safeMetricName]) {
+        chartInstances[safeMetricName].destroy();
+        delete chartInstances[safeMetricName];
+      }
+    }
+  }
+
+  // Create histogram visualization
+  function createHistogramViz(safeMetricName) {
+    const metricInfo = metricsByName[Object.keys(metricsByName).find(k => k.replace(/\./g, '_') === safeMetricName)];
+    const latestMetric = metricInfo.data[metricInfo.data.length - 1];
+
+    if (!latestMetric.metadata || !latestMetric.metadata.buckets) {
+      document.getElementById(`chart-container-${safeMetricName}`).innerHTML = '<p style="color: var(--text-secondary); padding: 10px;">No histogram data available</p>';
+      return;
+    }
+
+    const buckets = latestMetric.metadata.buckets;
+    const maxCount = Math.max(...buckets.map(b => b.count));
+
+    let html = '<div style="padding: 8px;">';
+    html += `<div style="margin-bottom: 10px; font-size: 13px;"><strong>Total Samples:</strong> ${latestMetric.metadata.count} | <strong>Sum:</strong> ${latestMetric.metadata.sum.toFixed(2)} | <strong>Avg:</strong> ${(latestMetric.metadata.sum / latestMetric.metadata.count).toFixed(2)}</div>`;
+
+    buckets.forEach((bucket, i) => {
+      const percentage = (bucket.count / maxCount) * 100;
+      const prevBound = i > 0 ? buckets[i-1].le : 0;
+      html += `
+        <div class="histogram-viz">
+          <div style="text-align: right; min-width: 80px; color: var(--text-secondary);">${prevBound.toFixed(4)} - ${bucket.le.toFixed(4)}</div>
+          <div class="histogram-bar" style="width: ${percentage}%; min-width: 2px;">
+            <span style="position: absolute; right: 5px; color: white; font-size: 11px; line-height: 20px;">${bucket.count}</span>
+          </div>
+          <div style="min-width: 50px; color: var(--text-secondary);">${((bucket.count / latestMetric.metadata.count) * 100).toFixed(1)}%</div>
+        </div>
+      `;
+    });
+    html += '</div>';
+
+    document.getElementById(`chart-container-${safeMetricName}`).innerHTML = html;
+  }
+
+  // Create counter visualization
+  function createCounterViz(safeMetricName) {
+    const metricInfo = metricsByName[Object.keys(metricsByName).find(k => k.replace(/\./g, '_') === safeMetricName)];
+    const metrics = metricInfo.data;
+
+    const latestValue = metrics[metrics.length - 1].value;
+    const firstValue = metrics[0].value;
+    const increase = latestValue - firstValue;
+
+    let html = '<div style="padding: 12px;">';
+    html += `<div class="counter-display">
+      <div>
+        <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 4px;">Current Total</div>
+        <div class="counter-value">${latestValue.toFixed(0)}</div>
+      </div>
+      <div>
+        <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 4px;">Increase</div>
+        <div style="font-size: 18px; font-weight: bold; color: var(--success-color);">+${increase.toFixed(0)}</div>
+      </div>
+      <div>
+        <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 4px;">Updates</div>
+        <div style="font-size: 18px; font-weight: bold;">${metrics.length}</div>
+      </div>
+    </div>`;
+
+    // Also show a simple line chart
+    html += '<div style="height: 200px; margin-top: 12px;"><canvas id="counter-chart-${safeMetricName}"></canvas></div>';
+    html += '</div>';
+
+    document.getElementById(`chart-container-${safeMetricName}`).innerHTML = html;
+
+    // Create chart
+    const ctx = document.getElementById(`counter-chart-${safeMetricName}`).getContext('2d');
+    chartInstances[safeMetricName] = new Chart(ctx, {
+      type: 'line',
+      data: {
+        datasets: [{
+          label: 'Total',
+          data: metrics.map(m => ({ x: m.timestamp.getTime(), y: m.value })),
+          borderColor: '#48bb78',
+          backgroundColor: 'rgba(72, 187, 120, 0.1)',
+          fill: true,
+          tension: 0,
+          pointRadius: 2
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          x: { type: 'time', grid: { color: 'rgba(160, 174, 192, 0.1)' }, ticks: { color: '#a0aec0' } },
+          y: { beginAtZero: true, grid: { color: 'rgba(160, 174, 192, 0.1)' }, ticks: { color: '#a0aec0' } }
+        },
+        plugins: { legend: { labels: { color: 'var(--text-primary)' } } }
+      }
+    });
+  }
+
+  // Create standard metric chart
+  function createMetricChart(safeMetricName) {
+    const metricInfo = metricsByName[Object.keys(metricsByName).find(k => k.replace(/\./g, '_') === safeMetricName)];
+    const metrics = metricInfo.data;
+
+    const container = document.getElementById(`chart-container-${safeMetricName}`);
+    container.innerHTML = '<div style="height: 250px;"><canvas id="chart-${safeMetricName}"></canvas></div>';
+
+    const ctx = document.getElementById(`chart-${safeMetricName}`).getContext('2d');
+    chartInstances[safeMetricName] = new Chart(ctx, {
+      type: 'line',
+      data: {
+        datasets: [{
+          label: metricInfo.name,
+          data: metrics.map(m => ({ x: m.timestamp.getTime(), y: m.value })),
+          borderColor: '#819BFC',
+          backgroundColor: 'rgba(129, 155, 252, 0.1)',
+          tension: 0.1,
+          fill: true,
+          pointRadius: 3
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          x: { type: 'time', grid: { color: 'rgba(160, 174, 192, 0.1)' }, ticks: { color: '#a0aec0' } },
+          y: { beginAtZero: true, grid: { color: 'rgba(160, 174, 192, 0.1)' }, ticks: { color: '#a0aec0' } }
+        },
+        plugins: { legend: { labels: { color: 'var(--text-primary)' } } }
+      }
+    });
+  }
+</script>
+{{end}}
+
+<!-- Compact Events with Infinite Scroll -->
+<div class="card">
+  <h2>Events <span id="event-count" style="font-size: 14px; color: var(--text-secondary);">(Loading...)</span></h2>
+
+  <!-- Filter Controls -->
+  <div class="filter-controls">
+    <input type="text" id="event-search" placeholder="Search events..." style="flex: 1; min-width: 200px;" oninput="filterEvents()" />
+    <select id="event-level-filter" onchange="filterEvents()">
+      <option value="">All Levels</option>
+      <!-- Options populated by JS -->
+    </select>
+    <select id="event-name-filter" onchange="filterEvents()">
+      <option value="">All Events</option>
+      <!-- Options populated by JS -->
+    </select>
+  </div>
+
+  <!-- Events List with Infinite Scroll -->
+  <div id="events-list" style="max-height: 600px; overflow-y: auto;">
+    <div
+      hx-get="/api/session/{{.Session.ID}}/events?offset=0&limit=50"
+      hx-trigger="load"
+      hx-swap="afterbegin"
+      hx-indicator="#events-loading">
+    </div>
+    <div id="events-loading" class="htmx-indicator" style="text-align: center; padding: 20px; color: var(--text-secondary);">
+      <div style="display: inline-block; width: 20px; height: 20px; border: 2px solid var(--accent-primary); border-radius: 50%; border-top-color: transparent; animation: spin 1s linear infinite;"></div>
+      <div style="margin-top: 8px;">Loading events...</div>
+    </div>
+  </div>
+</div>
+
+<style>
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+  .htmx-indicator { opacity: 0; transition: opacity 0.3s; }
+  .htmx-request .htmx-indicator { opacity: 1; }
+  .htmx-request.htmx-indicator { opacity: 1; }
+</style>
+
+<script>
+  // Global event data store for lazy loading details
+  window.eventDataStore = window.eventDataStore || {};
+
+  // Track loaded events for filtering
+  window.loadedEvents = window.loadedEvents || [];
+  window.uniqueLevels = window.uniqueLevels || new Set();
+  window.uniqueNames = window.uniqueNames || new Set();
+
+  // Update filter dropdowns
+  function updateFilterOptions() {
+    const levelFilter = document.getElementById('event-level-filter');
+    const nameFilter = document.getElementById('event-name-filter');
+
+    // Update level options
+    const currentLevelValue = levelFilter.value;
+    levelFilter.innerHTML = '<option value="">All Levels</option>';
+    Array.from(window.uniqueLevels).sort().forEach(level => {
+      const option = document.createElement('option');
+      option.value = level;
+      option.textContent = level;
+      if (level === currentLevelValue) option.selected = true;
+      levelFilter.appendChild(option);
+    });
+
+    // Update name options
+    const currentNameValue = nameFilter.value;
+    nameFilter.innerHTML = '<option value="">All Events</option>';
+    Array.from(window.uniqueNames).sort().forEach(name => {
+      const option = document.createElement('option');
+      option.value = name;
+      option.textContent = name;
+      if (name === currentNameValue) option.selected = true;
+      nameFilter.appendChild(option);
+    });
+  }
+
+  // Toggle event details with htmx lazy loading
+  function toggleEvent(index) {
+    const detailsDiv = document.getElementById(`event-details-${index}`);
+    const arrow = document.getElementById(`event-arrow-${index}`);
+    const row = document.querySelector(`[data-index="${index}"]`);
+
+    if (detailsDiv.style.display === 'none') {
+      // Check if already loaded
+      if (!detailsDiv.innerHTML) {
+        // Trigger htmx load
+        htmx.trigger(detailsDiv, 'loadDetails');
+      }
+      detailsDiv.style.display = 'block';
+      arrow.textContent = '▼';
+      row.classList.add('expanded');
+    } else {
+      detailsDiv.style.display = 'none';
+      arrow.textContent = '▶';
+      row.classList.remove('expanded');
+    }
+  }
+
+  // Filter events (works with loaded events)
+  function filterEvents() {
+    const searchTerm = document.getElementById('event-search').value.toLowerCase();
+    const levelFilter = document.getElementById('event-level-filter').value;
+    const nameFilter = document.getElementById('event-name-filter').value;
+
+    let visibleCount = 0;
+    document.querySelectorAll('.event-row').forEach(row => {
+      const level = row.getAttribute('data-level');
+      const name = row.getAttribute('data-name');
+      const text = row.textContent.toLowerCase();
+
+      const matchesSearch = text.includes(searchTerm);
+      const matchesLevel = !levelFilter || level === levelFilter;
+      const matchesName = !nameFilter || name === nameFilter;
+
+      if (matchesSearch && matchesLevel && matchesName) {
+        row.style.display = 'block';
+        visibleCount++;
+      } else {
+        row.style.display = 'none';
+      }
+    });
+
+    // Update count
+    document.getElementById('event-count').textContent = `(${visibleCount} visible / ${window.loadedEvents.length} loaded)`;
+  }
+</script>
+
+<div style="margin: 15px 0;">
+  <a href="/" class="btn btn-secondary" style="padding: 8px 16px; font-size: 13px;">Back to Dashboard</a>
+</div>
+
+<!-- Minimal timeline script -->
+<script>
+  const timelineItems = [];
+  {{range $index, $snapshot := .Session.StateHistory}}
+  timelineItems.push({ type: 'state', timestamp: new Date("{{$snapshot.Timestamp.Format "2006-01-02T15:04:05Z07:00"}}"), displayTime: "{{$snapshot.Timestamp.Format "15:04:05"}}" });
+  {{end}}
+  {{range $event := .Session.Events}}
+  timelineItems.push({ type: 'event', timestamp: new Date("{{$event.Timestamp.Format "2006-01-02T15:04:05Z07:00"}}"), displayTime: "{{$event.Timestamp.Format "15:04:05"}}" });
+  {{end}}
+
+  timelineItems.sort((a, b) => a.timestamp - b.timestamp);
+
+  function renderTimeline() {
+    const container = document.getElementById('timeline-container');
+    if (timelineItems.length === 0) return;
+
+    const start = timelineItems[0].timestamp;
+    const end = timelineItems[timelineItems.length - 1].timestamp;
+    const duration = end - start;
+
+    // Merge items that are close together (within 2% of timeline)
+    const mergeThreshold = duration * 0.02;
+    const merged = [];
+    timelineItems.forEach(item => {
+      const existing = merged.find(m => Math.abs(m.timestamp - item.timestamp) < mergeThreshold);
+      if (existing) {
+        existing.count = (existing.count || 1) + 1;
+      } else {
+        merged.push({...item, count: 1});
+      }
+    });
+
+    // Render merged items
+    merged.forEach(item => {
+      const position = ((item.timestamp - start) / duration) * 100;
+      const point = document.createElement('div');
+      point.style.cssText = `position: absolute; left: ${position}%; top: calc(50% - 6px); width: 12px; height: 12px; border-radius: 50%; background: ${item.type === 'state' ? '#819BFC' : '#48bb78'}; border: 2px solid var(--bg-card); cursor: pointer; z-index: 10;`;
+
+      if (item.count > 1) {
+        const badge = document.createElement('div');
+        badge.style.cssText = 'position: absolute; top: -8px; right: -8px; background: var(--error-color); color: white; border-radius: 50%; width: 16px; height: 16px; font-size: 10px; display: flex; align-items: center; justify-content: center; font-weight: bold;';
+        badge.textContent = item.count;
+        point.appendChild(badge);
+      }
+
+      container.appendChild(point);
+    });
+  }
+
+  renderTimeline();
+</script>
+
+{{end}}
+
