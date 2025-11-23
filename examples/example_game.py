@@ -4,10 +4,15 @@ Example Game - Demonstrates DataCat logging in a game-like application
 
 This simulates a simple game with:
 - Main update/render loop running at 60 FPS
-- Metrics (FPS, memory, player stats)
-- Random events (enemies, powerups, achievements)
+- Random events (enemies, powerups, achievements, errors)
 - Random errors and exceptions
 - Different modes: normal, hang, crash
+
+Demonstrates ALL DataCat metric types:
+- GAUGE: fps, memory_mb, player_health, player_score (values that go up/down)
+- COUNTER: frames_rendered, enemies_encountered (monotonically increasing)
+- HISTOGRAM: fps_distribution with custom buckets (60+, 30-60, 20-30, 10-20, <10 FPS)
+- TIMER: frame_render_time (auto-measured duration)
 
 Usage:
     python example_game.py --mode normal --duration 60
@@ -67,6 +72,19 @@ class GameSimulator(object):
         self.start_time = None
         self.last_fps_update = None
         self.frame_times = []
+
+        # Counter tracking
+        self.total_enemies_encountered = 0
+
+        # FPS histogram buckets - optimized for different frame rates
+        # Buckets: 60+ FPS, 30-60 FPS, 20-30 FPS, 10-20 FPS, <10 FPS
+        self.fps_buckets = [
+            10.0,   # <10 FPS (unplayable)
+            20.0,   # 10-20 FPS (very poor)
+            30.0,   # 20-30 FPS (poor)
+            60.0,   # 30-60 FPS (acceptable)
+            1000.0  # 60+ FPS (excellent) - effectively infinity
+        ]
 
         # Create session
         print("[%s] Creating session (mode=%s, duration=%s, async=%s)..." %
@@ -137,12 +155,18 @@ class GameSimulator(object):
         if rand < 0.01:  # 1% chance - enemy encounter
             damage = random.randint(5, 15)
             self.player_health -= damage
+            self.total_enemies_encountered += 1
+
+            # Log counter for enemies encountered
+            self.session.log_counter('enemies_encountered', tags=['gameplay'])
+
             self.session.log_event(
                 'enemy_encountered',
                 level='warning',
                 data={
                     'damage': damage,
-                    'remaining_health': self.player_health
+                    'remaining_health': self.player_health,
+                    'total_encountered': self.total_enemies_encountered
                 }
             )
 
@@ -254,6 +278,12 @@ class GameSimulator(object):
 
     def render_frame(self):
         """Simulate rendering (just sleep to maintain FPS)"""
+        # Use TIMER to measure render time every frame
+        # This is a histogram under the hood, auto-measuring duration
+        with self.session.timer('frame_render_time', unit='seconds', tags=['performance']):
+            # Simulate some render work
+            time.sleep(random.uniform(0.001, 0.003))  # 1-3ms render time
+
         # Log render event every 60 frames (once per second @ 60 FPS)
         if self.frame_count % 60 == 0:
             self.session.log_event(
@@ -266,16 +296,28 @@ class GameSimulator(object):
             )
 
     def log_metrics(self):
-        """Log game metrics"""
-        # Log FPS and memory every 30 frames (twice per second @ 60 FPS)
+        """Log game metrics - demonstrates all metric types"""
+        # Log metrics every 30 frames (twice per second @ 60 FPS)
         if self.frame_count % 30 == 0:
             fps = self.get_fps()
             memory_mb = self.get_memory_mb()
 
-            self.session.log_metric('fps', fps, tags=['performance'])
-            self.session.log_metric('memory_mb', memory_mb, tags=['performance'])
-            self.session.log_metric('player_health', float(self.player_health), tags=['gameplay'])
-            self.session.log_metric('player_score', float(self.player_score), tags=['gameplay'])
+            # GAUGE metrics - current values that can go up or down
+            self.session.log_gauge('fps', fps, unit='fps', tags=['performance'])
+            self.session.log_gauge('memory_mb', memory_mb, unit='MB', tags=['performance'])
+            self.session.log_gauge('player_health', float(self.player_health), unit='hp', tags=['gameplay'])
+            self.session.log_gauge('player_score', float(self.player_score), tags=['gameplay'])
+
+            # HISTOGRAM - FPS distribution with custom buckets
+            # This lets us analyze what percentage of frames hit different FPS targets
+            self.session.log_histogram('fps_distribution', fps,
+                                      unit='fps',
+                                      buckets=self.fps_buckets,
+                                      tags=['performance'])
+
+            # COUNTER - total frames rendered (monotonically increasing)
+            # Daemon automatically accumulates these
+            self.session.log_counter('frames_rendered', tags=['performance'])
 
         # Update state every 120 frames (every 2 seconds @ 60 FPS)
         if self.frame_count % 120 == 0:
@@ -405,6 +447,7 @@ class GameSimulator(object):
                     'total_frames': self.frame_count,
                     'final_score': self.player_score,
                     'enemies_killed': self.enemies_killed,
+                    'enemies_encountered': self.total_enemies_encountered,
                     'powerups_collected': self.powerups_collected,
                     'exit_reason': 'normal'
                 }

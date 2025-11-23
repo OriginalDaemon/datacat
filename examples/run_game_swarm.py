@@ -6,6 +6,12 @@ This launches multiple instances of example_game.py with different configuration
 to simulate multiple players. Some will run normally, some will hang, and some
 will crash - demonstrating DataCat's crash and hang detection capabilities.
 
+Each game instance demonstrates ALL metric types:
+- Gauges (FPS, memory, health, score)
+- Counters (frames rendered, enemies encountered)
+- Histogram (FPS distribution with custom buckets for 60+, 30-60, 20-30, 10-20, <10 FPS)
+- Timers (frame render time)
+
 Usage:
     python run_game_swarm.py --count 10 --duration 60
     python run_game_swarm.py --count 20 --duration 120 --hang-rate 0.2 --crash-rate 0.1
@@ -285,7 +291,12 @@ def main():
     print("  - All %d sessions" % args.count)
     print("  - Crash detection for crashed instances")
     print("  - Hang detection for hung instances")
-    print("  - Live metrics and events")
+    print("  - Live metrics demonstrating all types:")
+    print("    * Gauges: fps, memory_mb, player_health, player_score")
+    print("    * Counters: frames_rendered, enemies_encountered")
+    print("    * Histogram: fps_distribution (with custom 60/30/20/10 FPS buckets)")
+    print("    * Timers: frame_render_time")
+    print("  - Events: game_started, enemy_encountered, powerup_collected, etc.")
     print()
 
 
