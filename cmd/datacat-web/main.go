@@ -1,14 +1,18 @@
 package main
 
 import (
+	"bytes"
 	"embed"
 	"encoding/json"
 	"fmt"
 	"html/template"
 	"log"
 	"math"
+	"net"
 	"net/http"
 	"net/url"
+	"os"
+	"runtime/debug"
 	"sort"
 	"strconv"
 	"strings"
@@ -90,13 +94,62 @@ type SessionMetrics struct {
 }
 
 func main() {
+	// Write immediately to stderr to verify we're running
+	fmt.Fprintf(os.Stderr, "[datacat-web] Starting...\n")
+	os.Stderr.Sync()
+
+	// Initialize basic logging to stderr (simple, always works)
+	log.SetOutput(os.Stderr)
+	log.SetFlags(log.LstdFlags | log.Lshortfile)
+
+	log.Printf("Starting datacat-web...")
+
+	// Load configuration
+	fmt.Fprintf(os.Stderr, "[datacat-web] Loading config...\n")
+	os.Stderr.Sync()
+	config := LoadConfig("./config.json")
+	log.Printf("Configuration loaded: Server URL=%s, Port=%s", config.ServerURL, config.Port)
+
+	// Initialize file logging (always create a log file)
+	logPath, logCleanup, err := initLogging(config)
+	if err != nil {
+		log.Printf("WARNING: Failed to initialize file logging: %v (continuing with stderr only)", err)
+	} else {
+		defer logCleanup()
+		log.Printf("Logging to file: %s", logPath)
+		fmt.Fprintf(os.Stderr, "[datacat-web] Logging to file: %s\n", logPath)
+		os.Stderr.Sync()
+	}
+
 	// Initialize datacat client
-	datacatClient = client.NewClient("http://localhost:9090")
+	fmt.Fprintf(os.Stderr, "[datacat-web] Initializing client...\n")
+	os.Stderr.Sync()
+	log.Printf("Initializing datacat client...")
+	datacatClient = client.NewClient(config.ServerURL)
+	fmt.Fprintf(os.Stderr, "[datacat-web] Client initialized\n")
+	os.Stderr.Sync()
+
+	fmt.Fprintf(os.Stderr, "[datacat-web] Setting up routes...\n")
+	os.Stderr.Sync()
 
 	// Serve static files
 	http.Handle("/static/", http.FileServer(http.FS(content)))
 
 	// Routes
+	// Health check endpoint - make sure this works first
+	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status":  "healthy",
+			"service": "datacat-web",
+			"version": "1.0.0",
+		})
+	})
+
+	fmt.Fprintf(os.Stderr, "[datacat-web] Routes configured\n")
+	os.Stderr.Sync()
+
 	http.HandleFunc("/", handleIndex)
 	http.HandleFunc("/sessions", handleSessions)
 	http.HandleFunc("/session/", handleSessionDetail)
@@ -115,9 +168,317 @@ func main() {
 	http.HandleFunc("/api/session-events/", handleSessionEvents)
 	http.HandleFunc("/api/session-metrics-table/", handleSessionMetricsTable)
 
-	port := ":8080"
+	// New improved infinite scroll endpoints
+	http.HandleFunc("/api/session/", handleSessionAPI)
+
+	port := ":" + config.Port
+	fmt.Fprintf(os.Stderr, "[datacat-web] Starting server on %s\n", port)
+	os.Stderr.Sync()
 	log.Printf("Starting datacat web UI on %s", port)
-	log.Fatal(http.ListenAndServe(port, nil))
+
+	// Test if port is available before starting
+	fmt.Fprintf(os.Stderr, "[datacat-web] Checking port availability...\n")
+	os.Stderr.Sync()
+	listener, err := net.Listen("tcp", port)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "[datacat-web] ERROR: Cannot bind to port %s: %v\n", port, err)
+		os.Stderr.Sync()
+		log.Fatalf("Cannot bind to port %s: %v (port may be in use)", port, err)
+	}
+	listener.Close()
+
+	fmt.Fprintf(os.Stderr, "[datacat-web] Port available, starting HTTP server...\n")
+	os.Stderr.Sync()
+	log.Printf("Port %s is available, starting server...", port)
+
+	// Start server - log any errors
+	fmt.Fprintf(os.Stderr, "[datacat-web] HTTP server starting, listening on %s\n", port)
+	os.Stderr.Sync()
+	if err := http.ListenAndServe(port, nil); err != nil {
+		fmt.Fprintf(os.Stderr, "[datacat-web] ERROR: Server failed: %v\n", err)
+		os.Stderr.Sync()
+		log.Fatalf("Server failed to start: %v", err)
+	}
+}
+
+// handleSessionAPI routes session-related API calls
+func handleSessionAPI(w http.ResponseWriter, r *http.Request) {
+	path := strings.TrimPrefix(r.URL.Path, "/api/session/")
+	parts := strings.Split(path, "/")
+
+	if len(parts) < 2 {
+		http.Error(w, "Invalid path", http.StatusBadRequest)
+		return
+	}
+
+	sessionID := parts[0]
+	endpoint := parts[1]
+
+	switch endpoint {
+	case "events":
+		handlePaginatedEvents(w, r, sessionID)
+	case "event":
+		if len(parts) >= 3 && parts[2] != "" {
+			eventIndex, err := strconv.Atoi(parts[2])
+			if err != nil {
+				http.Error(w, "Invalid event index", http.StatusBadRequest)
+				return
+			}
+			if len(parts) >= 4 && parts[3] == "details" {
+				handleEventDetails(w, r, sessionID, eventIndex)
+			}
+		}
+	default:
+		http.Error(w, "Unknown endpoint", http.StatusNotFound)
+	}
+}
+
+// EventRowsData for template
+type EventRowsData struct {
+	SessionID   string
+	Events      []client.Event
+	Offset      int
+	Limit       int
+	NextOffset  int
+	HasMore     bool
+	TotalEvents int
+}
+
+// EventDetailsData for template
+type EventDetailsData struct {
+	Event client.Event
+	Index int
+}
+
+// Template helper function to add numbers
+var templateFuncs = template.FuncMap{
+	"add": func(a, b int) int { return a + b },
+	"sub": func(a, b int) int { return a - b },
+	"lt":  func(a, b int) bool { return a < b },
+	"ge":  func(a, b int) bool { return a >= b },
+	"gt":  func(a, b int) bool { return a > b },
+	"or":  func(a, b bool) bool { return a || b },
+}
+
+// handlePaginatedEvents returns a page of events
+func handlePaginatedEvents(w http.ResponseWriter, r *http.Request, sessionID string) {
+	w.Header().Set("Content-Type", "text/html")
+
+	// Parse pagination parameters
+	offsetStr := r.URL.Query().Get("offset")
+	limitStr := r.URL.Query().Get("limit")
+
+	offset := 0
+	limit := 50 // Default page size
+
+	if offsetStr != "" {
+		if val, err := strconv.Atoi(offsetStr); err == nil {
+			offset = val
+		}
+	}
+	if limitStr != "" {
+		if val, err := strconv.Atoi(limitStr); err == nil && val > 0 && val <= 200 {
+			limit = val
+		}
+	}
+
+	// Get session
+	session, err := datacatClient.GetSession(sessionID)
+	if err != nil {
+		w.Write([]byte(`<div style="color: var(--error-color); padding: 10px;">Error loading events</div>`))
+		return
+	}
+
+	totalEvents := len(session.Events)
+
+	// Calculate slice bounds
+	start := offset
+	end := offset + limit
+	if start > totalEvents {
+		start = totalEvents
+	}
+	if end > totalEvents {
+		end = totalEvents
+	}
+
+	// Slice events
+	events := []client.Event{}
+	if start < totalEvents {
+		events = session.Events[start:end]
+	}
+
+	// Prepare template data
+	data := EventRowsData{
+		SessionID:   sessionID,
+		Events:      events,
+		Offset:      offset,
+		Limit:       limit,
+		NextOffset:  end,
+		HasMore:     end < totalEvents,
+		TotalEvents: totalEvents,
+	}
+
+	// Load and execute template
+	tmpl, err := template.New("event_rows.html").Funcs(templateFuncs).ParseFS(content, "templates/event_rows.html")
+	if err != nil {
+		log.Printf("Template parse error: %v", err)
+		http.Error(w, "Template error", http.StatusInternalServerError)
+		return
+	}
+
+	if err := tmpl.ExecuteTemplate(w, "event_rows", data); err != nil {
+		log.Printf("Template execution error: %v", err)
+	}
+}
+
+// handleEventDetails returns the full details for a specific event
+func handleEventDetails(w http.ResponseWriter, r *http.Request, sessionID string, eventIndex int) {
+	log.Printf("INFO: handleEventDetails called for session %s, event %d", sessionID, eventIndex)
+
+	// Set up panic recovery at the top level
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("ERROR: Top-level panic in handleEventDetails for event %d in session %s: %v", eventIndex, sessionID, r)
+			log.Printf("ERROR: Stack trace: %s", debug.Stack())
+			// Only write error if headers haven't been written
+			if w.Header().Get("Content-Type") == "" {
+				w.Header().Set("Content-Type", "text/html")
+				w.WriteHeader(http.StatusInternalServerError)
+				w.Write([]byte(fmt.Sprintf(`<div style="color: var(--error-color); padding: 10px;">Internal server error: %v</div>`, r)))
+			}
+		}
+	}()
+
+	w.Header().Set("Content-Type", "text/html")
+
+	// Get session
+	log.Printf("INFO: Fetching session %s", sessionID)
+	session, err := datacatClient.GetSession(sessionID)
+	if err != nil {
+		log.Printf("ERROR: Failed to get session %s: %v", sessionID, err)
+		w.Write([]byte(`<div style="color: var(--error-color);">Error loading event details</div>`))
+		return
+	}
+	log.Printf("INFO: Session %s retrieved, has %d events", sessionID, len(session.Events))
+
+	// Validate index
+	if eventIndex < 0 || eventIndex >= len(session.Events) {
+		log.Printf("ERROR: Invalid event index %d for session %s (has %d events)", eventIndex, sessionID, len(session.Events))
+		w.Write([]byte(`<div style="color: var(--error-color);">Event not found</div>`))
+		return
+	}
+
+	// Get event (make a copy to avoid modifying the original)
+	event := session.Events[eventIndex]
+	log.Printf("INFO: Event %d: Name=%s, Category=%s, Group=%s", eventIndex, event.Name, event.Category, event.Group)
+
+	// Ensure Data and Stacktrace are never nil (initialize empty if nil)
+	// This prevents template errors when accessing these fields
+	if event.Data == nil {
+		log.Printf("INFO: Event %d Data is nil, initializing empty map", eventIndex)
+		event.Data = make(map[string]interface{})
+	}
+	if event.Stacktrace == nil {
+		log.Printf("INFO: Event %d Stacktrace is nil, initializing empty slice", eventIndex)
+		event.Stacktrace = []string{}
+	}
+	if event.Labels == nil {
+		log.Printf("INFO: Event %d Labels is nil, initializing empty slice", eventIndex)
+		event.Labels = []string{}
+	}
+
+	// Prepare template data
+	data := EventDetailsData{
+		Event: event,
+		Index: eventIndex,
+	}
+	log.Printf("INFO: Template data prepared for event %d", eventIndex)
+
+	// Load and execute template with all template functions
+	log.Printf("INFO: Parsing template for event %d", eventIndex)
+	tmpl, err := template.New("event_details.html").Funcs(template.FuncMap{
+		"toJSONSafe": func(v interface{}) template.JS {
+			if v == nil {
+				return "null"
+			}
+			// Handle empty slices/maps
+			switch val := v.(type) {
+			case []string:
+				if len(val) == 0 {
+					return "[]"
+				}
+			case []interface{}:
+				if len(val) == 0 {
+					return "[]"
+				}
+			case map[string]interface{}:
+				if len(val) == 0 {
+					return "{}"
+				}
+			}
+			b, err := json.Marshal(v)
+			if err != nil {
+				log.Printf("ERROR: Failed to marshal data for event %d: %v (type: %T, value: %+v)", eventIndex, err, v, v)
+				// Return empty object/array based on type
+				switch v.(type) {
+				case []string, []interface{}:
+					return "[]"
+				case map[string]interface{}:
+					return "{}"
+				default:
+					return "null"
+				}
+			}
+			return template.JS(b)
+		},
+		"add": func(a, b int) int { return a + b },
+	}).ParseFS(content, "templates/event_details.html")
+	if err != nil {
+		log.Printf("ERROR: Template parse error for event details: %v", err)
+		http.Error(w, "Template error", http.StatusInternalServerError)
+		return
+	}
+
+	// Execute template to a buffer first to catch errors before writing headers
+	var buf bytes.Buffer
+	log.Printf("INFO: Executing template for event %d", eventIndex)
+
+	// Execute template with panic recovery
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("ERROR: Panic in template execution for event %d in session %s: %v", eventIndex, sessionID, r)
+				log.Printf("ERROR: Stack trace: %s", debug.Stack())
+				buf.Reset()
+				buf.WriteString(fmt.Sprintf(`<div style="color: var(--error-color); padding: 10px;">Internal server error: %v</div>`, r))
+			}
+		}()
+
+		if err := tmpl.ExecuteTemplate(&buf, "event_details", data); err != nil {
+			log.Printf("ERROR: Template execution error for event %d in session %s: %v", eventIndex, sessionID, err)
+			log.Printf("ERROR: Event data: Name=%s, Category=%s, Group=%s, HasData=%v, HasStacktrace=%v, DataLen=%d, StacktraceLen=%d",
+				event.Name, event.Category, event.Group, event.Data != nil, event.Stacktrace != nil,
+				len(event.Data), len(event.Stacktrace))
+			buf.Reset()
+			buf.WriteString(fmt.Sprintf(`<div style="color: var(--error-color); padding: 10px;">Error rendering event details: %v</div>`, err))
+		} else {
+			log.Printf("INFO: Template executed successfully for event %d, output length: %d bytes", eventIndex, buf.Len())
+		}
+	}()
+
+	// Now write the buffered output (or error message) to response
+	if buf.Len() == 0 {
+		log.Printf("ERROR: Template produced no output for event %d in session %s", eventIndex, sessionID)
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(`<div style="color: var(--error-color); padding: 10px;">Error: Template produced no output</div>`))
+		return
+	}
+
+	log.Printf("INFO: Writing %d bytes to response for event %d", buf.Len(), eventIndex)
+	if _, err := w.Write(buf.Bytes()); err != nil {
+		log.Printf("ERROR: Failed to write response for event %d: %v", eventIndex, err)
+	}
+	log.Printf("INFO: Successfully completed handleEventDetails for event %d", eventIndex)
 }
 
 func handleIndex(w http.ResponseWriter, r *http.Request) {
@@ -654,6 +1015,21 @@ func handleSessionDetail(w http.ResponseWriter, r *http.Request) {
 
 	funcMap := template.FuncMap{
 		"replace": strings.ReplaceAll,
+		"add": func(a, b int) int {
+			return a + b
+		},
+		"sub": func(a, b int) int {
+			return a - b
+		},
+		"lt": func(a, b int) bool {
+			return a < b
+		},
+		"ge": func(a, b int) bool {
+			return a >= b
+		},
+		"or": func(a, b bool) bool {
+			return a || b
+		},
 		"toJSONSafe": func(v interface{}) template.JS {
 			b, err := json.Marshal(v)
 			if err != nil {
@@ -662,7 +1038,7 @@ func handleSessionDetail(w http.ResponseWriter, r *http.Request) {
 			return template.JS(b)
 		},
 	}
-	tmpl, err := template.New("base.html").Funcs(funcMap).ParseFS(content, "templates/base.html", "templates/session.html")
+	tmpl, err := template.New("base.html").Funcs(funcMap).ParseFS(content, "templates/base.html", "templates/session_improved.html", "templates/event_rows.html")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -1035,24 +1411,56 @@ func arrayContainsAll(stateArray, filterArray []interface{}) bool {
 	return true
 }
 
+// ServerHealthResponse represents the health endpoint response
+type ServerHealthResponse struct {
+	Status  string `json:"status"`
+	Service string `json:"service"`
+	Version string `json:"version"`
+}
+
 // handleServerStatus checks if the server is online and returns status
 func handleServerStatus(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html")
 
-	// Try to get sessions to check if server is online
-	_, err := datacatClient.GetAllSessions()
+	// Check server health endpoint using configured client URL
+	healthURL := datacatClient.BaseURL + "/health"
+	resp, err := http.Get(healthURL)
 
 	if err != nil {
 		// Server is offline
 		w.Write([]byte(`<div id="server-status" class="alert alert-danger" hx-get="/api/server-status" hx-trigger="every 5s" hx-swap="outerHTML">
-			<strong>⚠️ Server Offline:</strong> Cannot connect to datacat server at http://localhost:9090. Please start the server.
+			<strong>⚠️ Server Offline:</strong> Cannot connect to datacat server at http://localhost:9090
+			<br/><small>Error: ` + err.Error() + `</small>
+			<br/><small>Health endpoint: ` + healthURL + `</small>
 		</div>`))
-	} else {
-		// Server is online
-		w.Write([]byte(`<div id="server-status" class="alert alert-success" hx-get="/api/server-status" hx-trigger="every 10s" hx-swap="outerHTML">
-			<strong>✓ Server Online:</strong> Connected to datacat server at http://localhost:9090
-		</div>`))
+		return
 	}
+	defer resp.Body.Close()
+
+	// Check status code
+	if resp.StatusCode != http.StatusOK {
+		w.Write([]byte(`<div id="server-status" class="alert alert-danger" hx-get="/api/server-status" hx-trigger="every 5s" hx-swap="outerHTML">
+			<strong>⚠️ Server Unhealthy:</strong> Server returned status ` + resp.Status + `
+			<br/><small>Health endpoint: ` + healthURL + `</small>
+		</div>`))
+		return
+	}
+
+	// Parse health response
+	var healthResp ServerHealthResponse
+	if err := json.NewDecoder(resp.Body).Decode(&healthResp); err != nil {
+		w.Write([]byte(`<div id="server-status" class="alert alert-danger" hx-get="/api/server-status" hx-trigger="every 5s" hx-swap="outerHTML">
+			<strong>⚠️ Server Error:</strong> Could not parse health response
+			<br/><small>Error: ` + err.Error() + `</small>
+		</div>`))
+		return
+	}
+
+	// Server is healthy
+	w.Write([]byte(`<div id="server-status" class="alert alert-success" hx-get="/api/server-status" hx-trigger="every 10s" hx-swap="outerHTML">
+		<strong>✓ Server Healthy:</strong> ` + healthResp.Service + ` v` + healthResp.Version + ` at http://localhost:9090
+		<br/><small>Status: ` + healthResp.Status + ` | Health: <a href="` + healthURL + `" target="_blank" style="color: var(--success-color)">` + healthURL + `</a></small>
+	</div>`))
 }
 
 // handleStatsCards returns the stats cards with live session counts
@@ -1169,9 +1577,19 @@ func handleSessionsTable(w http.ResponseWriter, r *http.Request) {
 		</tr>`)
 	} else {
 		for _, session := range sessions {
-			statusBadge := `<span class="badge badge-inactive">Ended</span>`
+			// Build status badges with consistent logic
+			var statusBadges strings.Builder
 			if session.Active {
-				statusBadge = `<span class="badge badge-active">Active</span>`
+				statusBadges.WriteString(`<span class="badge badge-active">Active</span>`)
+			} else if session.Crashed {
+				statusBadges.WriteString(`<span class="badge badge-crashed">Crashed</span>`)
+			} else if session.Suspended {
+				statusBadges.WriteString(`<span class="badge badge-suspended">Suspended</span>`)
+			} else {
+				statusBadges.WriteString(`<span class="badge badge-ended">Ended</span>`)
+			}
+			if session.Hung {
+				statusBadges.WriteString(`<span class="badge badge-hung" style="margin-left: 4px">Hung</span>`)
 			}
 
 			sessionIDShort := session.ID
@@ -1198,7 +1616,7 @@ func handleSessionsTable(w http.ResponseWriter, r *http.Request) {
 				sessionIDShort,
 				session.CreatedAt.Format("2006-01-02 15:04:05"),
 				session.UpdatedAt.Format("2006-01-02 15:04:05"),
-				statusBadge,
+				statusBadges.String(),
 				len(session.Events),
 				len(session.Metrics),
 				session.ID))

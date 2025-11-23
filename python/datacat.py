@@ -33,21 +33,22 @@ class DaemonManager(object):
     """Manages the local datacat daemon subprocess"""
 
     def __init__(
-        self, daemon_port="8079", server_url="http://localhost:9090", daemon_binary=None
+        self, daemon_port="auto", server_url="http://localhost:9090", daemon_binary=None
     ):
         """
         Initialize the daemon manager
 
         Args:
-            daemon_port (str): Port for the daemon to listen on
+            daemon_port (str): Port for the daemon to listen on ("auto" finds available port)
             server_url (str): URL of the datacat server
             daemon_binary (str): Path to the daemon binary (auto-detected if None)
         """
-        self.daemon_port = daemon_port
+        self.daemon_port = daemon_port  # Will be resolved in start()
         self.server_url = server_url
         self.daemon_binary = daemon_binary or self._find_daemon_binary()
         self.process = None
         self._started = False
+        self.config_path = None  # Will be set in start()
 
     def _find_daemon_binary(self):
         """Find the daemon binary in common locations"""
@@ -107,12 +108,33 @@ class DaemonManager(object):
         except Exception:
             return False
 
+    def _find_available_port(self):
+        """Find an available port for the daemon"""
+        import socket
+        # Create a socket to find an available port
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.bind(('', 0))  # Bind to port 0 to get an available port
+            s.listen(1)
+            port = s.getsockname()[1]
+        return str(port)
+
     def start(self):
         """Start the daemon subprocess"""
         if self._started and self.process and self.process.poll() is None:
             return  # Already running
 
-        # Create config for daemon
+        # Find an available port if using auto mode
+        if self.daemon_port == "auto" or self.daemon_port == "8079":
+            self.daemon_port = self._find_available_port()
+
+        # Set config path now that we have the port
+        # Create tmp directory for daemon configs
+        config_dir = os.path.join("tmp", "daemon_configs")
+        if not os.path.exists(config_dir):
+            os.makedirs(config_dir)
+        self.config_path = os.path.join(config_dir, "daemon_config_{}.json".format(self.daemon_port))
+
+        # Create config for daemon with this instance's unique port
         config = {
             "daemon_port": self.daemon_port,
             "server_url": self.server_url,
@@ -121,18 +143,19 @@ class DaemonManager(object):
             "heartbeat_timeout_seconds": 60,
         }
 
-        # Write config to temporary file
-        config_path = "daemon_config.json"
-        with open(config_path, "w") as f:
+        # Write config to instance-specific file
+        with open(self.config_path, "w") as f:
             json.dump(config, f, indent=2)
 
-        # Start daemon process
+        # Start daemon process with instance-specific config
         try:
+            # Change directory to where config file is, then run daemon
             self.process = subprocess.Popen(
                 [self.daemon_binary],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 stdin=subprocess.PIPE,
+                env=dict(os.environ, DATACAT_CONFIG=self.config_path)
             )
             self._started = True
 
@@ -175,6 +198,13 @@ class DaemonManager(object):
                 self.process.kill()
         self._started = False
 
+        # Clean up instance-specific config file
+        try:
+            if os.path.exists(self.config_path):
+                os.remove(self.config_path)
+        except Exception:
+            pass  # Best effort cleanup
+
     def is_running(self):
         """Check if daemon is running"""
         return self._started and self.process and self.process.poll() is None
@@ -183,21 +213,21 @@ class DaemonManager(object):
 class DatacatClient(object):
     """Client for interacting with the datacat daemon (daemon mode only)"""
 
-    def __init__(self, base_url="http://localhost:9090", daemon_port="8079"):
+    def __init__(self, base_url="http://localhost:9090", daemon_port="auto"):
         """
         Initialize the datacat client
 
         Args:
             base_url (str): Base URL of the datacat server (used as daemon's upstream)
-            daemon_port (str): Port for the local daemon
+            daemon_port (str): Port for the local daemon ("auto" finds available port)
         """
         self.use_daemon = True  # Always use daemon
         self.daemon_manager = DaemonManager(
             daemon_port=daemon_port, server_url=base_url
         )
         self.daemon_manager.start()
-        # Point to daemon instead of server
-        self.base_url = "http://localhost:{}".format(daemon_port)
+        # Point to daemon instead of server (port determined after start)
+        self.base_url = "http://localhost:{}".format(self.daemon_manager.daemon_port)
 
     def _make_request(self, url, method="GET", data=None):
         """
@@ -308,14 +338,14 @@ class DatacatClient(object):
         self,
         session_id,
         name,
-        level=None,
         category=None,
+        group=None,
         labels=None,
         message=None,
         data=None,
+        stacktrace=None,
         exception_type=None,
         exception_msg=None,
-        stacktrace=None,
         source_file=None,
         source_line=None,
         source_function=None,
@@ -325,18 +355,18 @@ class DatacatClient(object):
 
         Args:
             session_id (str): Session ID
-            name (str): Event name
-            level (str): Optional event level (debug, info, warning, error, critical)
-            category (str): Optional category (e.g., logger name, component name)
-            labels (list): Optional list of labels/tags
-            message (str): Optional human-readable message
-            data (dict): Optional event data
-            exception_type (str): Optional exception type (for exception events)
-            exception_msg (str): Optional exception message (for exception events)
-            stacktrace (list): Optional stack trace lines (for exception events)
-            source_file (str): Optional source file (for exception events)
-            source_line (int): Optional source line (for exception events)
-            source_function (str): Optional source function (for exception events)
+            name (str): Event name (required)
+            category (str): User-defined category (e.g., debug, info, warning, error, critical, or custom). Defaults to "info"
+            group (str): Group/logger name (e.g., logger name, component name). Optional
+            labels (list): Array of label strings. Defaults to empty array
+            message (str): Human-readable message. Optional (no default)
+            data (dict): Event data. Defaults to empty dict
+            stacktrace (list): Stack trace lines (for any event, not just exceptions). Optional
+            exception_type (str): Exception type (for exception events). Optional
+            exception_msg (str): Exception message (for exception events). Optional
+            source_file (str): Source file (for exception events). Optional
+            source_line (int): Source line (for exception events). Optional
+            source_function (str): Source function (for exception events). Optional
 
         Returns:
             dict: Response from the server
@@ -350,21 +380,29 @@ class DatacatClient(object):
         url = "{0}/event".format(self.base_url)
         request_data = {"session_id": session_id, "name": name, "data": data}
 
-        # Add optional fields if provided
-        if level:
-            request_data["level"] = level
-        if category:
-            request_data["category"] = category
-        if labels:
-            request_data["labels"] = labels
+        # Always include required fields with defaults if not provided
+        # Category (user-defined: debug, info, warning, error, critical, or custom)
+        request_data["category"] = category if category else "info"
+
+        # Group (logger name or component name) - optional
+        if group:
+            request_data["group"] = group
+
+        # Labels (array of strings) - always include as array, even if empty
+        request_data["labels"] = labels if labels else []
+
+        # Message - only include if provided (no default)
         if message:
             request_data["message"] = message
+
+        # Stacktrace - available for any event, not just exceptions
+        if stacktrace:
+            request_data["stacktrace"] = stacktrace
+        # Exception-specific fields
         if exception_type:
             request_data["exception_type"] = exception_type
         if exception_msg:
             request_data["exception_msg"] = exception_msg
-        if stacktrace:
-            request_data["stacktrace"] = stacktrace
         if source_file:
             request_data["source_file"] = source_file
         if source_line is not None:
@@ -374,7 +412,8 @@ class DatacatClient(object):
 
         return self._make_request(url, method="POST", data=request_data)
 
-    def log_metric(self, session_id, name, value, tags=None):
+    def log_metric(self, session_id, name, value, tags=None, metric_type="gauge",
+                   count=None, unit=None, metadata=None, delta=None):
         """
         Log a metric to a session
 
@@ -383,6 +422,11 @@ class DatacatClient(object):
             name (str): Metric name
             value (float): Metric value
             tags (list): Optional list of tags
+            metric_type (str): Metric type - "gauge", "counter", "histogram", or "timer"
+            count (int): Optional count (for timers - number of iterations)
+            unit (str): Optional unit (e.g., "seconds", "milliseconds", "bytes")
+            metadata (dict): Optional additional metadata
+            delta (float): Optional delta (for incremental counters)
 
         Returns:
             dict: Response from the server
@@ -394,9 +438,18 @@ class DatacatClient(object):
         metric_data = {
             "session_id": session_id,
             "name": name,
+            "type": metric_type,
             "value": float(value),
             "tags": tags or [],
         }
+        if count is not None:
+            metric_data["count"] = int(count)
+        if unit:
+            metric_data["unit"] = unit
+        if metadata:
+            metric_data["metadata"] = metadata
+        if delta is not None:
+            metric_data["delta"] = float(delta)
         return self._make_request(url, method="POST", data=metric_data)
 
     def end_session(self, session_id):
@@ -438,10 +491,25 @@ class DatacatClient(object):
         exception_type = exc_type.__name__ if exc_type else "Unknown"
         exception_msg = str(exc_value) if exc_value else ""
 
-        # Format stack trace as list of strings
-        stacktrace_lines = traceback.format_exception(
-            exc_type, exc_value, exc_traceback
-        )
+        # Format stack trace as list of strings - always include stack trace for exceptions
+        stacktrace_lines = []
+        if exc_type or exc_value or exc_traceback:
+            try:
+                stacktrace_lines = traceback.format_exception(
+                    exc_type, exc_value, exc_traceback
+                )
+            except Exception:
+                # Fallback: try to get current stack
+                try:
+                    stacktrace_lines = traceback.format_stack()
+                except Exception:
+                    stacktrace_lines = ["Failed to capture stack trace"]
+        else:
+            # If no exception info available, try to get current stack
+            try:
+                stacktrace_lines = traceback.format_stack()
+            except Exception:
+                stacktrace_lines = ["No stack trace available"]
 
         # Extract source file, line, and function from the innermost frame
         source_file = None
@@ -457,18 +525,27 @@ class DatacatClient(object):
             source_file = frame.f_code.co_filename
             source_line = tb.tb_lineno
             source_function = frame.f_code.co_name
+        elif not stacktrace_lines or len(stacktrace_lines) == 0:
+            # Try to extract from current frame if no traceback
+            try:
+                frame = sys._getframe(1)
+                source_file = frame.f_code.co_filename
+                source_line = frame.f_lineno
+                source_function = frame.f_code.co_name
+            except Exception:
+                pass
 
         return self.log_event(
             session_id=session_id,
             name="exception",
-            level="error",
-            category="exception",
+            category="error",
+            group="exception",
             labels=["exception", exception_type],
             message=exception_msg,
             data=extra_data if extra_data else {},
+            stacktrace=stacktrace_lines,
             exception_type=exception_type,
             exception_msg=exception_msg,
-            stacktrace=stacktrace_lines,
             source_file=source_file,
             source_line=source_line,
             source_function=source_function,
@@ -728,8 +805,8 @@ try:
                     # Regular event log
                     self.session.log_event(
                         name=event_name,
-                        level=level,
-                        category=record.name,
+                        category=level,
+                        group=record.name,
                         labels=labels,
                         message=message,
                         data=data,
@@ -743,7 +820,311 @@ try:
 
 except ImportError:
     # logging module not available (shouldn't happen in modern Python)
-    __all__ = ["DatacatClient", "Session", "HeartbeatMonitor"]
+    __all__ = ["DatacatClient", "Session", "AsyncSession", "HeartbeatMonitor"]
+
+
+# Async logging support for real-time applications (games, etc.)
+try:
+    import queue  # Python 3
+except ImportError:
+    import Queue as queue  # Python 2
+
+
+class AsyncSession(object):
+    """
+    Non-blocking session wrapper for real-time applications (e.g., games).
+
+    All logging operations return immediately (< 0.01ms) by queueing them
+    for processing in a background thread. This prevents blocking the main
+    thread during network I/O.
+
+    Ideal for applications with strict frame timing requirements where
+    logging overhead must be minimal.
+
+    Example usage:
+        session = create_session("http://localhost:9090")
+        async_session = AsyncSession(session, queue_size=10000)
+
+        # In game loop - returns immediately!
+        async_session.log_event("player_moved", data={"x": 10, "y": 20})
+        async_session.log_metric("fps", 60.0)
+
+        # Graceful shutdown - flushes remaining logs
+        async_session.shutdown()
+    """
+
+    def __init__(self, session, queue_size=10000, drop_on_full=True):
+        """
+        Initialize async session wrapper
+
+        Args:
+            session (Session): The underlying Session to wrap
+            queue_size (int): Maximum queue size (default: 10000)
+            drop_on_full (bool): If True, drop logs when queue is full.
+                                 If False, block until space available.
+        """
+        self.session = session
+        self.drop_on_full = drop_on_full
+        self.queue = queue.Queue(maxsize=queue_size)
+        self.running = True
+
+        # Statistics
+        self.sent_count = 0
+        self.dropped_count = 0
+
+        # Start background sender thread
+        self.thread = threading.Thread(target=self._background_sender)
+        self.thread.daemon = True
+        self.thread.start()
+
+    def log_event(self, name, category=None, group=None, labels=None, message=None, data=None, stacktrace=None, level=None):
+        """
+        Log an event (non-blocking, returns immediately)
+
+        Args:
+            name (str): Event name (required)
+            category (str): User-defined category (e.g., debug, info, warning, error, critical, or custom). Defaults to "info"
+            group (str): Group/logger name (e.g., logger name, component name). Optional
+            labels (list): Array of label strings. Defaults to empty array
+            message (str): Human-readable message. Optional (no default)
+            data (dict): Event data. Defaults to empty dict
+            stacktrace (list): Stack trace lines (for any event). Optional
+            level (str): DEPRECATED - use 'category' instead. Maps to category for backward compatibility.
+        """
+        # Backward compatibility: map 'level' to 'category' if category not provided
+        if level is not None and category is None:
+            category = level
+
+        # Ensure labels is always a list
+        if labels is None:
+            labels = []
+
+        # Ensure data is always a dict
+        if data is None:
+            data = {}
+
+        self._queue_item('event', {
+            'name': name,
+            'category': category,
+            'group': group,
+            'labels': labels,
+            'message': message,
+            'data': data,
+            'stacktrace': stacktrace
+        })
+
+    def log_metric(self, name, value, tags=None, metric_type="gauge", count=None, unit=None, metadata=None, delta=None):
+        """
+        Log a metric (non-blocking, returns immediately)
+
+        Args:
+            name (str): Metric name
+            value (float): Metric value
+            tags (list): Optional tags
+            metric_type (str): Metric type
+            count (int): Optional count for timers
+            unit (str): Optional unit
+            metadata (dict): Optional metadata
+            delta (float): Optional delta for counters
+        """
+        metric_data = {
+            'name': name,
+            'type': metric_type,
+            'value': value,
+            'tags': tags
+        }
+        if count is not None:
+            metric_data['count'] = count
+        if unit:
+            metric_data['unit'] = unit
+        if metadata:
+            metric_data['metadata'] = metadata
+        if delta is not None:
+            metric_data['delta'] = delta
+
+        self._queue_item('metric', metric_data)
+
+    def log_gauge(self, name, value, unit=None, tags=None, metadata=None):
+        """Log a gauge metric (non-blocking)"""
+        return self.log_metric(name, value, tags=tags, metric_type="gauge", unit=unit, metadata=metadata)
+
+    def log_counter(self, name, delta=1, tags=None):
+        """Log a counter increment (non-blocking)"""
+        return self.log_metric(name, 0, tags=tags, metric_type="counter", delta=delta)
+
+    def log_histogram(self, name, value, unit=None, tags=None, buckets=None, metadata=None):
+        """Log a histogram sample (non-blocking)"""
+        if buckets is not None:
+            if metadata is None:
+                metadata = {}
+            metadata["buckets"] = buckets
+        return self.log_metric(name, value, tags=tags, metric_type="histogram", unit=unit, metadata=metadata)
+
+    def timer(self, name, count=None, unit="seconds", tags=None):
+        """Create a timer context manager (non-blocking)"""
+        return Timer(self, name, count=count, unit=unit, tags=tags)
+
+    def update_state(self, state):
+        """
+        Update session state (non-blocking, returns immediately)
+
+        Args:
+            state (dict): State data to update
+        """
+        self._queue_item('state', {'state': state})
+
+    def log_exception(self, exc_info=None, extra_data=None):
+        """
+        Log an exception (non-blocking, returns immediately)
+
+        Args:
+            exc_info (tuple): Exception info from sys.exc_info()
+            extra_data (dict): Optional additional data
+        """
+        self._queue_item('exception', {
+            'exc_info': exc_info,
+            'extra_data': extra_data
+        })
+
+    def heartbeat(self):
+        """Send heartbeat (non-blocking, returns immediately)"""
+        if self.session._heartbeat_monitor:
+            self.session._heartbeat_monitor.heartbeat()
+
+    def _queue_item(self, item_type, data):
+        """Internal method to queue an item for async processing"""
+        try:
+            if self.drop_on_full:
+                self.queue.put_nowait({'type': item_type, 'data': data})
+            else:
+                self.queue.put({'type': item_type, 'data': data})
+        except queue.Full:
+            self.dropped_count += 1
+
+    def _background_sender(self):
+        """Background thread that processes queued items"""
+        while self.running:
+            try:
+                # Get item with small timeout for batching
+                item = self.queue.get(timeout=0.01)
+
+                # Process based on type
+                item_type = item['type']
+                data = item['data']
+
+                try:
+                    if item_type == 'event':
+                        # Support backward compatibility: map 'level' to 'category'
+                        category = data.get('category')
+                        if category is None and 'level' in data:
+                            category = data.get('level')
+
+                        self.session.log_event(
+                            data['name'],
+                            category=category,
+                            group=data.get('group'),
+                            labels=data.get('labels'),
+                            message=data.get('message'),
+                            data=data.get('data'),
+                            stacktrace=data.get('stacktrace')
+                        )
+                    elif item_type == 'metric':
+                        self.session.log_metric(
+                            data['name'],
+                            data['value'],
+                            tags=data.get('tags'),
+                            metric_type=data.get('type', 'gauge'),
+                            count=data.get('count'),
+                            unit=data.get('unit'),
+                            metadata=data.get('metadata'),
+                            delta=data.get('delta')
+                        )
+                    elif item_type == 'state':
+                        self.session.update_state(data['state'])
+                    elif item_type == 'exception':
+                        self.session.log_exception(
+                            exc_info=data.get('exc_info'),
+                            extra_data=data.get('extra_data')
+                        )
+
+                    self.sent_count += 1
+
+                except Exception as e:
+                    # Don't crash background thread on logging errors
+                    import traceback
+                    print("AsyncSession error: {0}".format(str(e)))
+                    print("Traceback:")
+                    traceback.print_exc()
+
+            except queue.Empty:
+                continue
+
+    def get_stats(self):
+        """
+        Get logging statistics
+
+        Returns:
+            dict: Statistics including sent, dropped, and queued counts
+        """
+        return {
+            'sent': self.sent_count,
+            'dropped': self.dropped_count,
+            'queued': self.queue.qsize()
+        }
+
+    def flush(self, timeout=2.0):
+        """
+        Wait for queue to drain (blocks until queue is empty or timeout)
+
+        Args:
+            timeout (float): Maximum seconds to wait
+        """
+        deadline = time.time() + timeout
+        while not self.queue.empty() and time.time() < deadline:
+            time.sleep(0.01)
+
+    def shutdown(self, timeout=2.0):
+        """
+        Gracefully shutdown async logging
+
+        Flushes remaining logs, stops background thread, and ends session.
+
+        Args:
+            timeout (float): Maximum seconds to wait for queue to drain
+        """
+        # Flush remaining items
+        self.flush(timeout)
+
+        # Stop background thread
+        self.running = False
+        if self.thread.is_alive():
+            self.thread.join(timeout=1.0)
+
+        # End underlying session
+        return self.session.end()
+
+    def end(self):
+        """Alias for shutdown() for consistency with Session API"""
+        return self.shutdown()
+
+    # Forward other methods to underlying session
+    def get_details(self):
+        """Get session details"""
+        return self.session.get_details()
+
+    def start_heartbeat_monitor(self, timeout=60, check_interval=5):
+        """Start heartbeat monitor"""
+        return self.session.start_heartbeat_monitor(timeout, check_interval)
+
+    @property
+    def session_id(self):
+        """Get session ID"""
+        return self.session.session_id
+
+    @property
+    def client(self):
+        """Get underlying client"""
+        return self.session.client
 
 
 # Convenience class for session management
@@ -767,22 +1148,152 @@ class Session(object):
         return self.client.update_state(self.session_id, state)
 
     def log_event(
-        self, name, level=None, category=None, labels=None, message=None, data=None
+        self, name, category=None, group=None, labels=None, message=None, data=None, stacktrace=None, level=None
     ):
-        """Log an event"""
+        """
+        Log an event
+
+        Args:
+            name (str): Event name (required)
+            category (str): User-defined category (e.g., debug, info, warning, error, critical, or custom). Defaults to "info"
+            group (str): Group/logger name (e.g., logger name, component name). Optional
+            labels (list): Array of label strings. Defaults to empty array
+            message (str): Human-readable message. Optional (no default)
+            data (dict): Event data. Defaults to empty dict
+            stacktrace (list): Stack trace lines (for any event). Optional
+            level (str): DEPRECATED - use 'category' instead. Maps to category for backward compatibility.
+        """
+        # Backward compatibility: map 'level' to 'category' if category not provided
+        if level is not None and category is None:
+            category = level
+
+        # Ensure labels is always a list
+        if labels is None:
+            labels = []
+
+        # Ensure data is always a dict
+        if data is None:
+            data = {}
+
         return self.client.log_event(
             self.session_id,
             name,
-            level=level,
             category=category,
+            group=group,
             labels=labels,
             message=message,
             data=data,
+            stacktrace=stacktrace,
         )
 
-    def log_metric(self, name, value, tags=None):
+    def log_metric(self, name, value, tags=None, metric_type="gauge",
+                   count=None, unit=None, metadata=None, delta=None):
         """Log a metric"""
-        return self.client.log_metric(self.session_id, name, value, tags)
+        return self.client.log_metric(self.session_id, name, value, tags,
+                                      metric_type, count, unit, metadata, delta)
+
+    def log_gauge(self, name, value, tags=None, unit=None):
+        """Log a gauge metric (current value)"""
+        return self.log_metric(name, value, tags=tags, metric_type="gauge", unit=unit)
+
+    def log_counter(self, name, delta=1, tags=None):
+        """
+        Increment a counter metric by delta
+
+        The daemon tracks the cumulative total and sends it to the server.
+        You don't need to track the total yourself!
+
+        Args:
+            name (str): Counter name
+            delta (float): Amount to increment (default: 1)
+            tags (list): Optional tags
+
+        Examples:
+            # Increment by 1 (most common)
+            session.log_counter("requests")
+
+            # Increment by specific amount
+            session.log_counter("bytes_sent", delta=1024)
+
+            # With tags
+            session.log_counter("errors", tags=["type:validation"])
+        """
+        return self.client.log_metric(
+            self.session_id,
+            name,
+            value=0,  # Value is ignored for delta counters
+            tags=tags,
+            metric_type="counter",
+            delta=delta
+        )
+
+    def log_histogram(self, name, value, unit=None, tags=None, buckets=None, metadata=None):
+        """
+        Log a histogram metric (value distribution)
+
+        The daemon accumulates samples into buckets and sends bucket counts to the server.
+
+        Args:
+            name (str): Histogram name
+            value (float): Sample value
+            unit (str): Optional unit (e.g., "seconds", "bytes")
+            tags (list): Optional tags
+            buckets (list): Optional bucket boundaries. If not specified, uses default buckets.
+            metadata (dict): Optional additional metadata
+
+        Examples:
+            # Default buckets (covers microseconds to minutes)
+            session.log_histogram("request_latency", 0.045)
+
+            # Custom buckets for FPS (frame times)
+            # +60fps, 60fps, 30fps, 20fps, 10fps, <10fps
+            fps_buckets = [1/60, 1/30, 1/20, 1/10, float('inf')]
+            session.log_histogram("frame_time", 0.016, buckets=fps_buckets)
+        """
+        # Add buckets to metadata if specified
+        if buckets is not None:
+            if metadata is None:
+                metadata = {}
+            metadata["buckets"] = buckets
+
+        return self.log_metric(name, value, unit=unit, tags=tags, metric_type="histogram", metadata=metadata)
+
+    def log_timer(self, name, duration, count=None, tags=None, unit="seconds"):
+        """Log a timer metric (duration measurement)"""
+        return self.log_metric(name, duration, tags=tags, metric_type="timer",
+                              count=count, unit=unit)
+
+    def timer(self, name, count=None, tags=None, unit="seconds"):
+        """
+        Context manager for timing code execution
+
+        Args:
+            name (str): Timer name
+            count (int): Optional count (for iterations)
+            tags (list): Optional tags
+            unit (str): Time unit ("seconds" or "milliseconds")
+
+        Returns:
+            Timer: Timer object (can access .count property)
+
+        Examples:
+            # Basic timer
+            with session.timer("load_data"):
+                data = load_data()
+
+            # Timer with known count
+            items = get_items()
+            with session.timer("process_items", count=len(items)):
+                for item in items:
+                    process(item)
+
+            # Timer with incremental count
+            with session.timer("process_queue") as t:
+                while queue.has_items():
+                    t.count += 1
+                    process(queue.pop())
+        """
+        return Timer(self, name, count=count, tags=tags, unit=unit)
 
     def log_exception(self, exc_info=None, extra_data=None):
         """
@@ -873,11 +1384,67 @@ class Session(object):
 
 
 # Factory function for convenience
+class Timer(object):
+    """
+    Context manager for timing code execution
+
+    Automatically measures duration and logs as a timer metric when exiting context.
+    Supports counting iterations for average time calculations.
+    """
+
+    def __init__(self, session, name, count=None, tags=None, unit="seconds"):
+        """
+        Initialize timer
+
+        Args:
+            session: Session object
+            name (str): Timer name
+            count (int): Optional initial count
+            tags (list): Optional tags
+            unit (str): Time unit ("seconds" or "milliseconds")
+        """
+        self.session = session
+        self.name = name
+        self.count = count if count is not None else 0
+        self.tags = tags
+        self.unit = unit
+        self.start_time = None
+
+    def __enter__(self):
+        """Start timing"""
+        self.start_time = time.time()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Stop timing and log metric"""
+        end_time = time.time()
+        duration = end_time - self.start_time
+
+        # Convert to specified unit
+        if self.unit == "milliseconds":
+            duration = duration * 1000
+
+        # Log the timer metric
+        self.session.log_metric(
+            self.name,
+            duration,
+            metric_type="timer",
+            count=self.count if self.count > 0 else None,
+            tags=self.tags,
+            unit=self.unit
+        )
+
+        # Don't suppress exceptions
+        return False
+
+
 def create_session(
     base_url="http://localhost:9090",
-    daemon_port="8079",
+    daemon_port="auto",
     product=None,
     version=None,
+    async_mode=False,
+    queue_size=10000
 ):
     """
     Create a new session and return a Session object
@@ -886,19 +1453,39 @@ def create_session(
 
     Args:
         base_url (str): Base URL of the datacat server (daemon's upstream)
-        daemon_port (str): Port for the local daemon
+        daemon_port (str): Port for the local daemon ("auto" finds available port)
         product (str): Product name (required)
         version (str): Product version (required)
+        async_mode (bool): If True, return AsyncSession for non-blocking logging
+                           (recommended for games and real-time applications)
+        queue_size (int): Queue size for async mode (default: 10000)
 
     Returns:
-        Session: Session object ready to use
+        Session or AsyncSession: Session object (or AsyncSession if async_mode=True)
 
     Raises:
         Exception: If session creation fails or if product/version are not provided
+
+    Examples:
+        # Standard blocking mode
+        session = create_session("http://localhost:9090", product="MyApp", version="1.0")
+        session.update_state({"status": "running"})
+        session.log_event("app_started")
+        session.end()
+
+        # Async mode for games (non-blocking, < 0.01ms per call)
+        session = create_session("http://localhost:9090", product="MyGame", version="1.0", async_mode=True)
+        session.log_event("player_moved", data={"x": 10, "y": 20})  # Returns immediately!
+        session.shutdown()  # Flushes queue and ends session
     """
     if not product or not version:
         raise Exception("Product and version are required to create a session")
 
     client = DatacatClient(base_url, daemon_port=daemon_port)
     session_id = client.register_session(product, version)
-    return Session(client, session_id)
+    session = Session(client, session_id)
+
+    if async_mode:
+        return AsyncSession(session, queue_size=queue_size)
+    else:
+        return session

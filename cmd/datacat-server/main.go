@@ -1,8 +1,10 @@
 package main
 
 import (
+	"compress/gzip"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"strings"
@@ -11,6 +13,13 @@ import (
 
 	badger "github.com/dgraph-io/badger/v3"
 	"github.com/google/uuid"
+)
+
+const (
+	eventHangDetected   = "application_appears_hung"
+	eventHangRecovered  = "application_recovered"
+	defaultEventLevel   = "info"
+	exceptionEventLevel = "error"
 )
 
 // Session represents a registered session
@@ -40,29 +49,33 @@ type StateSnapshot struct {
 
 // Event represents an event logged in a session
 type Event struct {
-	Timestamp time.Time              `json:"timestamp"`
-	Name      string                 `json:"name"`
-	Level     string                 `json:"level"`    // debug, info, warning, error, critical
-	Category  string                 `json:"category"` // e.g., logger name, component name
-	Labels    []string               `json:"labels"`   // arbitrary tags for filtering
-	Message   string                 `json:"message"`  // human-readable message
-	Data      map[string]interface{} `json:"data"`     // additional structured data
+	Timestamp  time.Time              `json:"timestamp"`
+	Name       string                 `json:"name"`
+	Category   string                 `json:"category"`             // User-defined category (e.g., debug, info, warning, error, critical, or custom)
+	Group      string                 `json:"group"`                // Group/logger name (e.g., logger name, component name)
+	Labels     []string               `json:"labels"`               // arbitrary tags for filtering
+	Message    string                 `json:"message"`              // human-readable message
+	Data       map[string]interface{} `json:"data"`                 // additional structured data
+	Stacktrace []string               `json:"stacktrace,omitempty"` // Stack trace for any event (not just exceptions)
 
 	// Exception-specific fields (when this is an exception event)
-	ExceptionType  string   `json:"exception_type,omitempty"`  // e.g., "ValueError", "NullPointerException"
-	ExceptionMsg   string   `json:"exception_msg,omitempty"`   // exception message
-	Stacktrace     []string `json:"stacktrace,omitempty"`      // array of stack trace lines
-	SourceFile     string   `json:"source_file,omitempty"`     // file where exception occurred
-	SourceLine     int      `json:"source_line,omitempty"`     // line number where exception occurred
-	SourceFunction string   `json:"source_function,omitempty"` // function where exception occurred
+	ExceptionType  string `json:"exception_type,omitempty"`  // e.g., "ValueError", "NullPointerException"
+	ExceptionMsg   string `json:"exception_msg,omitempty"`   // exception message
+	SourceFile     string `json:"source_file,omitempty"`     // file where exception occurred
+	SourceLine     int    `json:"source_line,omitempty"`     // line number where exception occurred
+	SourceFunction string `json:"source_function,omitempty"` // function where exception occurred
 }
 
 // Metric represents a metric logged in a session
 type Metric struct {
-	Timestamp time.Time `json:"timestamp"`
-	Name      string    `json:"name"`
-	Value     float64   `json:"value"`
-	Tags      []string  `json:"tags,omitempty"`
+	Timestamp time.Time              `json:"timestamp"`
+	Name      string                 `json:"name"`
+	Type      string                 `json:"type"` // "gauge", "counter", "histogram", "timer"
+	Value     float64                `json:"value"`
+	Count     *int                   `json:"count,omitempty"` // For timers: number of iterations
+	Unit      string                 `json:"unit,omitempty"`  // e.g., "seconds", "milliseconds", "bytes"
+	Tags      []string               `json:"tags,omitempty"`
+	Metadata  map[string]interface{} `json:"metadata,omitempty"` // Additional data for histograms, etc.
 }
 
 // Store manages all sessions with BadgerDB for persistence
@@ -106,14 +119,22 @@ func (s *Store) Close() error {
 func (s *Store) saveSessionToDB(session *Session) error {
 	data, err := json.Marshal(session)
 	if err != nil {
+		log.Printf("ERROR: Failed to marshal session %s: %v", session.ID, err)
 		return fmt.Errorf("failed to marshal session: %v", err)
 	}
 
-	err = s.db.Update(func(txn *badger.Txn) error {
-		return txn.Set([]byte("session:"+session.ID), data)
+	return s.saveSessionDataToDB(session.ID, data)
+}
+
+// saveSessionDataToDB saves pre-marshaled session data to the database
+// This is used when marshaling is done while holding a lock to avoid race conditions
+func (s *Store) saveSessionDataToDB(sessionID string, data []byte) error {
+	err := s.db.Update(func(txn *badger.Txn) error {
+		return txn.Set([]byte("session:"+sessionID), data)
 	})
 
 	if err != nil {
+		log.Printf("ERROR: Failed to save session %s to database: %v", sessionID, err)
 		return fmt.Errorf("failed to save session to db: %v", err)
 	}
 
@@ -210,8 +231,20 @@ func (s *Store) CreateSession(product, version, machineID, hostname string) *Ses
 
 	s.sessions[session.ID] = session
 
-	// Save to database asynchronously
-	go s.saveSessionToDB(session)
+	// Marshal session while holding lock to avoid race conditions
+	sessionData, err := json.Marshal(session)
+	if err != nil {
+		log.Printf("ERROR: Failed to marshal session %s: %v", session.ID, err)
+		// Session is still in memory, continue anyway
+	} else {
+		// Save to database asynchronously
+		sessionID := session.ID
+		go func() {
+			if err := s.saveSessionDataToDB(sessionID, sessionData); err != nil {
+				// Error is already logged in saveSessionDataToDB
+			}
+		}()
+	}
 
 	return session
 }
@@ -330,8 +363,14 @@ func deepCopyState(state map[string]interface{}) map[string]interface{} {
 	return copy
 }
 
+// StateUpdateInput represents the input for updating state
+type StateUpdateInput struct {
+	Timestamp *time.Time             `json:"timestamp,omitempty"` // Optional timestamp from daemon
+	State     map[string]interface{} `json:"state"`
+}
+
 // UpdateState updates the state of a session (merges new state with existing)
-func (s *Store) UpdateState(id string, state map[string]interface{}) error {
+func (s *Store) UpdateState(id string, input StateUpdateInput) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -340,19 +379,37 @@ func (s *Store) UpdateState(id string, state map[string]interface{}) error {
 		return fmt.Errorf("session not found")
 	}
 
+	// Use timestamp from daemon if provided, otherwise use server time
+	timestamp := time.Now()
+	if input.Timestamp != nil {
+		timestamp = *input.Timestamp
+	}
+
 	// Deep merge the new state into the existing state
-	deepMerge(session.State, state)
+	deepMerge(session.State, input.State)
 	session.UpdatedAt = time.Now()
 
 	// Create a snapshot of the current state
 	snapshot := StateSnapshot{
-		Timestamp: time.Now(),
+		Timestamp: timestamp,
 		State:     deepCopyState(session.State),
 	}
 	session.StateHistory = append(session.StateHistory, snapshot)
 
+	// Marshal session while holding lock to avoid race conditions
+	sessionData, err := json.Marshal(session)
+	if err != nil {
+		log.Printf("ERROR: Failed to marshal session %s: %v", session.ID, err)
+		return fmt.Errorf("failed to marshal session: %v", err)
+	}
+
 	// Save to database asynchronously
-	go s.saveSessionToDB(session)
+	sessionID := session.ID
+	go func() {
+		if err := s.saveSessionDataToDB(sessionID, sessionData); err != nil {
+			// Error is already logged in saveSessionDataToDB
+		}
+	}()
 
 	return nil
 }
@@ -374,8 +431,20 @@ func (s *Store) UpdateHeartbeat(id string) error {
 	// Update active status based on heartbeat
 	s.updateActiveStatus(session)
 
+	// Marshal session while holding lock to avoid race conditions
+	sessionData, err := json.Marshal(session)
+	if err != nil {
+		log.Printf("ERROR: Failed to marshal session %s: %v", session.ID, err)
+		return fmt.Errorf("failed to marshal session: %v", err)
+	}
+
 	// Save to database asynchronously
-	go s.saveSessionToDB(session)
+	sessionID := session.ID
+	go func() {
+		if err := s.saveSessionDataToDB(sessionID, sessionData); err != nil {
+			// Error is already logged in saveSessionDataToDB
+		}
+	}()
 
 	return nil
 }
@@ -432,8 +501,58 @@ func (s *Store) EndSession(id string) error {
 	session.Active = false
 	session.UpdatedAt = now
 
+	// Marshal session while holding lock to avoid race conditions
+	sessionData, err := json.Marshal(session)
+	if err != nil {
+		log.Printf("ERROR: Failed to marshal session %s: %v", session.ID, err)
+		return fmt.Errorf("failed to marshal session: %v", err)
+	}
+
 	// Save to database asynchronously
-	go s.saveSessionToDB(session)
+	sessionID := session.ID
+	go func() {
+		if err := s.saveSessionDataToDB(sessionID, sessionData); err != nil {
+			// Error is already logged in saveSessionDataToDB
+		}
+	}()
+
+	return nil
+}
+
+// CrashSession marks a session as crashed (abnormal termination)
+func (s *Store) CrashSession(id, reason string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	session, ok := s.sessions[id]
+	if !ok {
+		return fmt.Errorf("session not found")
+	}
+
+	now := time.Now()
+	session.EndedAt = &now
+	session.Active = false
+	session.Crashed = true
+	session.Suspended = false
+	session.Hung = false // Clear hung flag when crashed
+	session.UpdatedAt = now
+
+	// Add crash event
+	session.Events = append(session.Events, Event{
+		Timestamp: now,
+		Name:      "session_crashed_detected",
+		Category:  "critical",
+		Data: map[string]interface{}{
+			"reason": reason,
+		},
+	})
+
+	log.Printf("Session %s marked as crashed: %s", id, reason)
+
+	// Save to database synchronously to ensure crash is recorded
+	if err := s.saveSessionToDB(session); err != nil {
+		log.Printf("Error saving crashed session to database: %v", err)
+	}
 
 	return nil
 }
@@ -488,97 +607,227 @@ func (s *Store) StartCleanupRoutine() {
 	}()
 }
 
+// EventInput represents the input for adding an event
+type EventInput struct {
+	Timestamp      *time.Time             `json:"timestamp,omitempty"` // Optional timestamp from daemon
+	Name           string                 `json:"name"`
+	Category       string                 `json:"category"` // User-defined category (e.g., debug, info, warning, error, critical, or custom)
+	Group          string                 `json:"group"`    // Group/logger name (e.g., logger name, component name)
+	Labels         []string               `json:"labels"`
+	Message        string                 `json:"message"`
+	Data           map[string]interface{} `json:"data"`
+	Stacktrace     []string               `json:"stacktrace,omitempty"` // Stack trace for any event
+	ExceptionType  string                 `json:"exception_type,omitempty"`
+	ExceptionMsg   string                 `json:"exception_msg,omitempty"`
+	SourceFile     string                 `json:"source_file,omitempty"`
+	SourceLine     int                    `json:"source_line,omitempty"`
+	SourceFunction string                 `json:"source_function,omitempty"`
+}
+
 // AddEvent adds an event to a session
-func (s *Store) AddEvent(id string, name string, level string, category string, labels []string, message string, data map[string]interface{}, exceptionType string, exceptionMsg string, stacktrace []string, sourceFile string, sourceLine int, sourceFunction string) error {
+func (s *Store) AddEvent(sessionID string, input EventInput) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	session, ok := s.sessions[id]
+	session, ok := s.sessions[sessionID]
 	if !ok {
 		return fmt.Errorf("session not found")
 	}
 
-	// Default level to "info" if not specified
-	if level == "" {
-		level = "info"
+	// Default category to "info" if not specified
+	category := input.Category
+	if category == "" {
+		category = defaultEventLevel
 	}
 
-	// For exceptions, default level to "error" if not specified
-	if exceptionType != "" && level == "info" {
-		level = "error"
+	// For exceptions, default category to "error" if not specified
+	if input.ExceptionType != "" && category == defaultEventLevel {
+		category = exceptionEventLevel
+	}
+
+	// Use timestamp from daemon if provided, otherwise use server time
+	timestamp := time.Now()
+	if input.Timestamp != nil {
+		timestamp = *input.Timestamp
 	}
 
 	event := Event{
-		Timestamp:      time.Now(),
-		Name:           name,
-		Level:          level,
+		Timestamp:      timestamp,
+		Name:           input.Name,
 		Category:       category,
-		Labels:         labels,
-		Message:        message,
-		Data:           data,
-		ExceptionType:  exceptionType,
-		ExceptionMsg:   exceptionMsg,
-		Stacktrace:     stacktrace,
-		SourceFile:     sourceFile,
-		SourceLine:     sourceLine,
-		SourceFunction: sourceFunction,
+		Group:          input.Group,
+		Labels:         input.Labels,
+		Message:        input.Message,
+		Data:           input.Data,
+		Stacktrace:     input.Stacktrace,
+		ExceptionType:  input.ExceptionType,
+		ExceptionMsg:   input.ExceptionMsg,
+		SourceFile:     input.SourceFile,
+		SourceLine:     input.SourceLine,
+		SourceFunction: input.SourceFunction,
 	}
 	session.Events = append(session.Events, event)
 	session.UpdatedAt = time.Now()
 
 	// Mark session as hung if we receive a hang event
-	if name == "application_appears_hung" {
+	if input.Name == eventHangDetected {
 		session.Hung = true
-		log.Printf("Session %s marked as hung", id)
+		log.Printf("Session %s marked as hung", sessionID)
 	}
 
 	// Clear hung flag if application recovers
-	if name == "application_recovered" {
+	if input.Name == eventHangRecovered {
 		session.Hung = false
-		log.Printf("Session %s recovered from hang", id)
+		log.Printf("Session %s recovered from hang", sessionID)
+	}
+
+	// Marshal session while holding lock to avoid race conditions
+	sessionData, err := json.Marshal(session)
+	if err != nil {
+		log.Printf("ERROR: Failed to marshal session %s: %v", session.ID, err)
+		return fmt.Errorf("failed to marshal session: %v", err)
 	}
 
 	// Save to database asynchronously
-	go s.saveSessionToDB(session)
+	sid := sessionID // Capture for goroutine
+	go func() {
+		if err := s.saveSessionDataToDB(sid, sessionData); err != nil {
+			// Error is already logged in saveSessionDataToDB
+		}
+	}()
 
 	return nil
 }
 
+// MetricInput represents the input for adding a metric
+type MetricInput struct {
+	Timestamp *time.Time             `json:"timestamp,omitempty"` // Optional timestamp from daemon
+	Name      string                 `json:"name"`
+	Type      string                 `json:"type"` // "gauge", "counter", "histogram", "timer"
+	Value     float64                `json:"value"`
+	Count     *int                   `json:"count,omitempty"` // For timers
+	Unit      string                 `json:"unit,omitempty"`  // e.g., "seconds", "milliseconds"
+	Tags      []string               `json:"tags,omitempty"`
+	Metadata  map[string]interface{} `json:"metadata,omitempty"`
+}
+
 // AddMetric adds a metric to a session
-func (s *Store) AddMetric(id string, name string, value float64, tags []string) error {
+func (s *Store) AddMetric(sessionID string, input MetricInput) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	session, ok := s.sessions[id]
+	session, ok := s.sessions[sessionID]
 	if !ok {
 		return fmt.Errorf("session not found")
 	}
 
+	// Use timestamp from daemon if provided, otherwise use server time
+	timestamp := time.Now()
+	if input.Timestamp != nil {
+		timestamp = *input.Timestamp
+	}
+
+	// Default to gauge if type not specified (backward compatibility)
+	metricType := input.Type
+	if metricType == "" {
+		metricType = "gauge"
+	}
+
 	metric := Metric{
-		Timestamp: time.Now(),
-		Name:      name,
-		Value:     value,
-		Tags:      tags,
+		Timestamp: timestamp,
+		Name:      input.Name,
+		Type:      metricType,
+		Value:     input.Value,
+		Count:     input.Count,
+		Unit:      input.Unit,
+		Tags:      input.Tags,
+		Metadata:  input.Metadata,
 	}
 	session.Metrics = append(session.Metrics, metric)
 	session.UpdatedAt = time.Now()
 
+	// Marshal session while holding lock to avoid race conditions
+	sessionData, err := json.Marshal(session)
+	if err != nil {
+		log.Printf("ERROR: Failed to marshal session %s: %v", session.ID, err)
+		return fmt.Errorf("failed to marshal session: %v", err)
+	}
+
 	// Save to database asynchronously
-	go s.saveSessionToDB(session)
+	sid := sessionID // Capture for goroutine
+	go func() {
+		if err := s.saveSessionDataToDB(sid, sessionData); err != nil {
+			// Error is already logged in saveSessionDataToDB
+		}
+	}()
 
 	return nil
 }
 
 var store *Store
+var serverConfig *Config
+
+// gzipMiddleware automatically decompresses gzip-encoded requests
+func gzipMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Content-Encoding") == "gzip" {
+			gzipReader, err := gzip.NewReader(r.Body)
+			if err != nil {
+				http.Error(w, "Failed to decompress request", http.StatusBadRequest)
+				return
+			}
+			defer gzipReader.Close()
+			r.Body = io.NopCloser(gzipReader)
+			r.Header.Del("Content-Encoding")
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// apiKeyMiddleware validates API key if required
+func apiKeyMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Skip auth for health check
+		if r.URL.Path == "/health" {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		// Only check API key if required
+		if serverConfig.RequireAPIKey {
+			authHeader := r.Header.Get("Authorization")
+			expectedAuth := "Bearer " + serverConfig.APIKey
+
+			if authHeader != expectedAuth {
+				log.Printf("Unauthorized request from %s to %s", r.RemoteAddr, r.URL.Path)
+				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+				return
+			}
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
 
 func main() {
 	// Load configuration
 	config := LoadConfig("./config.json")
+	serverConfig = config // Store for middleware
+
+	// Initialize file logging
+	logPath, logCleanup, err := initLogging(config)
+	if err != nil {
+		// If logging init fails, continue with stdout only
+		log.Printf("WARNING: Failed to initialize file logging: %v", err)
+	} else {
+		defer logCleanup()
+		log.Printf("Logging to file: %s", logPath)
+	}
+
 	log.Printf("Configuration loaded: Data path=%s, Retention=%d days, Port=%s",
 		config.DataPath, config.RetentionDays, config.ServerPort)
 
 	// Initialize store with BadgerDB
-	var err error
 	store, err = NewStore(config.DataPath, config)
 	if err != nil {
 		log.Fatalf("Failed to initialize store: %v", err)
@@ -589,13 +838,40 @@ func main() {
 	store.StartCleanupRoutine()
 	log.Printf("Started cleanup routine (interval: %v)", config.CleanupInterval)
 
-	http.HandleFunc("/api/sessions", handleSessions)
-	http.HandleFunc("/api/sessions/", handleSessionOperations)
-	http.HandleFunc("/api/data/sessions", handleGetAllSessions)
+	// Create a new mux to apply middleware
+	mux := http.NewServeMux()
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status":  "healthy",
+			"service": "datacat-server",
+			"version": "1.0.0",
+		})
+	})
+	mux.HandleFunc("/api/sessions", handleSessions)
+	mux.HandleFunc("/api/sessions/", handleSessionOperations)
+	mux.HandleFunc("/api/data/sessions", handleGetAllSessions)
+
+	// Apply middleware
+	handler := apiKeyMiddleware(gzipMiddleware(mux))
 
 	port := ":" + config.ServerPort
-	log.Printf("Starting datacat server on %s", port)
-	log.Fatal(http.ListenAndServe(port, nil))
+
+	// Check if TLS is configured
+	if config.TLSCertFile != "" && config.TLSKeyFile != "" {
+		log.Printf("Starting datacat server on %s (HTTPS)", port)
+		if config.RequireAPIKey {
+			log.Printf("API key authentication enabled")
+		}
+		log.Fatal(http.ListenAndServeTLS(port, config.TLSCertFile, config.TLSKeyFile, handler))
+	} else {
+		log.Printf("Starting datacat server on %s (HTTP)", port)
+		if config.RequireAPIKey {
+			log.Printf("API key authentication enabled")
+		}
+		log.Fatal(http.ListenAndServe(port, handler))
+	}
 }
 
 // handleSessions handles POST /api/sessions to create a new session
@@ -662,13 +938,32 @@ func handleSessionOperations(w http.ResponseWriter, r *http.Request) {
 
 	// POST /api/sessions/{id}/state - Update state
 	if r.Method == "POST" && operation == "state" {
-		var state map[string]interface{}
-		if err := json.NewDecoder(r.Body).Decode(&state); err != nil {
+		// Read the body
+		bodyBytes, err := io.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, "Failed to read request body", http.StatusBadRequest)
+			return
+		}
+
+		var input StateUpdateInput
+
+		// Try to unmarshal as StateUpdateInput (new format with timestamp)
+		if err := json.Unmarshal(bodyBytes, &input); err != nil {
 			http.Error(w, "Invalid request body", http.StatusBadRequest)
 			return
 		}
 
-		if err := store.UpdateState(sessionID, state); err != nil {
+		// Handle backward compatibility: if State is nil, treat the entire body as state
+		if input.State == nil {
+			var plainState map[string]interface{}
+			if err := json.Unmarshal(bodyBytes, &plainState); err != nil {
+				http.Error(w, "Invalid request body", http.StatusBadRequest)
+				return
+			}
+			input.State = plainState
+		}
+
+		if err := store.UpdateState(sessionID, input); err != nil {
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}
@@ -680,26 +975,38 @@ func handleSessionOperations(w http.ResponseWriter, r *http.Request) {
 
 	// POST /api/sessions/{id}/events - Add event
 	if r.Method == "POST" && operation == "events" {
-		var eventData struct {
-			Name           string                 `json:"name"`
-			Level          string                 `json:"level"`           // optional: debug, info, warning, error, critical
-			Category       string                 `json:"category"`        // optional: logger name, component
-			Labels         []string               `json:"labels"`          // optional: tags for filtering
-			Message        string                 `json:"message"`         // optional: human-readable message
-			Data           map[string]interface{} `json:"data"`            // optional: additional structured data
-			ExceptionType  string                 `json:"exception_type"`  // optional: for exceptions
-			ExceptionMsg   string                 `json:"exception_msg"`   // optional: for exceptions
-			Stacktrace     []string               `json:"stacktrace"`      // optional: for exceptions
-			SourceFile     string                 `json:"source_file"`     // optional: for exceptions
-			SourceLine     int                    `json:"source_line"`     // optional: for exceptions
-			SourceFunction string                 `json:"source_function"` // optional: for exceptions
-		}
-		if err := json.NewDecoder(r.Body).Decode(&eventData); err != nil {
+		// Read body to handle both EventData (from daemon) and EventInput formats
+		bodyBytes, err := io.ReadAll(r.Body)
+		if err != nil {
+			log.Printf("ERROR: Failed to read event data for session %s: %v", sessionID, err)
 			http.Error(w, "Invalid request body", http.StatusBadRequest)
 			return
 		}
 
-		if err := store.AddEvent(sessionID, eventData.Name, eventData.Level, eventData.Category, eventData.Labels, eventData.Message, eventData.Data, eventData.ExceptionType, eventData.ExceptionMsg, eventData.Stacktrace, eventData.SourceFile, eventData.SourceLine, eventData.SourceFunction); err != nil {
+		var eventData EventInput
+		// Try to unmarshal as EventInput (with optional timestamp pointer)
+		if err := json.Unmarshal(bodyBytes, &eventData); err != nil {
+			log.Printf("ERROR: Failed to decode event data for session %s: %v", sessionID, err)
+			http.Error(w, "Invalid request body", http.StatusBadRequest)
+			return
+		}
+
+		// If timestamp is nil but JSON has a timestamp field, try to parse it
+		if eventData.Timestamp == nil {
+			var temp struct {
+				Timestamp string `json:"timestamp"`
+			}
+			if err := json.Unmarshal(bodyBytes, &temp); err == nil && temp.Timestamp != "" {
+				if t, err := time.Parse(time.RFC3339Nano, temp.Timestamp); err == nil {
+					eventData.Timestamp = &t
+				} else if t, err := time.Parse(time.RFC3339, temp.Timestamp); err == nil {
+					eventData.Timestamp = &t
+				}
+			}
+		}
+
+		if err := store.AddEvent(sessionID, eventData); err != nil {
+			log.Printf("ERROR: Failed to add event for session %s: %v", sessionID, err)
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}
@@ -711,17 +1018,13 @@ func handleSessionOperations(w http.ResponseWriter, r *http.Request) {
 
 	// POST /api/sessions/{id}/metrics - Add metric
 	if r.Method == "POST" && operation == "metrics" {
-		var metricData struct {
-			Name  string   `json:"name"`
-			Value float64  `json:"value"`
-			Tags  []string `json:"tags,omitempty"`
-		}
+		var metricData MetricInput
 		if err := json.NewDecoder(r.Body).Decode(&metricData); err != nil {
 			http.Error(w, "Invalid request body", http.StatusBadRequest)
 			return
 		}
 
-		if err := store.AddMetric(sessionID, metricData.Name, metricData.Value, metricData.Tags); err != nil {
+		if err := store.AddMetric(sessionID, metricData); err != nil {
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}
@@ -734,6 +1037,26 @@ func handleSessionOperations(w http.ResponseWriter, r *http.Request) {
 	// POST /api/sessions/{id}/end - End session
 	if r.Method == "POST" && operation == "end" {
 		if err := store.EndSession(sessionID); err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+		return
+	}
+
+	// POST /api/sessions/{id}/crash - Mark session as crashed
+	if r.Method == "POST" && operation == "crash" {
+		var crashData struct {
+			Reason string `json:"reason"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&crashData); err != nil {
+			// Default reason if body is empty or invalid
+			crashData.Reason = "abnormal_termination"
+		}
+
+		if err := store.CrashSession(sessionID, crashData.Reason); err != nil {
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}

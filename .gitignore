@@ -48,6 +48,8 @@ badger_data/
 daemon_data/
 config.json
 daemon_config.json
+daemon_config_*.json
+tmp/daemon_configs/
 !*.example.json
 
 # Python
@@ -72,6 +74,11 @@ screenshots/
 
 # Temporary files
 tmp/
+
+# Log files
+*.log
+datacat-server-*.log
+datacat-web-*.log
 
 # Jekyll and documentation
 docs/_site/

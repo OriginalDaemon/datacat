@@ -1,0 +1,1532 @@
+{{define "content"}}
+<style>
+  /* Compact styling overrides */
+  .card {
+    padding: 12px;
+    margin-bottom: 12px;
+  }
+  .card h2 {
+    font-size: 18px;
+    margin-bottom: 8px;
+  }
+  .card h3 {
+    font-size: 16px;
+    margin-bottom: 6px;
+  }
+  .compact-table {
+    font-size: 13px;
+  }
+  .compact-table th,
+  .compact-table td {
+    padding: 6px 10px;
+  }
+  .metric-summary {
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    margin-bottom: 8px;
+  }
+  .metric-header {
+    padding: 10px;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: var(--bg-hover);
+  }
+  .metric-header:hover {
+    background: var(--bg-secondary);
+  }
+  .metric-stats {
+    font-size: 12px;
+    color: var(--text-secondary);
+    display: flex;
+    gap: 15px;
+    flex-wrap: wrap;
+  }
+  .event-row {
+    border-bottom: 1px solid var(--border-color);
+    padding: 8px;
+    cursor: pointer;
+    font-size: 13px;
+  }
+  .event-row:hover {
+    background: var(--bg-hover);
+  }
+  .event-row.expanded {
+    background: var(--bg-secondary);
+  }
+  .timeline-compact {
+    min-height: 150px;
+    max-height: 400px;
+  }
+  .filter-controls {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+  }
+  .filter-controls select,
+  .filter-controls input {
+    padding: 6px;
+    font-size: 13px;
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+  }
+  .histogram-viz {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 8px;
+    align-items: center;
+    font-size: 12px;
+    padding: 4px 0;
+  }
+  .histogram-bar {
+    height: 20px;
+    background: var(--accent-primary);
+    border-radius: 2px;
+    position: relative;
+  }
+  .counter-display {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    padding: 10px;
+    background: var(--bg-hover);
+    border-radius: 4px;
+  }
+  .counter-value {
+    font-size: 24px;
+    font-weight: bold;
+    color: var(--accent-primary);
+  }
+</style>
+
+<!-- Compact Time Range -->
+<div class="card">
+  <h2>Time Range</h2>
+  <div class="filter-controls">
+    <input type="datetime-local" id="time-range-start" />
+    <input type="datetime-local" id="time-range-end" />
+    <button
+      onclick="applyTimeRange()"
+      class="btn"
+      style="padding: 6px 12px; font-size: 13px"
+    >
+      Apply
+    </button>
+    <button
+      onclick="resetTimeRange()"
+      class="btn btn-secondary"
+      style="padding: 6px 12px; font-size: 13px"
+    >
+      Reset
+    </button>
+    <span
+      id="time-range-info"
+      style="font-size: 12px; color: var(--text-secondary); align-self: center"
+    ></span>
+  </div>
+</div>
+
+<!-- Compact Session Info -->
+<div class="card">
+  <h2>
+    Session: {{if ge (len .Session.ID) 16}}{{slice .Session.ID 0
+    16}}...{{else}}{{.Session.ID}}{{end}}
+  </h2>
+  <div
+    id="session-info"
+    hx-get="/api/session-info/{{.Session.ID}}"
+    hx-trigger="load{{if .Session.Active}}, every 3s{{end}}"
+    hx-swap="outerHTML"
+  >
+    <table class="compact-table" style="width: 100%">
+      <tr>
+        <th style="width: 150px">Created</th>
+        <td>{{.Session.CreatedAt.Format "2006-01-02 15:04:05"}}</td>
+        <th style="width: 150px">Status</th>
+        <td>
+          {{if .Session.Active}}<span class="badge badge-active">Active</span>
+          {{else if .Session.Crashed}}<span class="badge badge-crashed"
+            >Crashed</span
+          >
+          {{else if .Session.Suspended}}<span class="badge badge-suspended"
+            >Suspended</span
+          >
+          {{else}}<span class="badge badge-inactive">Ended</span>{{end}}
+        </td>
+      </tr>
+    </table>
+  </div>
+</div>
+
+<!-- Compact Timeline -->
+<div class="card">
+  <h2>Timeline</h2>
+  <div
+    id="timeline-wrapper"
+    class="timeline-compact"
+    style="
+      position: relative;
+      overflow-y: auto;
+      overflow-x: hidden;
+      user-select: none;
+    "
+  >
+    <div id="timeline-inner" style="position: relative; min-height: 150px">
+      <div
+        id="timeline-line"
+        style="
+          position: absolute;
+          top: 50%;
+          left: 0;
+          right: 0;
+          height: 2px;
+          background: var(--border-color);
+        "
+      ></div>
+
+      <!-- Selection overlay -->
+      <div
+        id="selection-overlay"
+        style="
+          position: absolute;
+          top: 0;
+          bottom: 0;
+          background: rgba(129, 155, 252, 0.2);
+          border: 1px solid var(--accent-primary);
+          display: none;
+        "
+      ></div>
+
+      <!-- Time marker (vertical bar) -->
+      <div
+        id="time-marker"
+        style="
+          position: absolute;
+          top: 0;
+          bottom: 0;
+          width: 2px;
+          background: #f56565;
+          display: none;
+          z-index: 5;
+          pointer-events: none;
+        "
+      >
+        <div
+          style="
+            position: absolute;
+            top: -20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #f56565;
+            color: white;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 11px;
+            white-space: nowrap;
+          "
+        ></div>
+      </div>
+
+      <div
+        id="timeline-container"
+        style="position: relative; padding: 30px 0"
+      ></div>
+    </div>
+  </div>
+
+  <!-- Details display area -->
+  <div id="timeline-details" style="margin-top: 30px; display: none">
+    <div
+      style="
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 10px;
+      "
+    >
+      <h3 id="details-title" style="margin: 0"></h3>
+      <button
+        onclick="closeTimelineDetails()"
+        class="btn btn-secondary"
+        style="padding: 5px 15px; font-size: 13px"
+      >
+        Close
+      </button>
+    </div>
+    <div
+      id="details-content"
+      style="
+        background: var(--bg-hover);
+        padding: 15px;
+        border-radius: 4px;
+        color: var(--text-primary);
+      "
+    ></div>
+  </div>
+  <script>
+    // Scroll timeline to bottom on load
+    document.addEventListener("DOMContentLoaded", function () {
+      const wrapper = document.getElementById("timeline-wrapper");
+      if (wrapper) wrapper.scrollTop = wrapper.scrollHeight;
+    });
+  </script>
+</div>
+
+<!-- Current State -->
+<div class="card">
+  <h2 id="current-state-title">
+    {{if .Session.Active}}Current State{{else}}Final State{{end}}
+  </h2>
+  <p
+    id="current-state-subtitle"
+    style="
+      color: var(--text-secondary);
+      font-size: 13px;
+      margin-bottom: 10px;
+      display: none;
+    "
+  ></p>
+  <div id="current-state-json" class="json-viewer-container"></div>
+  <script>
+    (function() {
+        const stateData = {{.Session.State | toJSONSafe}};
+        new JSONViewer('current-state-json', stateData, {
+            collapsed: false,
+            maxHeight: '500px'
+        });
+    })();
+  </script>
+  <script>
+    (function() {
+      const stateData = {{.Session.State | toJSONSafe}};
+      new JSONViewer('current-state-json', stateData, { collapsed: false, maxHeight: '400px' });
+    })();
+  </script>
+</div>
+
+<!-- Metrics with HTMX Lazy Loading -->
+{{if .Session.Metrics}}
+<div class="card">
+  <h2>Metrics Summary ({{len .Session.Metrics}} data points)</h2>
+  <div id="metrics-summary"></div>
+</div>
+
+<script>
+  const metricsByName = {};
+  let chartInstances = {};
+
+  // Group metrics by name and type
+  {{range .Session.Metrics}}
+  (function() {
+    const metricName = "{{.Name}}";
+    const metricType = "{{.Type}}";
+    const key = metricName;
+
+    if (!metricsByName[key]) {
+      metricsByName[key] = {
+        name: metricName,
+        type: metricType || "gauge",
+        data: []
+      };
+    }
+
+    metricsByName[key].data.push({
+      timestamp: new Date("{{.Timestamp.Format "2006-01-02T15:04:05Z07:00"}}"),
+      value: {{.Value}},
+      type: metricType || "gauge",
+      tags: {{.Tags | toJSONSafe}},
+      {{if .Metadata}}metadata: {{.Metadata | toJSONSafe}}{{else}}metadata: {}{{end}}
+    });
+  })();
+  {{end}}
+
+  // Create metric summaries
+  const summaryContainer = document.getElementById('metrics-summary');
+
+  Object.keys(metricsByName).forEach(metricKey => {
+    const metricInfo = metricsByName[metricKey];
+    const metrics = metricInfo.data;
+    const metricType = metricInfo.type;
+    const metricName = metricInfo.name;
+
+    // Calculate stats for gauges/timers
+    let statsHTML = '';
+    if (metricType === 'gauge' || metricType === 'timer' || !metricType) {
+      const values = metrics.map(m => m.value);
+      const avg = (values.reduce((a,b) => a+b, 0) / values.length).toFixed(2);
+      const max = Math.max(...values).toFixed(2);
+      const min = Math.min(...values).toFixed(2);
+      statsHTML = `<span><strong>Avg:</strong> ${avg}</span><span><strong>Max:</strong> ${max}</span><span><strong>Min:</strong> ${min}</span><span><strong>Points:</strong> ${values.length}</span>`;
+    } else if (metricType === 'counter') {
+      // Counter shows latest total
+      const latestValue = metrics[metrics.length - 1].value.toFixed(0);
+      statsHTML = `<span><strong>Total:</strong> ${latestValue}</span><span><strong>Updates:</strong> ${metrics.length}</span>`;
+    } else if (metricType === 'histogram') {
+      // Histogram shows bucket info from metadata
+      const latestMetric = metrics[metrics.length - 1];
+      if (latestMetric.metadata && latestMetric.metadata.count) {
+        statsHTML = `<span><strong>Samples:</strong> ${latestMetric.metadata.count}</span><span><strong>Buckets:</strong> ${latestMetric.metadata.buckets ? latestMetric.metadata.buckets.length : 0}</span>`;
+      }
+    }
+
+    const safeMetricName = metricName.replace(/\./g, '_');
+
+    const container = document.createElement('div');
+    container.className = 'metric-summary';
+    container.innerHTML = `
+      <div class="metric-header" onclick="toggleMetric('${safeMetricName}', '${metricType}')">
+        <div>
+          <h3 style="margin: 0 0 4px 0; color: var(--accent-primary);">${metricName} <span style="font-size: 12px; color: var(--text-secondary);">[${metricType}]</span></h3>
+          <div class="metric-stats">${statsHTML}</div>
+        </div>
+        <div id="arrow-${safeMetricName}" style="font-size: 16px; transition: transform 0.3s;">▼</div>
+      </div>
+      <div id="chart-container-${safeMetricName}" style="display: none; padding: 12px; background: var(--bg-card);"></div>
+    `;
+    summaryContainer.appendChild(container);
+  });
+
+  // Toggle metric visualization
+  function toggleMetric(safeMetricName, metricType) {
+    const chartContainer = document.getElementById(`chart-container-${safeMetricName}`);
+    const arrow = document.getElementById(`arrow-${safeMetricName}`);
+    const isHidden = chartContainer.style.display === 'none';
+
+    if (isHidden) {
+      chartContainer.style.display = 'block';
+      arrow.style.transform = 'rotate(180deg)';
+
+      // Destroy old chart if exists
+      if (chartInstances[safeMetricName]) {
+        chartInstances[safeMetricName].destroy();
+        delete chartInstances[safeMetricName];
+      }
+
+      // Create visualization based on type
+      if (metricType === 'histogram') {
+        createHistogramViz(safeMetricName);
+      } else if (metricType === 'counter') {
+        createCounterViz(safeMetricName);
+      } else {
+        createMetricChart(safeMetricName);
+      }
+    } else {
+      chartContainer.style.display = 'none';
+      arrow.style.transform = 'rotate(0deg)';
+      // Destroy chart to save memory
+      if (chartInstances[safeMetricName]) {
+        chartInstances[safeMetricName].destroy();
+        delete chartInstances[safeMetricName];
+      }
+    }
+  }
+
+  // Create histogram visualization
+  function createHistogramViz(safeMetricName) {
+    const metricInfo = metricsByName[Object.keys(metricsByName).find(k => k.replace(/\./g, '_') === safeMetricName)];
+    const latestMetric = metricInfo.data[metricInfo.data.length - 1];
+
+    if (!latestMetric.metadata || !latestMetric.metadata.buckets) {
+      document.getElementById(`chart-container-${safeMetricName}`).innerHTML = '<p style="color: var(--text-secondary); padding: 10px;">No histogram data available</p>';
+      return;
+    }
+
+    const buckets = latestMetric.metadata.buckets;
+    const maxCount = Math.max(...buckets.map(b => b.count));
+
+    let html = '<div style="padding: 8px;">';
+    html += `<div style="margin-bottom: 10px; font-size: 13px;"><strong>Total Samples:</strong> ${latestMetric.metadata.count} | <strong>Sum:</strong> ${latestMetric.metadata.sum.toFixed(2)} | <strong>Avg:</strong> ${(latestMetric.metadata.sum / latestMetric.metadata.count).toFixed(2)}</div>`;
+
+    buckets.forEach((bucket, i) => {
+      const percentage = (bucket.count / maxCount) * 100;
+      const prevBound = i > 0 ? buckets[i-1].le : 0;
+      html += `
+        <div class="histogram-viz">
+          <div style="text-align: right; min-width: 80px; color: var(--text-secondary);">${prevBound.toFixed(4)} - ${bucket.le.toFixed(4)}</div>
+          <div class="histogram-bar" style="width: ${percentage}%; min-width: 2px;">
+            <span style="position: absolute; right: 5px; color: white; font-size: 11px; line-height: 20px;">${bucket.count}</span>
+          </div>
+          <div style="min-width: 50px; color: var(--text-secondary);">${((bucket.count / latestMetric.metadata.count) * 100).toFixed(1)}%</div>
+        </div>
+      `;
+    });
+    html += '</div>';
+
+    document.getElementById(`chart-container-${safeMetricName}`).innerHTML = html;
+  }
+
+  // Create counter visualization
+  function createCounterViz(safeMetricName) {
+    const metricInfo = metricsByName[Object.keys(metricsByName).find(k => k.replace(/\./g, '_') === safeMetricName)];
+    const metrics = metricInfo.data;
+
+    const latestValue = metrics[metrics.length - 1].value;
+    const firstValue = metrics[0].value;
+    const increase = latestValue - firstValue;
+
+    let html = '<div style="padding: 12px;">';
+    html += `<div class="counter-display">
+      <div>
+        <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 4px;">Current Total</div>
+        <div class="counter-value">${latestValue.toFixed(0)}</div>
+      </div>
+      <div>
+        <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 4px;">Increase</div>
+        <div style="font-size: 18px; font-weight: bold; color: var(--success-color);">+${increase.toFixed(0)}</div>
+      </div>
+      <div>
+        <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 4px;">Updates</div>
+        <div style="font-size: 18px; font-weight: bold;">${metrics.length}</div>
+      </div>
+    </div>`;
+
+    // Also show a simple line chart
+    html += '<div style="height: 200px; margin-top: 12px;"><canvas id="counter-chart-${safeMetricName}"></canvas></div>';
+    html += '</div>';
+
+    document.getElementById(`chart-container-${safeMetricName}`).innerHTML = html;
+
+    // Create chart
+    const ctx = document.getElementById(`counter-chart-${safeMetricName}`).getContext('2d');
+    chartInstances[safeMetricName] = new Chart(ctx, {
+      type: 'line',
+      data: {
+        datasets: [{
+          label: 'Total',
+          data: metrics.map(m => ({ x: m.timestamp.getTime(), y: m.value })),
+          borderColor: '#48bb78',
+          backgroundColor: 'rgba(72, 187, 120, 0.1)',
+          fill: 'origin',
+          tension: 0,
+          pointRadius: 2,
+          pointHoverRadius: 4,
+          pointBackgroundColor: '#48bb78',
+          pointBorderColor: '#ffffff',
+          pointBorderWidth: 1
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          x: { type: 'time', grid: { color: 'rgba(160, 174, 192, 0.1)' }, ticks: { color: '#a0aec0' } },
+          y: { beginAtZero: true, grid: { color: 'rgba(160, 174, 192, 0.1)' }, ticks: { color: '#a0aec0' } }
+        },
+        plugins: { legend: { labels: { color: 'var(--text-primary)' } } }
+      }
+    });
+  }
+
+  // Create standard metric chart
+  function createMetricChart(safeMetricName) {
+    const metricInfo = metricsByName[Object.keys(metricsByName).find(k => k.replace(/\./g, '_') === safeMetricName)];
+    const metrics = metricInfo.data;
+
+    const container = document.getElementById(`chart-container-${safeMetricName}`);
+    container.innerHTML = `<div style="height: 250px;"><canvas id="chart-${safeMetricName}"></canvas></div>`;
+
+    const ctx = document.getElementById(`chart-${safeMetricName}`).getContext('2d');
+    chartInstances[safeMetricName] = new Chart(ctx, {
+      type: 'line',
+      data: {
+        datasets: [{
+          label: metricInfo.name,
+          data: metrics.map(m => ({ x: m.timestamp.getTime(), y: m.value })),
+          borderColor: '#819BFC',
+          backgroundColor: 'rgba(129, 155, 252, 0.1)',
+          tension: 0.1,
+          fill: 'origin',  // Fill to the x-axis origin, not between lines
+          pointRadius: 2,
+          pointHoverRadius: 4,
+          pointBackgroundColor: '#819BFC',
+          pointBorderColor: '#ffffff',
+          pointBorderWidth: 1,
+          segment: {
+            borderColor: ctx => ctx.p0.skip || ctx.p1.skip ? 'transparent' : undefined
+          }
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: {
+          mode: 'nearest',
+          axis: 'x',
+          intersect: false
+        },
+        scales: {
+          x: {
+            type: 'time',
+            grid: { color: 'rgba(160, 174, 192, 0.1)' },
+            ticks: {
+              color: '#a0aec0',
+              maxRotation: 45,
+              minRotation: 0,
+              autoSkip: true,
+              maxTicksLimit: 10
+            }
+          },
+          y: {
+            beginAtZero: true,
+            grid: { color: 'rgba(160, 174, 192, 0.1)' },
+            ticks: { color: '#a0aec0' }
+          }
+        },
+        plugins: {
+          legend: { labels: { color: 'var(--text-primary)' } }
+        }
+      }
+    });
+  }
+</script>
+{{end}}
+
+<!-- Compact Events with Infinite Scroll -->
+<div class="card">
+  <h2>
+    Events
+    <span id="event-count" style="font-size: 14px; color: var(--text-secondary)"
+      >(Loading...)</span
+    >
+  </h2>
+
+  <!-- Filter Controls -->
+  <div class="filter-controls">
+    <input
+      type="text"
+      id="event-search"
+      placeholder="Search events..."
+      style="flex: 1; min-width: 200px"
+      oninput="filterEvents()"
+    />
+    <select id="event-category-filter" onchange="filterEvents()">
+      <option value="">All Categories</option>
+      <!-- Options populated by JS -->
+    </select>
+    <select id="event-name-filter" onchange="filterEvents()">
+      <option value="">All Events</option>
+      <!-- Options populated by JS -->
+    </select>
+  </div>
+
+  <!-- Events List with Infinite Scroll -->
+  <div id="events-list" style="max-height: 600px; overflow-y: auto">
+    <div
+      hx-get="/api/session/{{.Session.ID}}/events?offset=0&limit=50"
+      hx-trigger="load"
+      hx-swap="outerHTML"
+      style="text-align: center; padding: 20px; color: var(--text-secondary)"
+    >
+      <div
+        style="
+          display: inline-block;
+          width: 20px;
+          height: 20px;
+          border: 2px solid var(--accent-primary);
+          border-radius: 50%;
+          border-top-color: transparent;
+          animation: spin 1s linear infinite;
+        "
+      ></div>
+      <div style="margin-top: 8px">Loading events...</div>
+    </div>
+  </div>
+</div>
+
+<style>
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+  .htmx-indicator {
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+  .htmx-request .htmx-indicator {
+    opacity: 1;
+  }
+  .htmx-request.htmx-indicator {
+    opacity: 1;
+  }
+</style>
+
+<script>
+  // Global event data store for lazy loading details
+  window.eventDataStore = window.eventDataStore || {};
+
+  // Track loaded events for filtering
+  window.loadedEvents = window.loadedEvents || [];
+  window.uniqueCategories = window.uniqueCategories || new Set();
+  window.uniqueNames = window.uniqueNames || new Set();
+
+  // Update filter dropdowns
+  function updateFilterOptions() {
+    const categoryFilter = document.getElementById("event-category-filter");
+    const nameFilter = document.getElementById("event-name-filter");
+
+    // Update category options
+    const currentCategoryValue = categoryFilter.value;
+    categoryFilter.innerHTML = '<option value="">All Categories</option>';
+    Array.from(window.uniqueCategories)
+      .sort()
+      .forEach((category) => {
+        const option = document.createElement("option");
+        option.value = category;
+        option.textContent = category;
+        if (category === currentCategoryValue) option.selected = true;
+        categoryFilter.appendChild(option);
+      });
+
+    // Update name options
+    const currentNameValue = nameFilter.value;
+    nameFilter.innerHTML = '<option value="">All Events</option>';
+    Array.from(window.uniqueNames)
+      .sort()
+      .forEach((name) => {
+        const option = document.createElement("option");
+        option.value = name;
+        option.textContent = name;
+        if (name === currentNameValue) option.selected = true;
+        nameFilter.appendChild(option);
+      });
+  }
+
+  // Toggle event details with htmx lazy loading
+  function toggleEvent(index) {
+    const detailsDiv = document.getElementById(`event-details-${index}`);
+    const arrow = document.getElementById(`event-arrow-${index}`);
+    const row = document.querySelector(`[data-index="${index}"]`);
+
+    if (!detailsDiv || !arrow) {
+      console.error(`Could not find elements for event ${index}`, {
+        detailsDiv,
+        arrow,
+      });
+      return;
+    }
+
+    // Check if currently visible - check both inline style and computed style
+    const inlineDisplay = detailsDiv.style.display;
+    const computedStyle = window.getComputedStyle(detailsDiv);
+    const isCurrentlyVisible =
+      inlineDisplay !== "none" &&
+      computedStyle.display !== "none" &&
+      detailsDiv.offsetHeight > 0;
+
+    if (!isCurrentlyVisible) {
+      // Show details
+      detailsDiv.style.display = "block";
+      arrow.textContent = "▼";
+      if (row) row.classList.add("expanded");
+
+      // Check if already loaded (has content beyond just whitespace or loading indicators)
+      const hasContent =
+        detailsDiv.innerHTML &&
+        detailsDiv.innerHTML.trim() !== "" &&
+        !detailsDiv.innerHTML.includes("htmx-indicator") &&
+        !detailsDiv.innerHTML.includes("Loading") &&
+        !detailsDiv.innerHTML.includes("Error loading");
+
+      if (!hasContent) {
+        // Get URL from hx-get attribute
+        const url = detailsDiv.getAttribute("hx-get");
+        if (!url) {
+          console.error(`No hx-get attribute found for event ${index}`);
+          detailsDiv.innerHTML = `<div style="color: var(--error-color);">Error: No URL found for event details</div>`;
+          return;
+        }
+
+        // Show loading indicator
+        detailsDiv.innerHTML =
+          '<div style="color: var(--text-secondary); padding: 10px;">Loading...</div>';
+
+        // Use fetch directly for more reliable behavior
+        fetch(url)
+          .then((response) => {
+            if (!response.ok) {
+              throw new Error(
+                `HTTP ${response.status}: ${response.statusText}`
+              );
+            }
+            return response.text();
+          })
+          .then((html) => {
+            if (html && html.trim()) {
+              detailsDiv.innerHTML = html;
+            } else {
+              detailsDiv.innerHTML = `<div style="color: var(--error-color);">Empty response from server</div>`;
+            }
+          })
+          .catch((err) => {
+            console.error(`Error loading event details for ${index}:`, err);
+            detailsDiv.innerHTML = `<div style="color: var(--error-color);">Error loading event details: ${err.message}</div>`;
+          });
+      }
+    } else {
+      // Hide details
+      detailsDiv.style.display = "none";
+      arrow.textContent = "▶";
+      if (row) row.classList.remove("expanded");
+    }
+  }
+
+  // Filter events (works with loaded events)
+  function filterEvents() {
+    const searchTerm = document
+      .getElementById("event-search")
+      .value.toLowerCase();
+    const categoryFilter = document.getElementById(
+      "event-category-filter"
+    ).value;
+    const nameFilter = document.getElementById("event-name-filter").value;
+
+    let visibleCount = 0;
+    document.querySelectorAll(".event-row").forEach((row) => {
+      const category = row.getAttribute("data-category");
+      const name = row.getAttribute("data-name");
+      const text = row.textContent.toLowerCase();
+
+      const matchesSearch = text.includes(searchTerm);
+      const matchesCategory = !categoryFilter || category === categoryFilter;
+      const matchesName = !nameFilter || name === nameFilter;
+
+      if (matchesSearch && matchesCategory && matchesName) {
+        row.style.display = "block";
+        visibleCount++;
+      } else {
+        row.style.display = "none";
+      }
+    });
+
+    // Update count
+    document.getElementById(
+      "event-count"
+    ).textContent = `(${visibleCount} visible / ${window.loadedEvents.length} loaded)`;
+  }
+</script>
+
+<div style="margin: 15px 0">
+  <a
+    href="/"
+    class="btn btn-secondary"
+    style="padding: 8px 16px; font-size: 13px"
+    >Back to Dashboard</a
+  >
+</div>
+
+<!-- Timeline and time range script -->
+<script>
+  const timelineItems = [];
+  let selectedTime = null;
+  let zoomStart = null;
+  let zoomEnd = null;
+  let globalTimeRangeStart = null;
+  let globalTimeRangeEnd = null;
+
+  // Initialize time range inputs with session time range
+  function initializeTimeRange() {
+    if (timelineItems.length === 0) return;
+
+    const start = timelineItems[0].timestamp;
+    const end = timelineItems[timelineItems.length - 1].timestamp;
+
+    const startInput = document.getElementById('time-range-start');
+    const endInput = document.getElementById('time-range-end');
+
+    if (startInput && endInput) {
+      startInput.value = formatDateTimeLocal(start);
+      endInput.value = formatDateTimeLocal(end);
+      globalTimeRangeStart = start;
+      globalTimeRangeEnd = end;
+      updateTimeRangeInfo();
+    }
+  }
+
+  // Format date for datetime-local input
+  function formatDateTimeLocal(date) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    return `${year}-${month}-${day}T${hours}:${minutes}`;
+  }
+
+  // Update time range info display
+  function updateTimeRangeInfo() {
+    const info = document.getElementById('time-range-info');
+    if (info) {
+      if (zoomStart !== null && zoomEnd !== null) {
+        const durationMs = zoomEnd - zoomStart;
+        const durationSec = (durationMs / 1000).toFixed(1);
+        info.textContent = `Zoomed: ${durationSec}s range`;
+      } else if (globalTimeRangeStart && globalTimeRangeEnd) {
+        const durationMs = globalTimeRangeEnd - globalTimeRangeStart;
+        const durationSec = (durationMs / 1000).toFixed(1);
+        info.textContent = `Showing ${durationSec}s range`;
+      } else {
+        info.textContent = '';
+      }
+    }
+  }
+
+  // Apply time range from controls
+  function applyTimeRange() {
+    const startInput = document.getElementById('time-range-start');
+    const endInput = document.getElementById('time-range-end');
+
+    if (!startInput || !endInput) return;
+
+    const startValue = startInput.value;
+    const endValue = endInput.value;
+
+    if (!startValue || !endValue) {
+      alert('Please select both start and end times');
+      return;
+    }
+
+    globalTimeRangeStart = new Date(startValue);
+    globalTimeRangeEnd = new Date(endValue);
+
+    if (globalTimeRangeStart >= globalTimeRangeEnd) {
+      alert('Start time must be before end time');
+      return;
+    }
+
+    // Update zoom state for timeline
+    zoomStart = globalTimeRangeStart;
+    zoomEnd = globalTimeRangeEnd;
+
+    // Clear time marker when changing time range
+    selectedTime = null;
+    hideTimeMarker();
+    updateCurrentStateDisplay(null);
+
+    updateTimeRangeInfo();
+    renderTimeline();
+  }
+
+  // Reset time range to default
+  function resetTimeRange() {
+    zoomStart = null;
+    zoomEnd = null;
+    globalTimeRangeStart = null;
+    globalTimeRangeEnd = null;
+    selectedTime = null;
+    hideTimeMarker();
+    updateCurrentStateDisplay(null);
+
+    // Reset input fields
+    const startInput = document.getElementById('time-range-start');
+    const endInput = document.getElementById('time-range-end');
+    if (startInput && endInput && timelineItems.length > 0) {
+      const start = timelineItems[0].timestamp;
+      const end = timelineItems[timelineItems.length - 1].timestamp;
+      startInput.value = formatDateTimeLocal(start);
+      endInput.value = formatDateTimeLocal(end);
+    }
+
+    updateTimeRangeInfo();
+    renderTimeline();
+  }
+
+  // Initialize on page load
+  document.addEventListener('DOMContentLoaded', function() {
+    initializeTimeRange();
+  });
+
+  // Load state history with full data
+  {{range $index, $snapshot := .Session.StateHistory}}
+  timelineItems.push({
+    type: 'state',
+    timestamp: new Date("{{$snapshot.Timestamp.Format "2006-01-02T15:04:05.000Z07:00"}}"),
+    displayTime: "{{$snapshot.Timestamp.Format "15:04:05.000"}}",
+    index: {{$index}},
+    state: {{$snapshot.State | toJSONSafe}}
+  });
+  {{end}}
+
+  // Load events with full data
+  {{range $event := .Session.Events}}
+  timelineItems.push({
+    type: '{{if eq $event.Name "exception"}}exception{{else}}event{{end}}',
+    timestamp: new Date("{{$event.Timestamp.Format "2006-01-02T15:04:05.000Z07:00"}}"),
+    displayTime: "{{$event.Timestamp.Format "15:04:05.000"}}",
+    name: "{{$event.Name}}",
+    data: {{$event.Data | toJSONSafe}},
+    {{if eq $event.Name "exception"}}
+    exceptionType: "{{$event.ExceptionType}}",
+    exceptionMsg: "{{$event.ExceptionMsg}}",
+    stacktrace: {{if $event.Stacktrace}}{{$event.Stacktrace | toJSONSafe}}{{else}}[]{{end}},
+    sourceFile: "{{$event.SourceFile}}",
+    sourceLine: {{if $event.SourceLine}}{{$event.SourceLine}}{{else}}null{{end}},
+    sourceFunction: "{{$event.SourceFunction}}",
+    {{end}}
+    category: "{{$event.Category}}",
+    group: "{{$event.Group}}",
+    message: "{{$event.Message}}"
+  });
+  {{end}}
+
+  timelineItems.sort((a, b) => a.timestamp - b.timestamp);
+
+  // Get time range for rendering (supports zoom and global time range)
+  const getTimeRange = () => {
+    if (timelineItems.length === 0) return { start: new Date(), end: new Date() };
+    if (zoomStart !== null && zoomEnd !== null) {
+      return { start: zoomStart, end: zoomEnd };
+    }
+    if (globalTimeRangeStart !== null && globalTimeRangeEnd !== null) {
+      return { start: globalTimeRangeStart, end: globalTimeRangeEnd };
+    }
+    return {
+      start: timelineItems[0].timestamp,
+      end: timelineItems[timelineItems.length - 1].timestamp
+    };
+  };
+
+  function renderTimeline() {
+    const container = document.getElementById('timeline-container');
+    container.innerHTML = '';
+
+    if (timelineItems.length === 0) {
+      container.innerHTML = '<p style="color: var(--text-secondary); padding: 20px; text-align: center;">No timeline data available</p>';
+      return;
+    }
+
+    // Get time range (supports zoom)
+    const timeRange = getTimeRange();
+    const start = timeRange.start;
+    const end = timeRange.end;
+    const totalDuration = end.getTime() - start.getTime();
+
+    if (totalDuration === 0 || isNaN(totalDuration)) {
+      container.innerHTML = '<p style="color: var(--text-secondary); padding: 20px; text-align: center;">All events occurred at the same time</p>';
+      return;
+    }
+
+    const containerWidth = container.offsetWidth || 1000;
+    const dotWidth = 20; // Width of each dot in pixels
+    const bucketSize = (totalDuration / containerWidth) * dotWidth; // Time span per bucket
+
+    // Filter items to time range (for zoom support)
+    const filteredItems = timelineItems.filter(item =>
+      item.timestamp >= start && item.timestamp <= end
+    );
+
+    // Group items into buckets based on time
+    const buckets = {};
+    filteredItems.forEach(item => {
+      const bucketIndex = Math.floor((item.timestamp - start) / bucketSize);
+      if (!buckets[bucketIndex]) {
+        buckets[bucketIndex] = [];
+      }
+      buckets[bucketIndex].push(item);
+    });
+
+    // Calculate max stack height needed
+    let maxStackHeight = 0;
+    Object.values(buckets).forEach(items => {
+      maxStackHeight = Math.max(maxStackHeight, items.length);
+    });
+
+    // Set container height based on max stack
+    // Stack upward from middle, need space above and below
+    const stackUpwardHeight = Math.max(maxStackHeight - 1, 0) * 15; // 15px per stacked item above baseline
+    const topPadding = stackUpwardHeight + 30; // Space for stacked items + margin
+    const bottomPadding = 40; // Space for labels below timeline
+    const totalHeight = topPadding + bottomPadding;
+
+    const innerContainer = document.getElementById('timeline-inner');
+    innerContainer.style.minHeight = totalHeight + 'px';
+
+    // Position the timeline line in the middle area
+    const timelineLine = document.getElementById('timeline-line');
+    timelineLine.style.top = topPadding + 'px';
+    timelineLine.style.transform = 'none';
+
+    // Render buckets from left to right
+    Object.keys(buckets).sort((a, b) => parseInt(a) - parseInt(b)).forEach(bucketIndex => {
+      const items = buckets[bucketIndex];
+      // Sort items in bucket by timestamp (oldest first = index 0, newest = last index)
+      items.sort((a, b) => a.timestamp - b.timestamp);
+
+      const bucketTime = start.getTime() + (bucketIndex * bucketSize);
+      const position = totalDuration > 0 ? ((bucketTime - start.getTime()) / totalDuration) * 100 : 0;
+
+      // Render items in this bucket, stacking vertically (oldest at top, newest at bottom)
+      items.forEach((item, verticalIndex) => {
+        const point = document.createElement('div');
+        point.style.position = 'absolute';
+        point.style.left = position + '%';
+        // Points stack DOWN from the timeline (oldest at top, newest at bottom)
+        // topPadding is baseline, add for each stack level going down
+        // verticalIndex 0 (oldest) is at top, higher indices (newer) are below
+        point.style.top = (topPadding - (items.length - 1 - verticalIndex) * 15 - 8) + 'px'; // -8 to center the 16px dot on line
+        point.style.width = '16px';
+        point.style.height = '16px';
+        point.style.borderRadius = '50%';
+        point.style.border = '2px solid var(--bg-card)';
+        point.style.boxShadow = '0 2px 4px rgba(0,0,0,0.3)';
+        point.style.cursor = 'pointer';
+        point.style.transition = 'transform 0.2s, box-shadow 0.2s';
+        point.style.zIndex = (10 + verticalIndex); // Higher items get higher z-index
+
+        // Color based on type
+        if (item.type === 'state') {
+          point.style.background = '#819BFC';
+        } else if (item.type === 'exception') {
+          point.style.background = '#f56565';
+        } else {
+          point.style.background = '#48bb78';
+        }
+
+        point.addEventListener('mouseenter', () => {
+          point.style.transform = 'scale(1.3)';
+          point.style.boxShadow = '0 4px 8px rgba(0,0,0,0.4)';
+          point.style.zIndex = '100'; // Bring to front on hover
+        });
+
+        point.addEventListener('mouseleave', () => {
+          point.style.transform = 'scale(1)';
+          point.style.boxShadow = '0 2px 4px rgba(0,0,0,0.3)';
+          point.style.zIndex = (10 + verticalIndex); // Restore original z-index
+        });
+
+        point.addEventListener('click', (e) => {
+          e.stopPropagation();
+          showTimelineDetails(item);
+        });
+
+        container.appendChild(point);
+      });
+
+      // Time label (only for first item in bucket)
+      if (items.length > 0) {
+        const label = document.createElement('div');
+        label.style.position = 'absolute';
+        label.style.left = position + '%';
+        label.style.top = (topPadding + 20) + 'px'; // Below the timeline
+        label.style.transform = 'translateX(-50%)';
+        label.style.fontSize = '11px';
+        label.style.color = 'var(--text-secondary)';
+        label.style.whiteSpace = 'nowrap';
+        label.textContent = items[0].displayTime || new Date(items[0].timestamp).toLocaleTimeString();
+        container.appendChild(label);
+      }
+    });
+  }
+
+  // Helper function to compute diff between two objects
+  const computeDiff = (oldObj, newObj, path = '') => {
+    const diff = {
+      added: {},
+      modified: {},
+      removed: {}
+    };
+
+    // Handle null/undefined cases
+    if (oldObj === null || oldObj === undefined) {
+      return { added: newObj, modified: {}, removed: {} };
+    }
+    if (newObj === null || newObj === undefined) {
+      return { added: {}, modified: {}, removed: oldObj };
+    }
+
+    // Get all keys from both objects
+    const oldKeys = new Set(Object.keys(oldObj));
+    const newKeys = new Set(Object.keys(newObj));
+
+    // Find added keys
+    for (const key of newKeys) {
+      if (!oldKeys.has(key)) {
+        diff.added[key] = newObj[key];
+      }
+    }
+
+    // Find removed keys
+    for (const key of oldKeys) {
+      if (!newKeys.has(key)) {
+        diff.removed[key] = oldObj[key];
+      }
+    }
+
+    // Find modified keys
+    for (const key of newKeys) {
+      if (oldKeys.has(key)) {
+        const oldVal = oldObj[key];
+        const newVal = newObj[key];
+
+        // Deep comparison for objects
+        if (typeof oldVal === 'object' && oldVal !== null &&
+            typeof newVal === 'object' && newVal !== null &&
+            !Array.isArray(oldVal) && !Array.isArray(newVal)) {
+          const nestedDiff = computeDiff(oldVal, newVal, path + key + '.');
+          if (Object.keys(nestedDiff.added).length > 0 ||
+              Object.keys(nestedDiff.modified).length > 0 ||
+              Object.keys(nestedDiff.removed).length > 0) {
+            diff.modified[key] = newVal;
+          }
+        } else if (JSON.stringify(oldVal) !== JSON.stringify(newVal)) {
+          diff.modified[key] = newVal;
+        }
+      }
+    }
+
+    return diff;
+  };
+
+  // Find previous state before a given state change
+  const findPreviousState = (stateItem) => {
+    const stateChanges = timelineItems.filter(item => item.type === 'state');
+    const currentIndex = stateChanges.findIndex(item => item.index === stateItem.index);
+    if (currentIndex <= 0) return null;
+    return stateChanges[currentIndex - 1].state;
+  };
+
+  // Find state at a given timestamp
+  const findStateAtTime = (timestamp) => {
+    const stateChanges = timelineItems.filter(item => item.type === 'state' && item.timestamp <= timestamp);
+    if (stateChanges.length === 0) return null;
+    return stateChanges[stateChanges.length - 1].state;
+  };
+
+  // Show timeline details popup
+  const showTimelineDetails = (item) => {
+    const detailsDiv = document.getElementById('timeline-details');
+    const titleDiv = document.getElementById('details-title');
+    const contentDiv = document.getElementById('details-content');
+
+    detailsDiv.style.display = 'block';
+
+    if (item.type === 'state') {
+      const previousState = findPreviousState(item);
+
+      if (previousState) {
+        titleDiv.textContent = `State Change at ${item.displayTime}`;
+
+        // Create side-by-side diff view
+        contentDiv.innerHTML = `
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px;">
+            <div>
+              <div style="background: rgba(245, 101, 101, 0.12); padding: 8px; border-radius: 4px; margin-bottom: 10px; font-weight: bold; color: var(--error-color); border: 1px solid rgba(245, 101, 101, 0.25);">
+                Previous State
+              </div>
+              <div id="timeline-state-old" style="border: 1px solid var(--border-color); border-radius: 4px; overflow: hidden; background: var(--bg-secondary);"></div>
+            </div>
+            <div>
+              <div style="background: rgba(72, 187, 120, 0.12); padding: 8px; border-radius: 4px; margin-bottom: 10px; font-weight: bold; color: var(--success-color); border: 1px solid rgba(72, 187, 120, 0.25);">
+                New State
+              </div>
+              <div id="timeline-state-new" style="border: 1px solid var(--border-color); border-radius: 4px; overflow: hidden; background: var(--bg-secondary);"></div>
+            </div>
+          </div>
+          <details style="margin-top: 15px; padding-top: 15px; border-top: 1px solid var(--border-color);">
+            <summary style="cursor: pointer; color: var(--text-secondary); font-size: 13px; padding: 8px;">
+              View changes summary
+            </summary>
+            <div id="timeline-state-changes" style="margin-top: 10px;"></div>
+          </details>
+        `;
+
+        // Show changes summary
+        const diff = computeDiff(previousState, item.state);
+
+        const addedKeys = Object.keys(diff.added);
+        const modifiedKeys = Object.keys(diff.modified);
+        const removedKeys = Object.keys(diff.removed);
+
+        new JSONViewer('timeline-state-old', previousState, {
+          collapsed: false,
+          maxHeight: '400px',
+          highlightModified: modifiedKeys,
+          highlightRemoved: removedKeys
+        });
+
+        new JSONViewer('timeline-state-new', item.state, {
+          collapsed: false,
+          maxHeight: '400px',
+          highlightAdded: addedKeys,
+          highlightModified: modifiedKeys
+        });
+
+        let changesHtml = '';
+        if (Object.keys(diff.added).length > 0) {
+          changesHtml += `<div style="margin-bottom: 15px;"><div style="color: #48bb78; font-weight: bold; margin-bottom: 5px;">✓ Added (${Object.keys(diff.added).length} keys):</div><div id="timeline-state-added" style="margin-left: 10px;"></div></div>`;
+        }
+        if (Object.keys(diff.modified).length > 0) {
+          changesHtml += `<div style="margin-bottom: 15px;"><div style="color: #f6ad55; font-weight: bold; margin-bottom: 5px;">⟳ Modified (${Object.keys(diff.modified).length} keys):</div><div id="timeline-state-modified" style="margin-left: 10px;"></div></div>`;
+        }
+        if (Object.keys(diff.removed).length > 0) {
+          changesHtml += `<div style="margin-bottom: 15px;"><div style="color: #f56565; font-weight: bold; margin-bottom: 5px;">✕ Removed (${Object.keys(diff.removed).length} keys):</div><div id="timeline-state-removed" style="margin-left: 10px;"></div></div>`;
+        }
+        if (changesHtml === '') {
+          changesHtml = '<div style="color: var(--text-secondary); padding: 8px;">No changes detected</div>';
+        }
+
+        document.getElementById('timeline-state-changes').innerHTML = changesHtml;
+
+        if (Object.keys(diff.added).length > 0) {
+          new JSONViewer('timeline-state-added', diff.added, { collapsed: false, maxHeight: '200px' });
+        }
+        if (Object.keys(diff.modified).length > 0) {
+          new JSONViewer('timeline-state-modified', diff.modified, { collapsed: false, maxHeight: '200px' });
+        }
+        if (Object.keys(diff.removed).length > 0) {
+          new JSONViewer('timeline-state-removed', diff.removed, { collapsed: false, maxHeight: '200px' });
+        }
+      } else {
+        // First state - show full state
+        titleDiv.textContent = `Initial State at ${item.displayTime}`;
+        contentDiv.innerHTML = `<div id="timeline-state-viewer"></div>`;
+        new JSONViewer('timeline-state-viewer', item.state, {
+          collapsed: false,
+          maxHeight: '400px'
+        });
+      }
+    } else if (item.type === 'exception') {
+      const exceptionType = item.exceptionType || 'Exception';
+      const exceptionMsg = item.exceptionMsg || '';
+      titleDiv.textContent = `Exception: ${exceptionType} at ${item.displayTime}`;
+      const stateAtTime = findStateAtTime(item.timestamp);
+
+      let html = '';
+
+      // Exception type and message
+      if (exceptionType) {
+        html += `<div style="margin-bottom: 10px; color: var(--error-color);"><strong>Exception Type:</strong> ${exceptionType}</div>`;
+      }
+      if (exceptionMsg) {
+        html += `<div style="margin-bottom: 10px; color: var(--error-color);"><strong>Message:</strong> ${exceptionMsg}</div>`;
+      }
+
+      // Stack trace with clickable links
+      if (item.stacktrace && item.stacktrace.length > 0) {
+        html += `<div style="margin-bottom: 15px;"><strong>Stack Trace:</strong><div id="timeline-exception-stacktrace" style="margin-top: 5px; padding: 8px; background: var(--bg-secondary); border-radius: 4px; font-size: 11px; overflow-x: auto; font-family: monospace; white-space: pre-wrap; word-wrap: break-word;"></div></div>`;
+      }
+
+      // Source file location
+      if (item.sourceFile) {
+        const normalizedPath = item.sourceFile.replace(/\\/g, '/');
+        const vscodeLink = `vscode://file/${normalizedPath}:${item.sourceLine || 0}`;
+        const pycharmLink = `pycharm://open?file=${encodeURIComponent(item.sourceFile)}&line=${item.sourceLine || 0}`;
+        html += `<div style="margin-bottom: 10px; font-family: monospace; font-size: 11px;"><strong>Source:</strong> <a href="${vscodeLink}" onclick="try { window.location.href = '${vscodeLink}'; } catch(e) { try { window.location.href = '${pycharmLink}'; } catch(e2) { window.open('file://${normalizedPath}'); } } return false;" style="color: var(--accent-primary); text-decoration: underline; cursor: pointer;">${item.sourceFile}:${item.sourceLine || '?'}</a>${item.sourceFunction ? ` in ${item.sourceFunction}` : ''}</div>`;
+      }
+
+      // Exception data
+      html += `<div style="margin-bottom: 15px;"><strong>Exception Data:</strong><div id="timeline-exception-data-viewer" style="margin-top: 5px;"></div></div>`;
+
+      if (stateAtTime) {
+        html += `<div><strong>Application State at Time of Exception:</strong><div id="timeline-exception-state-viewer" style="margin-top: 5px;"></div></div>`;
+      }
+
+      contentDiv.innerHTML = html;
+
+      // Render stack trace with clickable links
+      if (item.stacktrace && item.stacktrace.length > 0) {
+        const stacktraceContainer = document.getElementById('timeline-exception-stacktrace');
+        if (stacktraceContainer) {
+          let stackHtml = '';
+          for (let i = 0; i < item.stacktrace.length; i++) {
+            let line = item.stacktrace[i];
+            const fileMatch = line.match(/^(\s*File\s+)(["'])([^"']+)\2,\s*line\s+(\d+)(?:,\s*in\s+(.+))?/);
+            if (fileMatch) {
+              const prefix = fileMatch[1];
+              const quote = fileMatch[2];
+              const filePath = fileMatch[3];
+              const lineNum = fileMatch[4];
+              const functionName = fileMatch[5] || '';
+              const normalizedPath = filePath.replace(/\\/g, '/');
+              const vscodeLink = `vscode://file/${normalizedPath}:${lineNum}`;
+              const pycharmLink = `pycharm://open?file=${encodeURIComponent(filePath)}&line=${lineNum}`;
+              const escapedPath = filePath.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+              const linkHtml = `<a href="${vscodeLink}" onclick="try { window.location.href = '${vscodeLink}'; } catch(e) { try { window.location.href = '${pycharmLink}'; } catch(e2) { window.open('file://${normalizedPath}'); } } return false;" style="color: var(--accent-primary); text-decoration: underline; cursor: pointer;" title="Open ${escapedPath}:${lineNum}">${escapedPath}</a>`;
+              const suffix = functionName ? `, in ${functionName}` : '';
+              stackHtml += prefix + quote + linkHtml + quote + `, line ${lineNum}${suffix}\n`;
+            } else {
+              stackHtml += line.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '\n';
+            }
+          }
+          stacktraceContainer.innerHTML = stackHtml;
+        }
+      }
+
+      new JSONViewer('timeline-exception-data-viewer', item.data, { collapsed: false, maxHeight: '200px' });
+      if (stateAtTime) {
+        new JSONViewer('timeline-exception-state-viewer', stateAtTime, { collapsed: false, maxHeight: '200px' });
+      }
+    } else {
+      // Regular event
+      titleDiv.textContent = `Event: ${item.name} at ${item.displayTime}`;
+      const stateAtTime = findStateAtTime(item.timestamp);
+
+      let html = `<div style="margin-bottom: 15px;"><strong>Event Data:</strong><div id="timeline-event-data-viewer" style="margin-top: 5px;"></div></div>`;
+      if (stateAtTime) {
+        html += `<div><strong>Application State at Event Time:</strong><div id="timeline-event-state-viewer" style="margin-top: 5px;"></div></div>`;
+      }
+
+      contentDiv.innerHTML = html;
+      new JSONViewer('timeline-event-data-viewer', item.data, { collapsed: false, maxHeight: '200px' });
+      if (stateAtTime) {
+        new JSONViewer('timeline-event-state-viewer', stateAtTime, { collapsed: false, maxHeight: '200px' });
+      }
+    }
+
+    // Scroll to details
+    detailsDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  };
+
+  // Close timeline details
+  const closeTimelineDetails = () => {
+    document.getElementById('timeline-details').style.display = 'none';
+  };
+
+  // Show time marker
+  const showTimeMarker = (xPercent, timestamp) => {
+    const marker = document.getElementById('time-marker');
+    const label = marker.querySelector('div');
+
+    marker.style.left = xPercent + '%';
+    marker.style.display = 'block';
+    label.textContent = timestamp.toLocaleTimeString();
+  };
+
+  // Hide time marker
+  const hideTimeMarker = () => {
+    document.getElementById('time-marker').style.display = 'none';
+  };
+
+  // Update current state display based on selected time
+  const updateCurrentStateDisplay = (timestamp, timeString) => {
+    const titleElement = document.getElementById('current-state-title');
+    const subtitleElement = document.getElementById('current-state-subtitle');
+    const containerElement = document.getElementById('current-state-json');
+
+    if (timestamp) {
+      const stateAtTime = findStateAtTime(timestamp);
+      titleElement.textContent = 'State at Selected Time';
+      subtitleElement.textContent = timeString;
+      subtitleElement.style.display = 'block';
+
+      containerElement.innerHTML = '';
+      if (stateAtTime) {
+        new JSONViewer('current-state-json', stateAtTime, {
+          collapsed: false,
+          maxHeight: '500px'
+        });
+      } else {
+        containerElement.textContent = 'No state data available at this time';
+      }
+    } else {
+      titleElement.textContent = {{if .Session.Active}}'Current State'{{else}}'Final State'{{end}};
+      subtitleElement.style.display = 'none';
+
+      containerElement.innerHTML = '';
+      const stateData = {{.Session.State | toJSONSafe}};
+      new JSONViewer('current-state-json', stateData, {
+        collapsed: false,
+        maxHeight: '500px'
+      });
+    }
+  };
+
+  // Mouse events for drag selection and time marker
+  const wrapper = document.getElementById('timeline-wrapper');
+  const innerWrapper = document.getElementById('timeline-inner');
+  const selectionOverlay = document.getElementById('selection-overlay');
+  let isDragging = false;
+  let dragStartX = 0;
+  let dragStartTime = 0;
+
+  // Helper to get X position relative to innerWrapper
+  const getRelativeX = (e) => {
+    const rect = innerWrapper.getBoundingClientRect();
+    return e.clientX - rect.left;
+  };
+
+  innerWrapper.addEventListener('mousedown', (e) => {
+    // Only handle clicks on the timeline area, not on the points themselves
+    const clickedElement = e.target;
+    const isTimelineArea = clickedElement === innerWrapper ||
+                          clickedElement === document.getElementById('timeline-line') ||
+                          clickedElement === document.getElementById('timeline-container');
+
+    if (isTimelineArea) {
+      isDragging = true;
+      dragStartX = getRelativeX(e);
+      dragStartTime = Date.now();
+    }
+  });
+
+  innerWrapper.addEventListener('mousemove', (e) => {
+    if (isDragging) {
+      const currentX = getRelativeX(e);
+      const width = Math.abs(currentX - dragStartX);
+
+      // Only show overlay if we've moved more than 5 pixels (actual drag)
+      if (width > 5) {
+        const left = Math.min(dragStartX, currentX);
+        selectionOverlay.style.left = left + 'px';
+        selectionOverlay.style.width = width + 'px';
+        selectionOverlay.style.display = 'block';
+      }
+    }
+  });
+
+  innerWrapper.addEventListener('mouseup', (e) => {
+    if (isDragging) {
+      isDragging = false;
+      const currentX = getRelativeX(e);
+      const width = Math.abs(currentX - dragStartX);
+
+      // Only handle drag selection (zoom), ignore clicks
+      if (width > 30) {
+        // Drag behavior - zoom to selection (require 30px minimum for zoom)
+        const containerWidth = innerWrapper.offsetWidth;
+        const startPercent = Math.min(dragStartX, currentX) / containerWidth;
+        const endPercent = Math.max(dragStartX, currentX) / containerWidth;
+
+        const timeRange = getTimeRange();
+        const totalDuration = timeRange.end - timeRange.start;
+
+        zoomStart = new Date(timeRange.start.getTime() + (totalDuration * startPercent));
+        zoomEnd = new Date(timeRange.start.getTime() + (totalDuration * endPercent));
+
+        // Update time range inputs to reflect zoom
+        const startInput = document.getElementById('time-range-start');
+        const endInput = document.getElementById('time-range-end');
+        if (startInput && endInput) {
+          startInput.value = formatDateTimeLocal(zoomStart);
+          endInput.value = formatDateTimeLocal(zoomEnd);
+          globalTimeRangeStart = zoomStart;
+          globalTimeRangeEnd = zoomEnd;
+        }
+
+        updateTimeRangeInfo();
+        renderTimeline();
+      }
+
+      // Always hide overlay on mouseup
+      selectionOverlay.style.display = 'none';
+    }
+  });
+
+  innerWrapper.addEventListener('mouseleave', () => {
+    if (isDragging) {
+      isDragging = false;
+      selectionOverlay.style.display = 'none';
+    }
+  });
+
+  renderTimeline();
+
+  // Re-render on window resize
+  window.addEventListener('resize', renderTimeline);
+</script>
+
+{{end}}

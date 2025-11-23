@@ -1,4 +1,31 @@
 {{define "content"}}
+<!-- Live-updating stats cards using HTMX -->
+<div
+  id="stats-cards"
+  hx-get="/api/stats-cards"
+  hx-trigger="load"
+  hx-swap="outerHTML"
+>
+  <div class="stats-grid">
+    <div class="stat-card">
+      <h3>Total Sessions</h3>
+      <div class="value">-</div>
+    </div>
+    <div class="stat-card">
+      <h3>Active Sessions</h3>
+      <div class="value">-</div>
+    </div>
+    <div class="stat-card">
+      <h3>Total Events</h3>
+      <div class="value">-</div>
+    </div>
+    <div class="stat-card">
+      <h3>Total Metrics</h3>
+      <div class="value">-</div>
+    </div>
+  </div>
+</div>
+
 <div class="card">
   <h2>Products and Versions</h2>
   <p style="margin-bottom: 20px; color: var(--text-secondary)">

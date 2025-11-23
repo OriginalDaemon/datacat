@@ -462,7 +462,8 @@ Monitor these metrics:
 
 ## Next Steps
 
-- [Daemon Batching](daemon-batching.html) - Deep dive into batching logic
-- [Crash Detection](crash-detection.html) - Understanding crash detection
-- [State Management](state-management.html) - Deep merge internals
-- [Deployment Guide](deployment.html) - Production deployment
+- [Hung Session Tracking](hung-tracking.html) - Detecting hung applications
+- [Machine Tracking](machine-tracking.html) - Cross-machine crash detection
+- [REST API Reference](../_api/rest-api.html) - Complete API documentation
+- [Game Logging](../game-logging.html) - Ultra-fast async logging
+- [Process Isolation](../process-isolation.html) - Daemon process isolation

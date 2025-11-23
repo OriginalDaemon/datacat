@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -20,6 +21,7 @@ type DaemonManager struct {
 	daemonBinary string
 	process      *exec.Cmd
 	started      bool
+	configPath   string
 }
 
 // NewDaemonManager creates a new daemon manager
@@ -27,8 +29,9 @@ func NewDaemonManager(daemonPort, serverURL, daemonBinary string) *DaemonManager
 	if daemonBinary == "" {
 		daemonBinary = findDaemonBinary()
 	}
+
 	return &DaemonManager{
-		daemonPort:   daemonPort,
+		daemonPort:   daemonPort, // Will be resolved in Start() if "auto"
 		serverURL:    serverURL,
 		daemonBinary: daemonBinary,
 	}
@@ -62,13 +65,40 @@ func findDaemonBinary() string {
 	return binaryName // Default and let it fail if not found
 }
 
+// findAvailablePort finds an available port for the daemon
+func findAvailablePort() (string, error) {
+	addr, err := net.ResolveTCPAddr("tcp", "localhost:0")
+	if err != nil {
+		return "", err
+	}
+
+	l, err := net.ListenTCP("tcp", addr)
+	if err != nil {
+		return "", err
+	}
+	defer l.Close()
+	return fmt.Sprintf("%d", l.Addr().(*net.TCPAddr).Port), nil
+}
+
 // Start starts the daemon subprocess
 func (dm *DaemonManager) Start() error {
 	if dm.started && dm.process != nil && dm.process.Process != nil {
 		return nil // Already running
 	}
 
-	// Create config for daemon
+	// Find an available port if using auto mode
+	if dm.daemonPort == "auto" || dm.daemonPort == "8079" {
+		port, err := findAvailablePort()
+		if err != nil {
+			return fmt.Errorf("failed to find available port: %w", err)
+		}
+		dm.daemonPort = port
+	}
+
+	// Set config path now that we have the port
+	dm.configPath = fmt.Sprintf("daemon_config_%s.json", dm.daemonPort)
+
+	// Create config for daemon with this instance's unique port
 	config := map[string]interface{}{
 		"daemon_port":               dm.daemonPort,
 		"server_url":                dm.serverURL,
@@ -77,19 +107,20 @@ func (dm *DaemonManager) Start() error {
 		"heartbeat_timeout_seconds": 60,
 	}
 
-	// Write config to temporary file
-	configPath := "daemon_config.json"
+	// Write config to instance-specific file
 	configData, err := json.MarshalIndent(config, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal config: %w", err)
 	}
 
-	if err := os.WriteFile(configPath, configData, 0644); err != nil {
+	if err := os.WriteFile(dm.configPath, configData, 0644); err != nil {
 		return fmt.Errorf("failed to write config: %w", err)
 	}
 
-	// Start daemon process
+	// Start daemon process with instance-specific config
 	dm.process = exec.Command(dm.daemonBinary)
+	dm.process.Env = append(os.Environ(), fmt.Sprintf("DATACAT_CONFIG=%s", dm.configPath))
+
 	if err := dm.process.Start(); err != nil {
 		return fmt.Errorf("failed to start daemon binary '%s': %w", dm.daemonBinary, err)
 	}
@@ -111,6 +142,10 @@ func (dm *DaemonManager) Stop() error {
 		_ = dm.process.Wait() // Wait for process to exit, error is expected after Kill
 	}
 	dm.started = false
+
+	// Clean up instance-specific config file
+	_ = os.Remove(dm.configPath) // Best effort cleanup
+
 	return nil
 }
 
@@ -156,14 +191,14 @@ type StateSnapshot struct {
 type Event struct {
 	Timestamp      time.Time              `json:"timestamp"`
 	Name           string                 `json:"name"`
-	Level          string                 `json:"level"`
-	Category       string                 `json:"category"`
+	Category       string                 `json:"category"` // User-defined category (e.g., debug, info, warning, error, critical, or custom)
+	Group          string                 `json:"group"`    // Group/logger name (e.g., logger name, component name)
 	Labels         []string               `json:"labels"`
 	Message        string                 `json:"message"`
 	Data           map[string]interface{} `json:"data"`
+	Stacktrace     []string               `json:"stacktrace,omitempty"` // Stack trace for any event (not just exceptions)
 	ExceptionType  string                 `json:"exception_type,omitempty"`
 	ExceptionMsg   string                 `json:"exception_msg,omitempty"`
-	Stacktrace     []string               `json:"stacktrace,omitempty"`
 	SourceFile     string                 `json:"source_file,omitempty"`
 	SourceLine     int                    `json:"source_line,omitempty"`
 	SourceFunction string                 `json:"source_function,omitempty"`
@@ -171,10 +206,14 @@ type Event struct {
 
 // Metric represents a metric in a session
 type Metric struct {
-	Timestamp time.Time `json:"timestamp"`
-	Name      string    `json:"name"`
-	Value     float64   `json:"value"`
-	Tags      []string  `json:"tags,omitempty"`
+	Timestamp time.Time              `json:"timestamp"`
+	Name      string                 `json:"name"`
+	Type      string                 `json:"type"` // "gauge", "counter", "histogram", "timer"
+	Value     float64                `json:"value"`
+	Count     *int                   `json:"count,omitempty"` // For timers
+	Unit      string                 `json:"unit,omitempty"`  // e.g., "seconds", "milliseconds"
+	Tags      []string               `json:"tags,omitempty"`
+	Metadata  map[string]interface{} `json:"metadata,omitempty"`
 }
 
 // NewClient creates a new datacat client
@@ -381,16 +420,22 @@ func (c *Client) LogEvent(sessionID, name string, data map[string]interface{}) e
 	return nil
 }
 
-// LogMetric logs a metric
+// LogMetric logs a metric with full options
 func (c *Client) LogMetric(sessionID, name string, value float64, tags []string) error {
+	return c.LogMetricWithType(sessionID, name, "gauge", value, tags, nil, "", nil)
+}
+
+// LogMetricWithType logs a metric with a specific type and additional fields
+func (c *Client) LogMetricWithType(sessionID, name, metricType string, value float64, tags []string, count *int, unit string, metadata map[string]interface{}) error {
 	var url string
-	var metricData interface{}
+	var metricData map[string]interface{}
 
 	if c.UseDaemon {
 		url = c.BaseURL + "/metric"
 		metricData = map[string]interface{}{
 			"session_id": sessionID,
 			"name":       name,
+			"type":       metricType,
 			"value":      value,
 			"tags":       tags,
 		}
@@ -398,9 +443,20 @@ func (c *Client) LogMetric(sessionID, name string, value float64, tags []string)
 		url = c.BaseURL + "/api/sessions/" + sessionID + "/metrics"
 		metricData = map[string]interface{}{
 			"name":  name,
+			"type":  metricType,
 			"value": value,
 			"tags":  tags,
 		}
+	}
+
+	if count != nil {
+		metricData["count"] = *count
+	}
+	if unit != "" {
+		metricData["unit"] = unit
+	}
+	if metadata != nil {
+		metricData["metadata"] = metadata
 	}
 
 	jsonData, err := json.Marshal(metricData)

@@ -157,10 +157,10 @@ def log_metric_safe(session, name, value):
     # Validate before sending
     if not isinstance(name, str) or not name:
         raise ValueError("Metric name must be a non-empty string")
-    
+
     if not isinstance(value, (int, float)):
         raise ValueError("Metric value must be a number")
-    
+
     session.log_metric(name, value)
 ```
 
@@ -279,4 +279,4 @@ Currently no rate limiting is implemented. Future versions may add rate limiting
 - [Sessions](sessions.html) - Session endpoints
 - [Events](events.html) - Event logging
 - [Metrics](metrics.html) - Metric logging
-- [Troubleshooting Guide](../guides/troubleshooting.html) - Common issues and solutions
+- [REST API Reference](rest-api.html) - Complete API documentation

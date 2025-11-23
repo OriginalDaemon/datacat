@@ -19,9 +19,6 @@ DataCat automatically tracks which machine each session runs on and uses this in
 
 ---
 
-
-DataCat automatically tracks which machine each session runs on and uses this information to distinguish between system sleep/hibernate and actual application crashes.
-
 ## How It Works
 
 ### 1. Machine Identification

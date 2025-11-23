@@ -548,7 +548,9 @@ curl http://localhost:9090/api/sessions/$SESSION_ID | jq .
 
 ## Next Steps
 
-- [Python API Reference](python-api.html) - Python client library
-- [Go API Reference](go-api.html) - Go client library
-- [Architecture Guide](../guides/architecture.html) - System architecture
-- [Deployment Guide](../guides/deployment.html) - Production deployment
+- [Sessions API](sessions.html) - Session management endpoints
+- [Events API](events.html) - Event logging endpoints
+- [Metrics API](metrics.html) - Metrics logging endpoints
+- [State API](state.html) - State management endpoints
+- [Architecture Guide](../_guides/architecture.html) - System architecture
+- [Quick Start Guide](../_guides/quickstart.html) - Getting started

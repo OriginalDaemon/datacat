@@ -19,28 +19,6 @@ Learn the basics of DataCat and get your first application running.
 
 - [Quick Start](quickstart.html) - Get up and running in minutes
 - [Architecture Overview](architecture.html) - Understanding how DataCat works
-- [Installation](installation.html) - Detailed installation instructions
-
----
-
-## Client Libraries
-
-Detailed guides for using DataCat client libraries.
-
-- [Python Client Guide](python-client.html) - Complete Python client reference
-- [Go Client Guide](go-client.html) - Complete Go client reference
-
----
-
-## Core Features
-
-Learn about DataCat's powerful features.
-
-- [Session Management](session-management.html) - Creating and managing sessions
-- [State Management](state-management.html) - Deep merge and state tracking
-- [Event Logging](event-logging.html) - Logging events with context
-- [Metrics Collection](metrics.html) - Recording and visualizing metrics
-- [Exception Tracking](exception-tracking.html) - Automatic exception capture
 
 ---
 
@@ -48,31 +26,40 @@ Learn about DataCat's powerful features.
 
 Take your DataCat usage to the next level.
 
-- [Daemon Batching](daemon-batching.html) - How intelligent batching works
-- [Crash Detection](crash-detection.html) - Automatic crash and hang detection
-- [Heartbeat Monitoring](heartbeat-monitoring.html) - Keep-alive and timeout detection
 - [Hung Session Tracking](hung-tracking.html) - Detecting and analyzing hung applications
 - [Machine Tracking](machine-tracking.html) - Cross-machine crash detection
-- [Web Dashboard](web-dashboard.html) - Using the visualization dashboard
 
 ---
 
-## Deployment
+## API Reference
 
-Production deployment and operations.
+Complete API documentation for all endpoints.
 
-- [Deployment Guide](deployment.html) - Running DataCat in production
-- [Configuration](configuration.html) - Server and daemon configuration
-- [Monitoring](monitoring.html) - Monitoring DataCat itself
-- [Troubleshooting](troubleshooting.html) - Common issues and solutions
+- [REST API Reference](../api/rest-api.html) - Complete HTTP API docs
+- [Sessions API](../api/sessions.html) - Session management
+- [Events API](../api/events.html) - Event logging
+- [Metrics API](../api/metrics.html) - Metrics logging
+- [State API](../api/state.html) - State updates and deep merge
+- [Errors API](../api/errors.html) - Error handling
 
 ---
 
-## Development
+## Feature Guides
 
-Contributing to DataCat.
+In-depth guides for specific features.
 
-- [Contributing Guide](contributing.html) - How to contribute
-- [Development Setup](development-setup.html) - Setting up your dev environment
-- [Testing](testing.html) - Running and writing tests
-- [Code Standards](code-standards.html) - Coding conventions
+- [Game Logging](../game-logging.html) - Ultra-fast async logging for real-time apps
+- [Metric Types](../metric-types.html) - Gauges, Counters, Histograms, Timers
+- [Histogram Buckets](../histogram-buckets.html) - Custom histogram configuration
+- [Incremental Counters](../incremental-counters.html) - Counter aggregation patterns
+- [Process Isolation](../process-isolation.html) - How daemon process isolation works
+
+---
+
+## Examples
+
+Practical examples and code samples.
+
+- [Python Examples](../examples/python-examples.html) - Comprehensive Python guide
+- [Demo GUI](../examples/demo-gui.html) - Interactive web demo
+- [Go Examples](../examples/go-examples.html) - Go client usage

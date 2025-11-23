@@ -19,9 +19,6 @@ DataCat automatically detects when applications stop responding (hang) and provi
 
 ---
 
-
-DataCat automatically detects when applications stop responding (hang) and provides powerful filtering to analyze different hang scenarios.
-
 ## How It Works
 
 ### 1. Hang Detection

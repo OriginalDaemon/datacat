@@ -5,7 +5,7 @@ param(
     [Parameter(Mandatory=$true)]
     [ValidateSet(
         "basic",
-        "window_tracking", 
+        "window_tracking",
         "heartbeat",
         "testing",
         "complete",
@@ -28,10 +28,10 @@ Write-Host ""
 # Check if server is running
 Write-Host "Checking if datacat server is running..." -ForegroundColor Yellow
 try {
-    $response = Invoke-WebRequest -Uri "http://localhost:9090/api/sessions" -Method POST -UseBasicParsing -ErrorAction Stop
-    Write-Host "Server is running!" -ForegroundColor Green
+    $response = Invoke-WebRequest -Uri "http://localhost:9090/health" -Method GET -UseBasicParsing -ErrorAction Stop -TimeoutSec 2
+    Write-Host "[OK] Server is running and healthy!" -ForegroundColor Green
 } catch {
-    Write-Host "Server is not running!" -ForegroundColor Red
+    Write-Host "[ERROR] Server is not running!" -ForegroundColor Red
     Write-Host "Please start the server first with: .\scripts\run-server.ps1" -ForegroundColor Yellow
     exit 1
 }

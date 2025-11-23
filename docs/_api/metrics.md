@@ -229,7 +229,7 @@ session.log_metric("error_rate_percent", error_rate,
 session.log_metric("api_latency_ms", 123.4)
 
 # Event - discrete occurrence
-session.log_event("api_call_completed", 
+session.log_event("api_call_completed",
                   data={"endpoint": "/users", "status": 200})
 ```
 
@@ -239,4 +239,5 @@ session.log_event("api_call_completed",
 
 - [Events](events.html) - Logging discrete events
 - [Sessions](sessions.html) - Session management
-- [Web Dashboard Guide](../guides/web-dashboard.html) - Visualizing metrics
+- [Metric Types](../metric-types.html) - Understanding all metric types
+- [REST API Reference](rest-api.html) - Complete API documentation
