@@ -1232,8 +1232,8 @@ type ServerHealthResponse struct {
 func handleServerStatus(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html")
 
-	// Check server health endpoint
-	healthURL := "http://localhost:9090/health"
+	// Check server health endpoint using configured client URL
+	healthURL := datacatClient.BaseURL + "/health"
 	resp, err := http.Get(healthURL)
 
 	if err != nil {

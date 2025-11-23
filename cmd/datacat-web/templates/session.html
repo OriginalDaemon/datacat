@@ -59,7 +59,7 @@
 </div>
 
 <div class="card">
-  <h2>Session: {{slice .Session.ID 0 16}}...</h2>
+  <h2>Session: {{if ge (len .Session.ID) 16}}{{slice .Session.ID 0 16}}...{{else}}{{.Session.ID}}{{end}}</h2>
   <p
     style="
       color: var(--text-secondary);

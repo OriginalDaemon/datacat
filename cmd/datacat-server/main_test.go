@@ -139,7 +139,10 @@ func TestUpdateState(t *testing.T) {
 		"key2": 123,
 	}
 
-	err = store.UpdateState(session.ID, newState)
+	err = store.UpdateState(session.ID, StateUpdateInput{
+		Timestamp: nil,
+		State:     newState,
+	})
 	if err != nil {
 		t.Fatalf("UpdateState failed: %v", err)
 	}
@@ -421,7 +424,9 @@ func TestPersistence(t *testing.T) {
 	sessionID := session.ID
 
 	// Update state
-	store1.UpdateState(sessionID, map[string]interface{}{"key": "value"})
+	store1.UpdateState(sessionID, StateUpdateInput{
+		State: map[string]interface{}{"key": "value"},
+	})
 
 	// Wait for async save
 	time.Sleep(200 * time.Millisecond)
@@ -463,11 +468,13 @@ func TestComprehensivePersistence(t *testing.T) {
 	sessionID := session.ID
 
 	// Update state with nested data
-	store1.UpdateState(sessionID, map[string]interface{}{
-		"status": "running",
-		"config": map[string]interface{}{
-			"mode":  "test",
-			"count": 42,
+	store1.UpdateState(sessionID, StateUpdateInput{
+		State: map[string]interface{}{
+			"status": "running",
+			"config": map[string]interface{}{
+				"mode":  "test",
+				"count": 42,
+			},
 		},
 	})
 
@@ -545,7 +552,9 @@ func TestComprehensivePersistence(t *testing.T) {
 	}
 
 	// Add more data after reopening
-	store2.UpdateState(sessionID, map[string]interface{}{"status": "completed"})
+	store2.UpdateState(sessionID, StateUpdateInput{
+		State: map[string]interface{}{"status": "completed"},
+	})
 	store2.AddEvent(sessionID, EventInput{
 		Name:     "after_reload",
 		Level:    "info",
@@ -615,7 +624,9 @@ func TestUpdateStateErrors(t *testing.T) {
 	defer store.Close()
 
 	// Try to update state of non-existent session
-	err = store.UpdateState("non-existent", map[string]interface{}{})
+	err = store.UpdateState("non-existent", StateUpdateInput{
+		State: map[string]interface{}{},
+	})
 	if err == nil {
 		t.Error("Expected error when updating state of non-existent session")
 	}
@@ -1681,7 +1692,9 @@ func TestStateDeletion(t *testing.T) {
 		"count": 5,
 		"data":  map[string]interface{}{"key1": "value1", "key2": "value2"},
 	}
-	err = store.UpdateState(session.ID, initialState)
+	err = store.UpdateState(session.ID, StateUpdateInput{
+		State: initialState,
+	})
 	if err != nil {
 		t.Fatalf("UpdateState failed: %v", err)
 	}
@@ -1715,7 +1728,9 @@ func TestStateDeletion(t *testing.T) {
 	deleteUpdate := map[string]interface{}{
 		"user": nil,
 	}
-	err = store.UpdateState(session.ID, deleteUpdate)
+	err = store.UpdateState(session.ID, StateUpdateInput{
+		State: deleteUpdate,
+	})
 	if err != nil {
 		t.Fatalf("UpdateState failed: %v", err)
 	}
@@ -1750,7 +1765,9 @@ func TestStateDeletion(t *testing.T) {
 			"key1": nil,
 		},
 	}
-	err = store.UpdateState(session.ID, nestedDeleteUpdate)
+	err = store.UpdateState(session.ID, StateUpdateInput{
+		State: nestedDeleteUpdate,
+	})
 	if err != nil {
 		t.Fatalf("UpdateState failed: %v", err)
 	}

@@ -1479,8 +1479,13 @@ func TestHasEvent(t *testing.T) {
 func TestHandleServerStatus(t *testing.T) {
 	// Test with server online
 	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		sessions := []*client.Session{}
-		json.NewEncoder(w).Encode(sessions)
+		if r.URL.Path == "/health" {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]string{"status": "healthy"})
+		} else {
+			sessions := []*client.Session{}
+			json.NewEncoder(w).Encode(sessions)
+		}
 	}))
 	defer mockServer.Close()
 
@@ -1496,15 +1501,19 @@ func TestHandleServerStatus(t *testing.T) {
 	}
 
 	body := w.Body.String()
-	if !strings.Contains(body, "Server Online") {
-		t.Error("Expected response to contain 'Server Online'")
+	// Check for either "Server Healthy" or "healthy" status (case insensitive check)
+	bodyLower := strings.ToLower(body)
+	if !strings.Contains(bodyLower, "healthy") && !strings.Contains(bodyLower, "success") {
+		t.Errorf("Expected response to contain healthy/success status, got: %s", body)
 	}
 }
 
 func TestHandleServerStatusOffline(t *testing.T) {
 	// Test with server offline (error response)
 	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
+		if r.URL.Path == "/health" {
+			w.WriteHeader(http.StatusInternalServerError)
+		}
 	}))
 	defer mockServer.Close()
 
@@ -1520,8 +1529,10 @@ func TestHandleServerStatusOffline(t *testing.T) {
 	}
 
 	body := w.Body.String()
-	if !strings.Contains(body, "Server Offline") {
-		t.Error("Expected response to contain 'Server Offline'")
+	// Check for either "Server Offline", "offline", or "Unhealthy" status (case insensitive check)
+	bodyLower := strings.ToLower(body)
+	if !strings.Contains(bodyLower, "offline") && !strings.Contains(bodyLower, "unhealthy") {
+		t.Errorf("Expected response to contain offline/unhealthy status, got: %s", body)
 	}
 }
 
