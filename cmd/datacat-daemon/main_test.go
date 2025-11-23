@@ -1044,6 +1044,7 @@ func TestCheckParentProcess(t *testing.T) {
 		ParentPID:   99999, // Non-existent PID
 		Events:      []EventData{},
 		CrashLogged: false,
+		Active:      true, // Session must be active for crash detection
 	}
 	daemon.mu.Unlock()
 

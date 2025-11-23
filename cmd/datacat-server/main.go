@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -807,6 +808,29 @@ func apiKeyMiddleware(next http.Handler) http.Handler {
 
 		next.ServeHTTP(w, r)
 	})
+}
+
+// initLogging initializes file logging if configured
+// Returns log file path, cleanup function, and error
+func initLogging(config *Config) (string, func(), error) {
+	if config.LogFile == "" {
+		// No log file configured, use stdout only
+		return "", func() {}, nil
+	}
+
+	logFile, err := os.OpenFile(config.LogFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		return "", func() {}, fmt.Errorf("failed to open log file: %w", err)
+	}
+
+	// Set log output to both file and stdout
+	log.SetOutput(io.MultiWriter(os.Stdout, logFile))
+
+	cleanup := func() {
+		logFile.Close()
+	}
+
+	return config.LogFile, cleanup, nil
 }
 
 func main() {

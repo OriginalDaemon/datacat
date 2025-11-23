@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html/template"
+	"io"
 	"log"
 	"math"
 	"net"
@@ -91,6 +92,77 @@ type SessionMetrics struct {
 	Average   float64
 	Min       float64
 	Values    []float64
+}
+
+// Config holds web server configuration
+type Config struct {
+	ServerURL string `json:"server_url"`
+	Port      string `json:"port"`
+	LogFile   string `json:"log_file,omitempty"` // Optional log file
+}
+
+// LoadConfig loads configuration from file or environment variables
+func LoadConfig(path string) *Config {
+	config := &Config{
+		ServerURL: "http://localhost:9090",
+		Port:      "8080",
+		LogFile:   "", // No file logging by default
+	}
+
+	// Check environment variables (these override file config)
+	if apiURL := os.Getenv("API_URL"); apiURL != "" {
+		config.ServerURL = apiURL
+	}
+	if port := os.Getenv("PORT"); port != "" {
+		config.Port = port
+	}
+	if logFile := os.Getenv("LOG_FILE"); logFile != "" {
+		config.LogFile = logFile
+	}
+
+	// Try to load from file if it exists (file values override defaults but not env vars)
+	file, err := os.Open(path)
+	if err == nil {
+		defer file.Close()
+		var fileConfig Config
+		if err := json.NewDecoder(file).Decode(&fileConfig); err == nil {
+			// Only use file values if env vars weren't set
+			if os.Getenv("API_URL") == "" && fileConfig.ServerURL != "" {
+				config.ServerURL = fileConfig.ServerURL
+			}
+			if os.Getenv("PORT") == "" && fileConfig.Port != "" {
+				config.Port = fileConfig.Port
+			}
+			if os.Getenv("LOG_FILE") == "" && fileConfig.LogFile != "" {
+				config.LogFile = fileConfig.LogFile
+			}
+		}
+	}
+
+	return config
+}
+
+// initLogging initializes file logging if configured
+// Returns log file path, cleanup function, and error
+func initLogging(config *Config) (string, func(), error) {
+	if config.LogFile == "" {
+		// No log file configured, use stderr only
+		return "", func() {}, nil
+	}
+
+	logFile, err := os.OpenFile(config.LogFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		return "", func() {}, fmt.Errorf("failed to open log file: %w", err)
+	}
+
+	// Set log output to both file and stderr
+	log.SetOutput(io.MultiWriter(os.Stderr, logFile))
+
+	cleanup := func() {
+		logFile.Close()
+	}
+
+	return config.LogFile, cleanup, nil
 }
 
 func main() {
