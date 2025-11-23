@@ -1,73 +1,205 @@
 {{define "event_rows"}}
 <div>
-{{range $index, $event := .Events}}
-<div class="event-row" data-level="{{$event.Level}}" data-name="{{$event.Name}}" data-index="{{add $.Offset $index}}">
-  <div onclick="toggleEvent({{add $.Offset $index}})" style="display: flex; justify-content: space-between; align-items: center;">
-    <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
-      <span style="font-family: monospace; color: var(--text-secondary); font-size: 12px;">{{$event.Timestamp.Format "15:04:05"}}</span>
-      <span style="font-weight: 500;">{{$event.Name}}</span>
-      {{if $event.Level}}
-      <span class="badge" style="font-size: 11px; padding: 2px 6px;">{{$event.Level}}</span>
-      {{end}}
-      {{if $event.Message}}
-      <span style="color: var(--text-secondary); font-size: 12px; max-width: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{$event.Message}}</span>
-      {{end}}
+  {{range $index, $event := .Events}}
+  <div
+    class="event-row"
+    data-level="{{$event.Level}}"
+    data-name="{{$event.Name}}"
+    data-index="{{add $.Offset $index}}"
+  >
+    <div
+      onclick="toggleEvent({{add $.Offset $index}})"
+      style="display: flex; justify-content: space-between; align-items: center"
+    >
+      <div
+        style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap"
+      >
+        <span
+          style="
+            font-family: monospace;
+            color: var(--text-secondary);
+            font-size: 12px;
+          "
+          >{{$event.Timestamp.Format "15:04:05"}}</span
+        >
+        <span style="font-weight: 500">{{$event.Name}}</span>
+        {{if $event.Level}}
+        <span class="badge" style="font-size: 11px; padding: 2px 6px"
+          >{{$event.Level}}</span
+        >
+        {{end}} {{if $event.Message}}
+        <span
+          style="
+            color: var(--text-secondary);
+            font-size: 12px;
+            max-width: 400px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+          "
+          >{{$event.Message}}</span
+        >
+        {{end}}
+      </div>
+      <span id="event-arrow-{{add $.Offset $index}}" style="font-size: 14px"
+        >▶</span
+      >
     </div>
-    <span id="event-arrow-{{add $.Offset $index}}" style="font-size: 14px;">▶</span>
+    <div
+      id="event-details-{{add $.Offset $index}}"
+      style="
+        display: none;
+        margin-top: 8px;
+        padding: 8px;
+        background: var(--bg-primary);
+        border-radius: 4px;
+      "
+      hx-get="/api/session/{{$.SessionID}}/event/{{add $.Offset $index}}/details"
+      hx-trigger="loadDetails"
+      hx-swap="innerHTML"
+    ></div>
   </div>
-  <div id="event-details-{{add $.Offset $index}}"
-       style="display: none; margin-top: 8px; padding: 8px; background: var(--bg-primary); border-radius: 4px;"
-       hx-get="/api/session/{{$.SessionID}}/event/{{add $.Offset $index}}/details"
-       hx-trigger="loadDetails"
-       hx-swap="innerHTML">
+  <script>
+    (function() {
+      const index = {{add $.Offset $index}};
+      window.eventDataStore = window.eventDataStore || {};
+      window.eventDataStore[index] = {
+        timestamp: "{{$event.Timestamp.Format "2006-01-02 15:04:05"}}",
+        name: "{{$event.Name}}",
+        level: "{{$event.Level}}",
+        category: "{{$event.Category}}",
+        message: "{{$event.Message}}"
+      };
+
+      window.loadedEvents = window.loadedEvents || [];
+      window.loadedEvents.push(index);
+      window.uniqueLevels = window.uniqueLevels || new Set();
+      window.uniqueNames = window.uniqueNames || new Set();
+      if ("{{$event.Level}}") window.uniqueLevels.add("{{$event.Level}}");
+      if ("{{$event.Name}}") window.uniqueNames.add("{{$event.Name}}");
+    })();
+  </script>
+  {{end}} {{if .HasMore}}
+  <div
+    id="load-more-events-{{.NextOffset}}"
+    data-hx-get="/api/session/{{.SessionID}}/events?offset={{.NextOffset}}&limit={{.Limit}}"
+    style="
+      text-align: center;
+      padding: 20px;
+      color: var(--text-secondary);
+      min-height: 60px;
+    "
+  >
+    <div
+      style="
+        display: inline-block;
+        width: 20px;
+        height: 20px;
+        border: 2px solid var(--accent-primary);
+        border-radius: 50%;
+        border-top-color: transparent;
+        animation: spin 1s linear infinite;
+      "
+    ></div>
+    <div style="margin-top: 8px; font-size: 12px">Loading more events...</div>
   </div>
-</div>
-<script>
-  (function() {
-    const index = {{add $.Offset $index}};
-    window.eventDataStore = window.eventDataStore || {};
-    window.eventDataStore[index] = {
-      timestamp: "{{$event.Timestamp.Format "2006-01-02 15:04:05"}}",
-      name: "{{$event.Name}}",
-      level: "{{$event.Level}}",
-      category: "{{$event.Category}}",
-      message: "{{$event.Message}}"
-    };
+  <script>
+    // Use Intersection Observer to trigger loading more events when scrolled into view
+    (function () {
+      const loadMoreDiv = document.getElementById(
+        "load-more-events-{{.NextOffset}}"
+      );
+      if (!loadMoreDiv) return;
 
-    window.loadedEvents = window.loadedEvents || [];
-    window.loadedEvents.push(index);
-    window.uniqueLevels = window.uniqueLevels || new Set();
-    window.uniqueNames = window.uniqueNames || new Set();
-    if ("{{$event.Level}}") window.uniqueLevels.add("{{$event.Level}}");
-    if ("{{$event.Name}}") window.uniqueNames.add("{{$event.Name}}");
-  })();
-</script>
-{{end}}
+      const url = loadMoreDiv.getAttribute("data-hx-get");
+      if (!url) return;
 
-{{if .HasMore}}
-<div
-  hx-get="/api/session/{{.SessionID}}/events?offset={{.NextOffset}}&limit={{.Limit}}"
-  hx-trigger="revealed"
-  hx-swap="afterend"
-  style="text-align: center; padding: 20px; color: var(--text-secondary);">
-  <div style="display: inline-block; width: 20px; height: 20px; border: 2px solid var(--accent-primary); border-radius: 50%; border-top-color: transparent; animation: spin 1s linear infinite;"></div>
-  <div style="margin-top: 8px; font-size: 12px;">Loading more events...</div>
-</div>
-{{else}}
-<div style="text-align: center; padding: 15px; color: var(--text-secondary); font-size: 12px; border-top: 1px solid var(--border-color); margin-top: 10px;">
-  End of events ({{.TotalEvents}} total)
-</div>
-<script>
-  // Update count and filters when all loaded
-  if (typeof updateFilterOptions === 'function') {
-    updateFilterOptions();
-  }
-  const countElem = document.getElementById('event-count');
-  if (countElem) {
-    countElem.textContent = '({{.TotalEvents}} total)';
-  }
-</script>
-{{end}}
-</div>
-{{end}}
+      // Use Intersection Observer for reliable scroll detection
+      const eventsList = document.getElementById("events-list");
+      const observer = new IntersectionObserver(
+        (entries) => {
+          entries.forEach((entry) => {
+            if (
+              entry.isIntersecting &&
+              !loadMoreDiv.hasAttribute("data-loading")
+            ) {
+              loadMoreDiv.setAttribute("data-loading", "true");
 
+              // Use HTMX to load more events
+              if (typeof htmx !== "undefined") {
+                htmx.ajax("get", url, {
+                  target: loadMoreDiv,
+                  swap: "afterend",
+                });
+              } else {
+                // Fallback to fetch if HTMX not available
+                fetch(url)
+                  .then((response) => response.text())
+                  .then((html) => {
+                    loadMoreDiv.insertAdjacentHTML("afterend", html);
+                    loadMoreDiv.remove();
+                  })
+                  .catch((err) => {
+                    console.error("Error loading more events:", err);
+                    loadMoreDiv.innerHTML =
+                      '<div style="color: var(--error-color);">Error loading more events</div>';
+                  });
+              }
+            }
+          });
+        },
+        {
+          root: eventsList, // Use the scrollable container as root
+          rootMargin: "100px", // Start loading 100px before reaching the element
+          threshold: 0.1,
+        }
+      );
+
+      observer.observe(loadMoreDiv);
+    })();
+  </script>
+  {{else if gt .TotalEvents 0}}
+  <div
+    style="
+      text-align: center;
+      padding: 15px;
+      color: var(--text-secondary);
+      font-size: 12px;
+      border-top: 1px solid var(--border-color);
+      margin-top: 10px;
+    "
+  >
+    End of events ({{.TotalEvents}} total)
+  </div>
+  <script>
+    // Update count and filters when all loaded
+    if (typeof updateFilterOptions === "function") {
+      updateFilterOptions();
+    }
+    const countElem = document.getElementById("event-count");
+    if (countElem) {
+      countElem.textContent = "({{.TotalEvents}} total)";
+    }
+  </script>
+  {{else}}
+  <div
+    style="
+      text-align: center;
+      padding: 15px;
+      color: var(--text-secondary);
+      font-size: 12px;
+      border-top: 1px solid var(--border-color);
+      margin-top: 10px;
+    "
+  >
+    No events recorded
+  </div>
+  <script>
+    const countElem = document.getElementById("event-count");
+    if (countElem) {
+      countElem.textContent = "(0 total)";
+    }
+  </script>
+  {{end}}
+</div>
+{{end}}

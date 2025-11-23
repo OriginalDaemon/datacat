@@ -702,19 +702,38 @@
     const arrow = document.getElementById(`event-arrow-${index}`);
     const row = document.querySelector(`[data-index="${index}"]`);
 
-    if (detailsDiv.style.display === "none") {
-      // Check if already loaded
-      if (!detailsDiv.innerHTML) {
+    if (!detailsDiv || !arrow || !row) {
+      console.error(`Could not find elements for event ${index}`);
+      return;
+    }
+
+    // Check if currently visible by checking computed style
+    const computedStyle = window.getComputedStyle(detailsDiv);
+    const isCurrentlyVisible =
+      computedStyle.display !== "none" && detailsDiv.style.display !== "none";
+
+    if (!isCurrentlyVisible) {
+      // Show details
+      detailsDiv.style.display = "block";
+      arrow.textContent = "▼";
+      if (row) row.classList.add("expanded");
+
+      // Check if already loaded (has content beyond just whitespace or loading indicators)
+      const hasContent =
+        detailsDiv.innerHTML &&
+        detailsDiv.innerHTML.trim() !== "" &&
+        !detailsDiv.innerHTML.includes("Loading") &&
+        !detailsDiv.querySelector(".htmx-indicator");
+
+      if (!hasContent) {
         // Trigger htmx load
         htmx.trigger(detailsDiv, "loadDetails");
       }
-      detailsDiv.style.display = "block";
-      arrow.textContent = "▼";
-      row.classList.add("expanded");
     } else {
+      // Hide details
       detailsDiv.style.display = "none";
       arrow.textContent = "▶";
-      row.classList.remove("expanded");
+      if (row) row.classList.remove("expanded");
     }
   }
 
