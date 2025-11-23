@@ -13,6 +13,10 @@ type Config struct {
 	BatchIntervalSeconds    int    `json:"batch_interval_seconds"`
 	MaxBatchSize            int    `json:"max_batch_size"`
 	HeartbeatTimeoutSeconds int    `json:"heartbeat_timeout_seconds"`
+	APIKey                  string `json:"api_key,omitempty"`           // Optional API key for authentication
+	EnableCompression       bool   `json:"enable_compression"`          // Enable gzip compression
+	TLSVerify               bool   `json:"tls_verify"`                  // Verify TLS certificates (default true)
+	TLSInsecureSkipVerify   bool   `json:"tls_insecure_skip_verify"`   // Skip TLS verification (for self-signed certs)
 }
 
 // DefaultConfig returns default configuration
@@ -23,6 +27,10 @@ func DefaultConfig() *Config {
 		BatchIntervalSeconds:    5,
 		MaxBatchSize:            100,
 		HeartbeatTimeoutSeconds: 60,
+		APIKey:                  "",    // No API key by default
+		EnableCompression:       true,  // Enable compression by default
+		TLSVerify:               true,  // Verify TLS certificates by default
+		TLSInsecureSkipVerify:   false, // Don't skip verification by default
 	}
 }
 

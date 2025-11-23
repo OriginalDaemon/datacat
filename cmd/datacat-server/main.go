@@ -1,6 +1,7 @@
 package main
 
 import (
+	"compress/gzip"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -693,10 +694,54 @@ func (s *Store) AddMetric(sessionID string, input MetricInput) error {
 }
 
 var store *Store
+var serverConfig *Config
+
+// gzipMiddleware automatically decompresses gzip-encoded requests
+func gzipMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Content-Encoding") == "gzip" {
+			gzipReader, err := gzip.NewReader(r.Body)
+			if err != nil {
+				http.Error(w, "Failed to decompress request", http.StatusBadRequest)
+				return
+			}
+			defer gzipReader.Close()
+			r.Body = io.NopCloser(gzipReader)
+			r.Header.Del("Content-Encoding")
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// apiKeyMiddleware validates API key if required
+func apiKeyMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Skip auth for health check
+		if r.URL.Path == "/health" {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		// Only check API key if required
+		if serverConfig.RequireAPIKey {
+			authHeader := r.Header.Get("Authorization")
+			expectedAuth := "Bearer " + serverConfig.APIKey
+
+			if authHeader != expectedAuth {
+				log.Printf("Unauthorized request from %s to %s", r.RemoteAddr, r.URL.Path)
+				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+				return
+			}
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
 
 func main() {
 	// Load configuration
 	config := LoadConfig("./config.json")
+	serverConfig = config // Store for middleware
 	log.Printf("Configuration loaded: Data path=%s, Retention=%d days, Port=%s",
 		config.DataPath, config.RetentionDays, config.ServerPort)
 
@@ -712,8 +757,10 @@ func main() {
 	store.StartCleanupRoutine()
 	log.Printf("Started cleanup routine (interval: %v)", config.CleanupInterval)
 
-	// Health check endpoint
-	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+
+	// Create a new mux to apply middleware
+	mux := http.NewServeMux()
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		json.NewEncoder(w).Encode(map[string]interface{}{
@@ -722,14 +769,29 @@ func main() {
 			"version": "1.0.0",
 		})
 	})
+	mux.HandleFunc("/api/sessions", handleSessions)
+	mux.HandleFunc("/api/sessions/", handleSessionOperations)
+	mux.HandleFunc("/api/data/sessions", handleGetAllSessions)
 
-	http.HandleFunc("/api/sessions", handleSessions)
-	http.HandleFunc("/api/sessions/", handleSessionOperations)
-	http.HandleFunc("/api/data/sessions", handleGetAllSessions)
+	// Apply middleware
+	handler := apiKeyMiddleware(gzipMiddleware(mux))
 
 	port := ":" + config.ServerPort
-	log.Printf("Starting datacat server on %s", port)
-	log.Fatal(http.ListenAndServe(port, nil))
+
+	// Check if TLS is configured
+	if config.TLSCertFile != "" && config.TLSKeyFile != "" {
+		log.Printf("Starting datacat server on %s (HTTPS)", port)
+		if config.RequireAPIKey {
+			log.Printf("API key authentication enabled")
+		}
+		log.Fatal(http.ListenAndServeTLS(port, config.TLSCertFile, config.TLSKeyFile, handler))
+	} else {
+		log.Printf("Starting datacat server on %s (HTTP)", port)
+		if config.RequireAPIKey {
+			log.Printf("API key authentication enabled")
+		}
+		log.Fatal(http.ListenAndServe(port, handler))
+	}
 }
 
 // handleSessions handles POST /api/sessions to create a new session

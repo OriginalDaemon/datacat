@@ -2,8 +2,10 @@ package main
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"crypto/md5"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -92,19 +94,33 @@ type Daemon struct {
 	mu             sync.RWMutex
 	failedQueue    []QueuedOperation
 	queueMu        sync.Mutex
-	sessionCounter int // Counter for generating local session IDs
+	sessionCounter int           // Counter for generating local session IDs
 	shutdownChan   chan struct{} // Channel to signal shutdown
 	httpServer     *http.Server  // HTTP server instance for graceful shutdown
+	httpClient     *http.Client  // HTTP client for server requests with TLS config
 }
 
 // NewDaemon creates a new daemon instance
 func NewDaemon(config *Config) *Daemon {
+	// Create HTTP client with TLS configuration
+	tlsConfig := &tls.Config{
+		InsecureSkipVerify: config.TLSInsecureSkipVerify,
+	}
+
+	httpClient := &http.Client{
+		Timeout: 30 * time.Second,
+		Transport: &http.Transport{
+			TLSClientConfig: tlsConfig,
+		},
+	}
+
 	return &Daemon{
 		config:         config,
 		sessions:       make(map[string]*SessionBuffer),
 		failedQueue:    make([]QueuedOperation, 0),
 		sessionCounter: 0,
 		shutdownChan:   make(chan struct{}),
+		httpClient:     httpClient,
 	}
 }
 
@@ -152,6 +168,43 @@ func (d *Daemon) Start() error {
 	return d.httpServer.ListenAndServe()
 }
 
+// postToServer sends a POST request to the server with compression and authentication
+func (d *Daemon) postToServer(endpoint string, data []byte) (*http.Response, error) {
+	var body io.Reader = bytes.NewBuffer(data)
+
+	// Compress if enabled
+	if d.config.EnableCompression {
+		var buf bytes.Buffer
+		gzipWriter := gzip.NewWriter(&buf)
+		if _, err := gzipWriter.Write(data); err != nil {
+			return nil, fmt.Errorf("failed to compress: %w", err)
+		}
+		if err := gzipWriter.Close(); err != nil {
+			return nil, fmt.Errorf("failed to close gzip writer: %w", err)
+		}
+		body = &buf
+	}
+
+	req, err := http.NewRequest("POST", d.config.ServerURL+endpoint, body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+
+	// Add compression header if enabled
+	if d.config.EnableCompression {
+		req.Header.Set("Content-Encoding", "gzip")
+	}
+
+	// Add API key if configured
+	if d.config.APIKey != "" {
+		req.Header.Set("Authorization", "Bearer "+d.config.APIKey)
+	}
+
+	return d.httpClient.Do(req)
+}
+
 // createSessionOnServer attempts to create a session on the server
 func (d *Daemon) createSessionOnServer(product, version, machineID, hostname string) (string, error) {
 	reqBody, _ := json.Marshal(map[string]interface{}{
@@ -161,7 +214,7 @@ func (d *Daemon) createSessionOnServer(product, version, machineID, hostname str
 		"hostname":   hostname,
 	})
 
-	resp, err := http.Post(d.config.ServerURL+"/api/sessions", "application/json", bytes.NewBuffer(reqBody))
+	resp, err := d.postToServer("/api/sessions", reqBody)
 	if err != nil {
 		return "", err
 	}
@@ -695,11 +748,7 @@ func (d *Daemon) queueOperation(sessionID, opType string, data interface{}) {
 // sendToServer sends data to the server with automatic retry queueing on failure
 func (d *Daemon) sendToServer(sessionID, endpoint, opType string, data interface{}) {
 	jsonData, _ := json.Marshal(data)
-	resp, err := http.Post(
-		d.config.ServerURL+endpoint,
-		"application/json",
-		bytes.NewBuffer(jsonData),
-	)
+	resp, err := d.postToServer(endpoint, jsonData)
 	if err != nil {
 		log.Printf("Failed to send %s, queueing for retry: %v", opType, err)
 		d.queueOperation(sessionID, opType, data)
@@ -734,16 +783,12 @@ func (d *Daemon) sendMetric(sessionID string, metric MetricData) {
 
 // sendHeartbeat sends a heartbeat to the server
 func (d *Daemon) sendHeartbeat(sessionID string) {
-	resp, err := http.Post(
-		d.config.ServerURL+"/api/sessions/"+sessionID+"/heartbeat",
-		"application/json",
-		bytes.NewBuffer([]byte("{}")),
-	)
+	resp, err := d.postToServer("/api/sessions/"+sessionID+"/heartbeat", []byte("{}"))
 	if err != nil {
 		log.Printf("Failed to send heartbeat to server: %v", err)
 		return
 	}
-	_ = resp.Body.Close()
+	defer resp.Body.Close()
 }
 
 // heartbeatMonitor checks for hung applications
@@ -951,27 +996,23 @@ func (d *Daemon) checkParentProcess(sessionID string) {
 
 		// Mark session as crashed on server
 		go func() {
-			crashData, _ := json.Marshal(map[string]interface{}{
-				"reason": "parent_process_terminated",
+		crashData, _ := json.Marshal(map[string]interface{}{
+			"reason": "parent_process_terminated",
+		})
+		resp, err := d.postToServer("/api/sessions/"+sessionID+"/crash", crashData)
+		if err != nil {
+			log.Printf("Failed to mark session as crashed on server: %v", err)
+			// Queue for retry
+			d.queueMu.Lock()
+			d.failedQueue = append(d.failedQueue, QueuedOperation{
+				SessionID: sessionID,
+				OpType:    "crash",
+				Data:      map[string]interface{}{"reason": "parent_process_terminated"},
+				Timestamp: time.Now(),
 			})
-			resp, err := http.Post(
-				d.config.ServerURL+"/api/sessions/"+sessionID+"/crash",
-				"application/json",
-				bytes.NewBuffer(crashData),
-			)
-			if err != nil {
-				log.Printf("Failed to mark session as crashed on server: %v", err)
-				// Queue for retry
-				d.queueMu.Lock()
-				d.failedQueue = append(d.failedQueue, QueuedOperation{
-					SessionID: sessionID,
-					OpType:    "crash",
-					Data:      map[string]interface{}{"reason": "parent_process_terminated"},
-					Timestamp: time.Now(),
-				})
-				d.queueMu.Unlock()
-			} else {
-				resp.Body.Close()
+			d.queueMu.Unlock()
+		} else {
+			resp.Body.Close()
 				// Remove session from daemon after successfully marking as crashed
 				d.mu.Lock()
 				delete(d.sessions, sessionID)
@@ -1167,7 +1208,7 @@ func (d *Daemon) retryCreateSession(sessionID string, data map[string]interface{
 		return false
 	}
 
-	resp, err := http.Post(d.config.ServerURL+"/api/sessions", "application/json", bytes.NewBuffer(reqBody))
+	resp, err := d.postToServer("/api/sessions", reqBody)
 	if err != nil {
 		return false
 	}
@@ -1208,11 +1249,7 @@ func (d *Daemon) retryCreateSession(sessionID string, data map[string]interface{
 // retrySendState attempts to send a state update to the server
 func (d *Daemon) retrySendState(sessionID string, stateUpdate StateUpdate) bool {
 	data, _ := json.Marshal(stateUpdate)
-	resp, err := http.Post(
-		d.config.ServerURL+"/api/sessions/"+sessionID+"/state",
-		"application/json",
-		bytes.NewBuffer(data),
-	)
+	resp, err := d.postToServer("/api/sessions/"+sessionID+"/state", data)
 	if err != nil {
 		return false
 	}
@@ -1232,11 +1269,7 @@ func (d *Daemon) retrySendState(sessionID string, stateUpdate StateUpdate) bool 
 // retrySendEvent attempts to send an event to the server
 func (d *Daemon) retrySendEvent(sessionID string, event EventData) bool {
 	data, _ := json.Marshal(event)
-	resp, err := http.Post(
-		d.config.ServerURL+"/api/sessions/"+sessionID+"/events",
-		"application/json",
-		bytes.NewBuffer(data),
-	)
+	resp, err := d.postToServer("/api/sessions/"+sessionID+"/events", data)
 	if err != nil {
 		return false
 	}
@@ -1256,11 +1289,7 @@ func (d *Daemon) retrySendEvent(sessionID string, event EventData) bool {
 // retrySendMetric attempts to send a metric to the server
 func (d *Daemon) retrySendMetric(sessionID string, metric MetricData) bool {
 	data, _ := json.Marshal(metric)
-	resp, err := http.Post(
-		d.config.ServerURL+"/api/sessions/"+sessionID+"/metrics",
-		"application/json",
-		bytes.NewBuffer(data),
-	)
+	resp, err := d.postToServer("/api/sessions/"+sessionID+"/metrics", data)
 	if err != nil {
 		return false
 	}
@@ -1280,11 +1309,7 @@ func (d *Daemon) retrySendMetric(sessionID string, metric MetricData) bool {
 // retryEndSession attempts to end a session on the server
 func (d *Daemon) retryEndSession(sessionID string) bool {
 	endData, _ := json.Marshal(map[string]interface{}{})
-	resp, err := http.Post(
-		d.config.ServerURL+"/api/sessions/"+sessionID+"/end",
-		"application/json",
-		bytes.NewBuffer(endData),
-	)
+	resp, err := d.postToServer("/api/sessions/"+sessionID+"/end", endData)
 	if err != nil {
 		return false
 	}
@@ -1309,11 +1334,7 @@ func (d *Daemon) retryEndSession(sessionID string) bool {
 // retryCrashSession retries marking a session as crashed
 func (d *Daemon) retryCrashSession(sessionID string, data map[string]interface{}) bool {
 	crashData, _ := json.Marshal(data)
-	resp, err := http.Post(
-		d.config.ServerURL+"/api/sessions/"+sessionID+"/crash",
-		"application/json",
-		bytes.NewBuffer(crashData),
-	)
+	resp, err := d.postToServer("/api/sessions/"+sessionID+"/crash", crashData)
 	if err != nil {
 		return false
 	}
