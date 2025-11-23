@@ -2252,3 +2252,42 @@ func TestHandleMetricDataNoData(t *testing.T) {
 		t.Error("Expected 'No data found' message")
 	}
 }
+
+func TestLoadConfig(t *testing.T) {
+	// Test default config when no file exists
+	config := LoadConfig("/nonexistent/config.json")
+	
+	if config.ServerURL != "http://localhost:9090" {
+		t.Errorf("Expected default ServerURL 'http://localhost:9090', got %s", config.ServerURL)
+	}
+	
+	if config.Port != "8080" {
+		t.Errorf("Expected default Port '8080', got %s", config.Port)
+	}
+	
+	if config.LogFile != "" {
+		t.Errorf("Expected default LogFile to be empty, got %s", config.LogFile)
+	}
+}
+
+func TestInitLogging(t *testing.T) {
+	// Test with empty log file (should not fail)
+	config := &Config{
+		ServerURL: "http://localhost:9090",
+		Port:      "8080",
+		LogFile:   "",
+	}
+	
+	logPath, cleanup, err := initLogging(config)
+	
+	if err != nil {
+		t.Errorf("Expected no error with empty log file, got %v", err)
+	}
+	
+	if logPath != "" {
+		t.Errorf("Expected empty log path, got %s", logPath)
+	}
+	
+	// Cleanup should not panic
+	cleanup()
+}
