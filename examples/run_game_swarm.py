@@ -197,9 +197,43 @@ def main():
 
     # Monitor processes
     completed = 0
+    hung = 0
     start_time = time.time()
 
+    # Set timeout to duration + 50% buffer
+    timeout = args.duration * 1.5
+
     while completed < args.count:
+        elapsed = time.time() - start_time
+
+        # Check if we've exceeded timeout
+        if elapsed > timeout:
+            print()
+            print("Timeout reached (%.1fs). Terminating remaining processes..." % elapsed)
+            for proc in processes:
+                if proc.poll() is None:  # Still running
+                    if not hasattr(proc, '_reported'):
+                        hung += 1
+                        proc._reported = True
+                        print("[%.1fs] Instance timed out (%d/%d) - Status: HUNG (forced)" %
+                              (elapsed, completed + hung, args.count))
+                    try:
+                        proc.terminate()
+                    except Exception:
+                        pass
+
+            # Wait a bit for graceful termination
+            time.sleep(2)
+
+            # Force kill any that didn't terminate
+            for proc in processes:
+                if proc.poll() is None:
+                    try:
+                        proc.kill()
+                    except Exception:
+                        pass
+            break
+
         time.sleep(1)
 
         # Check for completed processes
@@ -220,16 +254,19 @@ def main():
                 except Exception:
                     status = "UNKNOWN"
 
-                elapsed = time.time() - start_time
                 print("[%.1fs] Instance completed (%d/%d) - Status: %s" %
                       (elapsed, completed, args.count, status))
 
     print()
     print("=" * 70)
-    print("All instances completed!")
+    print("Swarm run completed!")
     print("=" * 70)
     print()
-    print("Total time: %.1f seconds" % (time.time() - start_time))
+    print("Results:")
+    print("  Completed: %d" % completed)
+    if hung > 0:
+        print("  Hung (forced termination): %d" % hung)
+    print("  Total time: %.1f seconds" % (time.time() - start_time))
 
     # Cleanup daemon configs
     print()

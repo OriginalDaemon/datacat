@@ -70,12 +70,12 @@ type Event struct {
 type Metric struct {
 	Timestamp time.Time              `json:"timestamp"`
 	Name      string                 `json:"name"`
-	Type      string                 `json:"type"`  // "gauge", "counter", "histogram", "timer"
+	Type      string                 `json:"type"` // "gauge", "counter", "histogram", "timer"
 	Value     float64                `json:"value"`
-	Count     *int                   `json:"count,omitempty"`     // For timers: number of iterations
-	Unit      string                 `json:"unit,omitempty"`      // e.g., "seconds", "milliseconds", "bytes"
+	Count     *int                   `json:"count,omitempty"` // For timers: number of iterations
+	Unit      string                 `json:"unit,omitempty"`  // e.g., "seconds", "milliseconds", "bytes"
 	Tags      []string               `json:"tags,omitempty"`
-	Metadata  map[string]interface{} `json:"metadata,omitempty"`  // Additional data for histograms, etc.
+	Metadata  map[string]interface{} `json:"metadata,omitempty"` // Additional data for histograms, etc.
 }
 
 // Store manages all sessions with BadgerDB for persistence
@@ -123,12 +123,18 @@ func (s *Store) saveSessionToDB(session *Session) error {
 		return fmt.Errorf("failed to marshal session: %v", err)
 	}
 
-	err = s.db.Update(func(txn *badger.Txn) error {
-		return txn.Set([]byte("session:"+session.ID), data)
+	return s.saveSessionDataToDB(session.ID, data)
+}
+
+// saveSessionDataToDB saves pre-marshaled session data to the database
+// This is used when marshaling is done while holding a lock to avoid race conditions
+func (s *Store) saveSessionDataToDB(sessionID string, data []byte) error {
+	err := s.db.Update(func(txn *badger.Txn) error {
+		return txn.Set([]byte("session:"+sessionID), data)
 	})
 
 	if err != nil {
-		log.Printf("ERROR: Failed to save session %s to database: %v", session.ID, err)
+		log.Printf("ERROR: Failed to save session %s to database: %v", sessionID, err)
 		return fmt.Errorf("failed to save session to db: %v", err)
 	}
 
@@ -225,13 +231,20 @@ func (s *Store) CreateSession(product, version, machineID, hostname string) *Ses
 
 	s.sessions[session.ID] = session
 
-	// Save to database asynchronously (with error logging)
-	go func() {
-		if err := s.saveSessionToDB(session); err != nil {
-			// Error is already logged in saveSessionToDB
-			// Session is still in memory, so next operation will trigger another save attempt
-		}
-	}()
+	// Marshal session while holding lock to avoid race conditions
+	sessionData, err := json.Marshal(session)
+	if err != nil {
+		log.Printf("ERROR: Failed to marshal session %s: %v", session.ID, err)
+		// Session is still in memory, continue anyway
+	} else {
+		// Save to database asynchronously
+		sessionID := session.ID
+		go func() {
+			if err := s.saveSessionDataToDB(sessionID, sessionData); err != nil {
+				// Error is already logged in saveSessionDataToDB
+			}
+		}()
+	}
 
 	return session
 }
@@ -383,10 +396,18 @@ func (s *Store) UpdateState(id string, input StateUpdateInput) error {
 	}
 	session.StateHistory = append(session.StateHistory, snapshot)
 
-	// Save to database asynchronously (with error logging)
+	// Marshal session while holding lock to avoid race conditions
+	sessionData, err := json.Marshal(session)
+	if err != nil {
+		log.Printf("ERROR: Failed to marshal session %s: %v", session.ID, err)
+		return fmt.Errorf("failed to marshal session: %v", err)
+	}
+
+	// Save to database asynchronously
+	sessionID := session.ID
 	go func() {
-		if err := s.saveSessionToDB(session); err != nil {
-			// Error is already logged in saveSessionToDB
+		if err := s.saveSessionDataToDB(sessionID, sessionData); err != nil {
+			// Error is already logged in saveSessionDataToDB
 		}
 	}()
 
@@ -410,10 +431,18 @@ func (s *Store) UpdateHeartbeat(id string) error {
 	// Update active status based on heartbeat
 	s.updateActiveStatus(session)
 
-	// Save to database asynchronously (with error logging)
+	// Marshal session while holding lock to avoid race conditions
+	sessionData, err := json.Marshal(session)
+	if err != nil {
+		log.Printf("ERROR: Failed to marshal session %s: %v", session.ID, err)
+		return fmt.Errorf("failed to marshal session: %v", err)
+	}
+
+	// Save to database asynchronously
+	sessionID := session.ID
 	go func() {
-		if err := s.saveSessionToDB(session); err != nil {
-			// Error is already logged in saveSessionToDB
+		if err := s.saveSessionDataToDB(sessionID, sessionData); err != nil {
+			// Error is already logged in saveSessionDataToDB
 		}
 	}()
 
@@ -472,10 +501,18 @@ func (s *Store) EndSession(id string) error {
 	session.Active = false
 	session.UpdatedAt = now
 
-	// Save to database asynchronously (with error logging)
+	// Marshal session while holding lock to avoid race conditions
+	sessionData, err := json.Marshal(session)
+	if err != nil {
+		log.Printf("ERROR: Failed to marshal session %s: %v", session.ID, err)
+		return fmt.Errorf("failed to marshal session: %v", err)
+	}
+
+	// Save to database asynchronously
+	sessionID := session.ID
 	go func() {
-		if err := s.saveSessionToDB(session); err != nil {
-			// Error is already logged in saveSessionToDB
+		if err := s.saveSessionDataToDB(sessionID, sessionData); err != nil {
+			// Error is already logged in saveSessionDataToDB
 		}
 	}()
 
@@ -644,10 +681,18 @@ func (s *Store) AddEvent(sessionID string, input EventInput) error {
 		log.Printf("Session %s recovered from hang", sessionID)
 	}
 
-	// Save to database asynchronously (with error logging)
+	// Marshal session while holding lock to avoid race conditions
+	sessionData, err := json.Marshal(session)
+	if err != nil {
+		log.Printf("ERROR: Failed to marshal session %s: %v", session.ID, err)
+		return fmt.Errorf("failed to marshal session: %v", err)
+	}
+
+	// Save to database asynchronously
+	sid := sessionID // Capture for goroutine
 	go func() {
-		if err := s.saveSessionToDB(session); err != nil {
-			// Error is already logged in saveSessionToDB
+		if err := s.saveSessionDataToDB(sid, sessionData); err != nil {
+			// Error is already logged in saveSessionDataToDB
 		}
 	}()
 
@@ -658,10 +703,10 @@ func (s *Store) AddEvent(sessionID string, input EventInput) error {
 type MetricInput struct {
 	Timestamp *time.Time             `json:"timestamp,omitempty"` // Optional timestamp from daemon
 	Name      string                 `json:"name"`
-	Type      string                 `json:"type"`                // "gauge", "counter", "histogram", "timer"
+	Type      string                 `json:"type"` // "gauge", "counter", "histogram", "timer"
 	Value     float64                `json:"value"`
-	Count     *int                   `json:"count,omitempty"`     // For timers
-	Unit      string                 `json:"unit,omitempty"`      // e.g., "seconds", "milliseconds"
+	Count     *int                   `json:"count,omitempty"` // For timers
+	Unit      string                 `json:"unit,omitempty"`  // e.g., "seconds", "milliseconds"
 	Tags      []string               `json:"tags,omitempty"`
 	Metadata  map[string]interface{} `json:"metadata,omitempty"`
 }
@@ -701,10 +746,18 @@ func (s *Store) AddMetric(sessionID string, input MetricInput) error {
 	session.Metrics = append(session.Metrics, metric)
 	session.UpdatedAt = time.Now()
 
-	// Save to database asynchronously (with error logging)
+	// Marshal session while holding lock to avoid race conditions
+	sessionData, err := json.Marshal(session)
+	if err != nil {
+		log.Printf("ERROR: Failed to marshal session %s: %v", session.ID, err)
+		return fmt.Errorf("failed to marshal session: %v", err)
+	}
+
+	// Save to database asynchronously
+	sid := sessionID // Capture for goroutine
 	go func() {
-		if err := s.saveSessionToDB(session); err != nil {
-			// Error is already logged in saveSessionToDB
+		if err := s.saveSessionDataToDB(sid, sessionData); err != nil {
+			// Error is already logged in saveSessionDataToDB
 		}
 	}()
 
@@ -774,7 +827,6 @@ func main() {
 	// Start cleanup routine
 	store.StartCleanupRoutine()
 	log.Printf("Started cleanup routine (interval: %v)", config.CleanupInterval)
-
 
 	// Create a new mux to apply middleware
 	mux := http.NewServeMux()

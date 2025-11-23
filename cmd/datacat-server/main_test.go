@@ -496,7 +496,7 @@ func TestComprehensivePersistence(t *testing.T) {
 	})
 
 	// Wait for async saves
-	time.Sleep(200 * time.Millisecond)
+	time.Sleep(500 * time.Millisecond)
 
 	// Close store
 	store1.Close()
@@ -564,7 +564,7 @@ func TestComprehensivePersistence(t *testing.T) {
 	})
 
 	// Wait for async saves
-	time.Sleep(200 * time.Millisecond)
+	time.Sleep(500 * time.Millisecond)
 
 	// Verify new data was added
 	retrieved2, _ := store2.GetSession(sessionID)
