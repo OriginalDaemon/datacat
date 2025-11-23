@@ -22,16 +22,42 @@ Understanding gauges, counters, histograms, and timers.
 
 ## Overview
 
-DataCat supports four different types of metrics, each designed for specific use cases.
+DataCat supports four different types of metrics, each designed for specific use cases. **Each type has its own dedicated function** for clarity and ease of use.
 
 ## Quick Reference
 
-| Type          | Use Case             | Example                       | Characteristics               |
-| ------------- | -------------------- | ----------------------------- | ----------------------------- |
-| **Gauge**     | Current values       | CPU%, memory, temperature     | Can go up or down             |
-| **Counter**   | Cumulative totals    | Total requests, bytes sent    | Only increases                |
-| **Histogram** | Value distributions  | Request latencies, file sizes | Many samples for percentiles  |
-| **Timer**     | Duration measurement | Function execution time       | Auto-measured, optional count |
+| Type          | Function            | Use Case             | Example                       |
+| ------------- | ------------------- | -------------------- | ----------------------------- |
+| **Gauge**     | `log_gauge()`       | Current values       | CPU%, memory, temperature     |
+| **Counter**   | `log_counter()`     | Cumulative totals    | Total requests, bytes sent    |
+| **Histogram** | `log_histogram()`   | Value distributions  | Request latencies, file sizes |
+| **Timer**     | `timer()` (context) | Duration measurement | Function execution time       |
+
+**Each metric type has its own dedicated function.** Using these type-specific functions makes your code clearer and prevents mistakes.
+
+---
+
+## Quick Start Examples
+
+```python
+from datacat import create_session
+
+session = create_session(product="MyApp", version="1.0.0")
+
+# GAUGE - current values that can go up or down
+session.log_gauge('cpu_percent', 45.2, unit='percent')
+
+# COUNTER - monotonically increasing (daemon auto-tracks total)
+session.log_counter('requests')  # Increment by 1
+session.log_counter('bytes_sent', delta=1024)  # Increment by amount
+
+# HISTOGRAM - value distribution (daemon aggregates into buckets)
+session.log_histogram('request_latency', 0.045, unit='seconds')
+
+# TIMER - auto-measured duration
+with session.timer('database_query', unit='seconds'):
+    result = db.query()
+```
 
 ---
 
@@ -351,6 +377,65 @@ For very high-frequency events, consider sampling:
 if random.random() < 0.1:
     session.log_histogram("request_latency", duration)
 ```
+
+---
+
+## Complete API Reference
+
+### Type-Specific Functions (Recommended ✅)
+
+**Always use these type-specific functions** - they make your code clearer and prevent mistakes:
+
+```python
+# GAUGE - current values (can go up or down)
+session.log_gauge(name, value, unit=None, tags=None)
+# Examples:
+session.log_gauge('cpu_percent', 45.2, unit='percent')
+session.log_gauge('memory_mb', 1024.5, unit='MB')
+session.log_gauge('active_users', 42)
+
+# COUNTER - monotonically increasing totals (daemon auto-aggregates)
+session.log_counter(name, delta=1, tags=None)
+# Examples:
+session.log_counter('requests')  # Increment by 1
+session.log_counter('bytes_sent', delta=1048576)  # Increment by amount
+session.log_counter('errors', tags=['type:validation'])
+
+# HISTOGRAM - value distributions (daemon aggregates into buckets)
+session.log_histogram(name, value, unit=None, tags=None, buckets=None, metadata=None)
+# Examples:
+session.log_histogram('request_latency', 0.045, unit='seconds')
+session.log_histogram('file_size', 5242880, unit='bytes')
+# Custom buckets for FPS analysis:
+fps_buckets = [10, 20, 30, 60, 1000]  # <10, 10-20, 20-30, 30-60, 60+ FPS
+session.log_histogram('fps', 58.3, buckets=fps_buckets)
+
+# TIMER - auto-measured duration (context manager preferred)
+with session.timer(name, count=None, unit='seconds', tags=None):
+    # Code to time executes here
+# Examples:
+with session.timer('database_query'):
+    result = db.execute(query)
+
+with session.timer('process_items', count=len(items)):
+    for item in items:
+        process(item)
+
+# TIMER - manual logging (when you already have the duration)
+session.log_timer(name, duration, count=None, unit='seconds', tags=None)
+session.log_timer('external_api_call', 1.25, unit='seconds')
+```
+
+### Generic Function (Advanced Use Only ⚠️)
+
+A generic function exists for advanced cases (e.g., dynamic metric type selection):
+
+```python
+session.log_metric(name, value, tags=None, metric_type='gauge',
+                   count=None, unit=None, metadata=None, delta=None)
+```
+
+**⚠️ Use type-specific functions instead!** Only use the generic function if you truly need dynamic metric type selection at runtime.
 
 ---
 

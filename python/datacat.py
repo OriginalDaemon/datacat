@@ -483,10 +483,25 @@ class DatacatClient(object):
         exception_type = exc_type.__name__ if exc_type else "Unknown"
         exception_msg = str(exc_value) if exc_value else ""
 
-        # Format stack trace as list of strings
-        stacktrace_lines = traceback.format_exception(
-            exc_type, exc_value, exc_traceback
-        )
+        # Format stack trace as list of strings - always include stack trace for exceptions
+        stacktrace_lines = []
+        if exc_type or exc_value or exc_traceback:
+            try:
+                stacktrace_lines = traceback.format_exception(
+                    exc_type, exc_value, exc_traceback
+                )
+            except Exception:
+                # Fallback: try to get current stack
+                try:
+                    stacktrace_lines = traceback.format_stack()
+                except Exception:
+                    stacktrace_lines = ["Failed to capture stack trace"]
+        else:
+            # If no exception info available, try to get current stack
+            try:
+                stacktrace_lines = traceback.format_stack()
+            except Exception:
+                stacktrace_lines = ["No stack trace available"]
 
         # Extract source file, line, and function from the innermost frame
         source_file = None
@@ -502,6 +517,15 @@ class DatacatClient(object):
             source_file = frame.f_code.co_filename
             source_line = tb.tb_lineno
             source_function = frame.f_code.co_name
+        elif not stacktrace_lines or len(stacktrace_lines) == 0:
+            # Try to extract from current frame if no traceback
+            try:
+                frame = sys._getframe(1)
+                source_file = frame.f_code.co_filename
+                source_line = frame.f_lineno
+                source_function = frame.f_code.co_name
+            except Exception:
+                pass
 
         return self.log_event(
             session_id=session_id,
@@ -979,7 +1003,12 @@ class AsyncSession(object):
                         self.session.log_metric(
                             data['name'],
                             data['value'],
-                            tags=data.get('tags')
+                            tags=data.get('tags'),
+                            metric_type=data.get('type', 'gauge'),
+                            count=data.get('count'),
+                            unit=data.get('unit'),
+                            metadata=data.get('metadata'),
+                            delta=data.get('delta')
                         )
                     elif item_type == 'state':
                         self.session.update_state(data['state'])
@@ -993,7 +1022,10 @@ class AsyncSession(object):
 
                 except Exception as e:
                     # Don't crash background thread on logging errors
+                    import traceback
                     print("AsyncSession error: {0}".format(str(e)))
+                    print("Traceback:")
+                    traceback.print_exc()
 
             except queue.Empty:
                 continue
@@ -1101,10 +1133,10 @@ class Session(object):
         )
 
     def log_metric(self, name, value, tags=None, metric_type="gauge",
-                   count=None, unit=None, metadata=None):
+                   count=None, unit=None, metadata=None, delta=None):
         """Log a metric"""
         return self.client.log_metric(self.session_id, name, value, tags,
-                                      metric_type, count, unit, metadata)
+                                      metric_type, count, unit, metadata, delta)
 
     def log_gauge(self, name, value, tags=None, unit=None):
         """Log a gauge metric (current value)"""

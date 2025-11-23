@@ -59,7 +59,10 @@
 </div>
 
 <div class="card">
-  <h2>Session: {{if ge (len .Session.ID) 16}}{{slice .Session.ID 0 16}}...{{else}}{{.Session.ID}}{{end}}</h2>
+  <h2>
+    Session: {{if ge (len .Session.ID) 16}}{{slice .Session.ID 0
+    16}}...{{else}}{{.Session.ID}}{{end}}
+  </h2>
   <p
     style="
       color: var(--text-secondary);
@@ -631,8 +634,16 @@
           m.timestamp >= timeRange.start && m.timestamp <= timeRange.end
       );
 
-      chart.data.labels = filteredMetrics.map(m => m.timestamp.toLocaleTimeString());
-      chart.data.datasets[0].data = filteredMetrics.map(m => m.value);
+      // Update data maintaining time-series format with {x, y} objects
+      chart.data.datasets[0].data = filteredMetrics.map(m => ({
+          x: m.timestamp.getTime(),
+          y: m.value
+      }));
+
+      // Update time axis bounds
+      chart.options.scales.x.min = timeRange.start.getTime();
+      chart.options.scales.x.max = timeRange.end.getTime();
+
       chart.update();
   }
 
