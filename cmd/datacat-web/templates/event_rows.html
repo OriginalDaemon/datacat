@@ -1,4 +1,5 @@
 {{define "event_rows"}}
+<div>
 {{range $index, $event := .Events}}
 <div class="event-row" data-level="{{$event.Level}}" data-name="{{$event.Name}}" data-index="{{add $.Offset $index}}">
   <div onclick="toggleEvent({{add $.Offset $index}})" style="display: flex; justify-content: space-between; align-items: center;">
@@ -67,5 +68,6 @@
   }
 </script>
 {{end}}
+</div>
 {{end}}
 

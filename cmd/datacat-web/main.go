@@ -186,6 +186,11 @@ type EventDetailsData struct {
 // Template helper function to add numbers
 var templateFuncs = template.FuncMap{
 	"add": func(a, b int) int { return a + b },
+	"sub": func(a, b int) int { return a - b },
+	"lt":  func(a, b int) bool { return a < b },
+	"ge":  func(a, b int) bool { return a >= b },
+	"gt":  func(a, b int) bool { return a > b },
+	"or":  func(a, b bool) bool { return a || b },
 }
 
 // handlePaginatedEvents returns a page of events
@@ -840,6 +845,21 @@ func handleSessionDetail(w http.ResponseWriter, r *http.Request) {
 
 	funcMap := template.FuncMap{
 		"replace": strings.ReplaceAll,
+		"add": func(a, b int) int {
+			return a + b
+		},
+		"sub": func(a, b int) int {
+			return a - b
+		},
+		"lt": func(a, b int) bool {
+			return a < b
+		},
+		"ge": func(a, b int) bool {
+			return a >= b
+		},
+		"or": func(a, b bool) bool {
+			return a || b
+		},
 		"toJSONSafe": func(v interface{}) template.JS {
 			b, err := json.Marshal(v)
 			if err != nil {
@@ -848,7 +868,7 @@ func handleSessionDetail(w http.ResponseWriter, r *http.Request) {
 			return template.JS(b)
 		},
 	}
-	tmpl, err := template.New("base.html").Funcs(funcMap).ParseFS(content, "templates/base.html", "templates/session.html")
+	tmpl, err := template.New("base.html").Funcs(funcMap).ParseFS(content, "templates/base.html", "templates/session_improved.html", "templates/event_rows.html")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

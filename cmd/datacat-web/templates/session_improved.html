@@ -36,7 +36,7 @@
 
 <!-- Compact Session Info -->
 <div class="card">
-  <h2>Session: {{slice .Session.ID 0 16}}...</h2>
+  <h2>Session: {{if ge (len .Session.ID) 16}}{{slice .Session.ID 0 16}}...{{else}}{{.Session.ID}}{{end}}</h2>
   <div id="session-info" hx-get="/api/session-info/{{.Session.ID}}" hx-trigger="load{{if .Session.Active}}, every 3s{{end}}" hx-swap="outerHTML">
     <table class="compact-table" style="width: 100%;">
       <tr>
@@ -299,7 +299,7 @@
     const metrics = metricInfo.data;
 
     const container = document.getElementById(`chart-container-${safeMetricName}`);
-    container.innerHTML = '<div style="height: 250px;"><canvas id="chart-${safeMetricName}"></canvas></div>';
+    container.innerHTML = `<div style="height: 250px;"><canvas id="chart-${safeMetricName}"></canvas></div>`;
 
     const ctx = document.getElementById(`chart-${safeMetricName}`).getContext('2d');
     chartInstances[safeMetricName] = new Chart(ctx, {
@@ -351,10 +351,8 @@
     <div
       hx-get="/api/session/{{.Session.ID}}/events?offset=0&limit=50"
       hx-trigger="load"
-      hx-swap="afterbegin"
-      hx-indicator="#events-loading">
-    </div>
-    <div id="events-loading" class="htmx-indicator" style="text-align: center; padding: 20px; color: var(--text-secondary);">
+      hx-swap="outerHTML"
+      style="text-align: center; padding: 20px; color: var(--text-secondary);">
       <div style="display: inline-block; width: 20px; height: 20px; border: 2px solid var(--accent-primary); border-radius: 50%; border-top-color: transparent; animation: spin 1s linear infinite;"></div>
       <div style="margin-top: 8px;">Loading events...</div>
     </div>
@@ -465,11 +463,28 @@
 <!-- Minimal timeline script -->
 <script>
   const timelineItems = [];
-  {{range $index, $snapshot := .Session.StateHistory}}
-  timelineItems.push({ type: 'state', timestamp: new Date("{{$snapshot.Timestamp.Format "2006-01-02T15:04:05Z07:00"}}"), displayTime: "{{$snapshot.Timestamp.Format "15:04:05"}}" });
+  // Load state history (limit to 500 most recent for performance)
+  {{$stateCount := len .Session.StateHistory}}
+  {{if gt $stateCount 500}}
+    {{range $index, $snapshot := (slice .Session.StateHistory (sub $stateCount 500) $stateCount)}}
+    timelineItems.push({ type: 'state', timestamp: new Date("{{$snapshot.Timestamp.Format "2006-01-02T15:04:05Z07:00"}}"), displayTime: "{{$snapshot.Timestamp.Format "15:04:05"}}" });
+    {{end}}
+  {{else}}
+    {{range $index, $snapshot := .Session.StateHistory}}
+    timelineItems.push({ type: 'state', timestamp: new Date("{{$snapshot.Timestamp.Format "2006-01-02T15:04:05Z07:00"}}"), displayTime: "{{$snapshot.Timestamp.Format "15:04:05"}}" });
+    {{end}}
   {{end}}
-  {{range $event := .Session.Events}}
-  timelineItems.push({ type: 'event', timestamp: new Date("{{$event.Timestamp.Format "2006-01-02T15:04:05Z07:00"}}"), displayTime: "{{$event.Timestamp.Format "15:04:05"}}" });
+
+  // Load events (limit to 500 most recent for performance)
+  {{$eventCount := len .Session.Events}}
+  {{if gt $eventCount 500}}
+    {{range $index, $event := (slice .Session.Events (sub $eventCount 500) $eventCount)}}
+    timelineItems.push({ type: 'event', timestamp: new Date("{{$event.Timestamp.Format "2006-01-02T15:04:05Z07:00"}}"), displayTime: "{{$event.Timestamp.Format "15:04:05"}}" });
+    {{end}}
+  {{else}}
+    {{range $index, $event := .Session.Events}}
+    timelineItems.push({ type: 'event', timestamp: new Date("{{$event.Timestamp.Format "2006-01-02T15:04:05Z07:00"}}"), displayTime: "{{$event.Timestamp.Format "15:04:05"}}" });
+    {{end}}
   {{end}}
 
   timelineItems.sort((a, b) => a.timestamp - b.timestamp);
