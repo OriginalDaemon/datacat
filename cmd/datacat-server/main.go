@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"strings"
@@ -344,8 +345,14 @@ func deepCopyState(state map[string]interface{}) map[string]interface{} {
 	return copy
 }
 
+// StateUpdateInput represents the input for updating state
+type StateUpdateInput struct {
+	Timestamp *time.Time             `json:"timestamp,omitempty"` // Optional timestamp from daemon
+	State     map[string]interface{} `json:"state"`
+}
+
 // UpdateState updates the state of a session (merges new state with existing)
-func (s *Store) UpdateState(id string, state map[string]interface{}) error {
+func (s *Store) UpdateState(id string, input StateUpdateInput) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -354,13 +361,19 @@ func (s *Store) UpdateState(id string, state map[string]interface{}) error {
 		return fmt.Errorf("session not found")
 	}
 
+	// Use timestamp from daemon if provided, otherwise use server time
+	timestamp := time.Now()
+	if input.Timestamp != nil {
+		timestamp = *input.Timestamp
+	}
+
 	// Deep merge the new state into the existing state
-	deepMerge(session.State, state)
+	deepMerge(session.State, input.State)
 	session.UpdatedAt = time.Now()
 
 	// Create a snapshot of the current state
 	snapshot := StateSnapshot{
-		Timestamp: time.Now(),
+		Timestamp: timestamp,
 		State:     deepCopyState(session.State),
 	}
 	session.StateHistory = append(session.StateHistory, snapshot)
@@ -554,6 +567,7 @@ func (s *Store) StartCleanupRoutine() {
 
 // EventInput represents the input for adding an event
 type EventInput struct {
+	Timestamp      *time.Time             `json:"timestamp,omitempty"` // Optional timestamp from daemon
 	Name           string                 `json:"name"`
 	Level          string                 `json:"level"`
 	Category       string                 `json:"category"`
@@ -589,8 +603,14 @@ func (s *Store) AddEvent(sessionID string, input EventInput) error {
 		level = exceptionEventLevel
 	}
 
+	// Use timestamp from daemon if provided, otherwise use server time
+	timestamp := time.Now()
+	if input.Timestamp != nil {
+		timestamp = *input.Timestamp
+	}
+
 	event := Event{
-		Timestamp:      time.Now(),
+		Timestamp:      timestamp,
 		Name:           input.Name,
 		Level:          level,
 		Category:       input.Category,
@@ -631,9 +651,10 @@ func (s *Store) AddEvent(sessionID string, input EventInput) error {
 
 // MetricInput represents the input for adding a metric
 type MetricInput struct {
-	Name  string   `json:"name"`
-	Value float64  `json:"value"`
-	Tags  []string `json:"tags,omitempty"`
+	Timestamp *time.Time `json:"timestamp,omitempty"` // Optional timestamp from daemon
+	Name      string     `json:"name"`
+	Value     float64    `json:"value"`
+	Tags      []string   `json:"tags,omitempty"`
 }
 
 // AddMetric adds a metric to a session
@@ -646,8 +667,14 @@ func (s *Store) AddMetric(sessionID string, input MetricInput) error {
 		return fmt.Errorf("session not found")
 	}
 
+	// Use timestamp from daemon if provided, otherwise use server time
+	timestamp := time.Now()
+	if input.Timestamp != nil {
+		timestamp = *input.Timestamp
+	}
+
 	metric := Metric{
-		Timestamp: time.Now(),
+		Timestamp: timestamp,
 		Name:      input.Name,
 		Value:     input.Value,
 		Tags:      input.Tags,
@@ -769,13 +796,32 @@ func handleSessionOperations(w http.ResponseWriter, r *http.Request) {
 
 	// POST /api/sessions/{id}/state - Update state
 	if r.Method == "POST" && operation == "state" {
-		var state map[string]interface{}
-		if err := json.NewDecoder(r.Body).Decode(&state); err != nil {
+		// Read the body
+		bodyBytes, err := io.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, "Failed to read request body", http.StatusBadRequest)
+			return
+		}
+
+		var input StateUpdateInput
+
+		// Try to unmarshal as StateUpdateInput (new format with timestamp)
+		if err := json.Unmarshal(bodyBytes, &input); err != nil {
 			http.Error(w, "Invalid request body", http.StatusBadRequest)
 			return
 		}
 
-		if err := store.UpdateState(sessionID, state); err != nil {
+		// Handle backward compatibility: if State is nil, treat the entire body as state
+		if input.State == nil {
+			var plainState map[string]interface{}
+			if err := json.Unmarshal(bodyBytes, &plainState); err != nil {
+				http.Error(w, "Invalid request body", http.StatusBadRequest)
+				return
+			}
+			input.State = plainState
+		}
+
+		if err := store.UpdateState(sessionID, input); err != nil {
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}

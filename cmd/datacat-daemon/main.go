@@ -27,10 +27,16 @@ const (
 	retryQueueInterval         = 10 * time.Second
 )
 
+// StateUpdate represents a state update with timestamp
+type StateUpdate struct {
+	Timestamp time.Time              `json:"timestamp"` // Daemon timestamp when state update was received from client
+	State     map[string]interface{} `json:"state"`
+}
+
 // SessionBuffer holds pending updates for a session
 type SessionBuffer struct {
 	SessionID              string
-	StateUpdates           []map[string]interface{}
+	StateUpdates           []StateUpdate
 	Events                 []EventData
 	Metrics                []MetricData
 	LastHeartbeat          time.Time
@@ -48,6 +54,7 @@ type SessionBuffer struct {
 
 // EventData represents an event to be logged
 type EventData struct {
+	Timestamp      time.Time              `json:"timestamp"`       // Daemon timestamp when event was received from client
 	Name           string                 `json:"name"`
 	Level          string                 `json:"level"`
 	Category       string                 `json:"category"`
@@ -64,9 +71,10 @@ type EventData struct {
 
 // MetricData represents a metric to be logged
 type MetricData struct {
-	Name  string   `json:"name"`
-	Value float64  `json:"value"`
-	Tags  []string `json:"tags,omitempty"`
+	Timestamp time.Time `json:"timestamp"` // Daemon timestamp when metric was received from client
+	Name      string    `json:"name"`
+	Value     float64   `json:"value"`
+	Tags      []string  `json:"tags,omitempty"`
 }
 
 // QueuedOperation represents an operation that failed and needs retry
@@ -196,7 +204,7 @@ func (d *Daemon) initSessionBuffer(sessionID, product, version string, parentPID
 	d.mu.Lock()
 	d.sessions[sessionID] = &SessionBuffer{
 		SessionID:        sessionID,
-		StateUpdates:     []map[string]interface{}{},
+		StateUpdates:     []StateUpdate{},
 		Events:           []EventData{},
 		Metrics:          []MetricData{},
 		LastHeartbeat:    now,
@@ -292,7 +300,12 @@ func (d *Daemon) handleState(w http.ResponseWriter, r *http.Request) {
 
 	// Check if state actually changed
 	if d.hasStateChanged(buffer.LastState, req.State) {
-		buffer.StateUpdates = append(buffer.StateUpdates, req.State)
+		// Timestamp when daemon receives the state update from client
+		now := time.Now()
+		buffer.StateUpdates = append(buffer.StateUpdates, StateUpdate{
+			Timestamp: now,
+			State:     req.State,
+		})
 		// Update last known state
 		buffer.LastState = d.mergeState(buffer.LastState, req.State)
 	}
@@ -338,8 +351,12 @@ func (d *Daemon) handleEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Timestamp when daemon receives the event from client (this is effectively the client log time)
+	now := time.Now()
+
 	buffer.mu.Lock()
 	buffer.Events = append(buffer.Events, EventData{
+		Timestamp:      now,
 		Name:           req.Name,
 		Level:          req.Level,
 		Category:       req.Category,
@@ -387,11 +404,15 @@ func (d *Daemon) handleMetric(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Timestamp when daemon receives the metric from client (this is effectively the client log time)
+	now := time.Now()
+
 	buffer.mu.Lock()
 	buffer.Metrics = append(buffer.Metrics, MetricData{
-		Name:  req.Name,
-		Value: req.Value,
-		Tags:  req.Tags,
+		Timestamp: now,
+		Name:      req.Name,
+		Value:     req.Value,
+		Tags:      req.Tags,
 	})
 	buffer.mu.Unlock()
 
@@ -638,14 +659,14 @@ func (d *Daemon) flushSession(sessionID string) {
 	stateUpdates := buffer.StateUpdates
 	events := buffer.Events
 	metrics := buffer.Metrics
-	buffer.StateUpdates = make([]map[string]interface{}, 0)
+	buffer.StateUpdates = make([]StateUpdate, 0)
 	buffer.Events = make([]EventData, 0)
 	buffer.Metrics = make([]MetricData, 0)
 	buffer.mu.Unlock()
 
 	// Send state updates
-	for _, state := range stateUpdates {
-		d.sendStateUpdate(sessionID, state)
+	for _, stateUpdate := range stateUpdates {
+		d.sendStateUpdate(sessionID, stateUpdate)
 	}
 
 	// Send events
@@ -697,8 +718,8 @@ func (d *Daemon) sendToServer(sessionID, endpoint, opType string, data interface
 }
 
 // sendStateUpdate sends a state update to the server
-func (d *Daemon) sendStateUpdate(sessionID string, state map[string]interface{}) {
-	d.sendToServer(sessionID, "/api/sessions/"+sessionID+"/state", "state", state)
+func (d *Daemon) sendStateUpdate(sessionID string, stateUpdate StateUpdate) {
+	d.sendToServer(sessionID, "/api/sessions/"+sessionID+"/state", "state", stateUpdate)
 }
 
 // sendEvent sends an event to the server
@@ -1109,8 +1130,8 @@ func (d *Daemon) processFailedQueue() {
 				success = d.retryCreateSession(op.SessionID, data)
 			}
 		case "state":
-			if state, ok := op.Data.(map[string]interface{}); ok {
-				success = d.retrySendState(op.SessionID, state)
+			if stateUpdate, ok := op.Data.(StateUpdate); ok {
+				success = d.retrySendState(op.SessionID, stateUpdate)
 			}
 		case "event":
 			if event, ok := op.Data.(EventData); ok {
@@ -1185,8 +1206,8 @@ func (d *Daemon) retryCreateSession(sessionID string, data map[string]interface{
 }
 
 // retrySendState attempts to send a state update to the server
-func (d *Daemon) retrySendState(sessionID string, state map[string]interface{}) bool {
-	data, _ := json.Marshal(state)
+func (d *Daemon) retrySendState(sessionID string, stateUpdate StateUpdate) bool {
+	data, _ := json.Marshal(stateUpdate)
 	resp, err := http.Post(
 		d.config.ServerURL+"/api/sessions/"+sessionID+"/state",
 		"application/json",
