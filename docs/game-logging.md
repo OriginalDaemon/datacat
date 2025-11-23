@@ -1,4 +1,24 @@
-# Game Logging Guide - Ultra-Fast Async Logging for Real-Time Applications
+---
+layout: default
+title: Game Logging
+nav_order: 8
+---
+
+# Game Logging
+{: .no_toc }
+
+Ultra-fast async logging for real-time applications with strict frame timing requirements.
+{: .fs-6 .fw-300 }
+
+## Table of Contents
+{: .no_toc .text-delta }
+
+1. TOC
+{:toc}
+
+---
+
+## Introduction
 
 This guide explains how to use DataCat's async logging for game engines and other real-time applications with strict frame timing requirements.
 

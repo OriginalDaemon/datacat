@@ -154,43 +154,43 @@ Application → Local Daemon → DataCat Server → BadgerDB
 - **datacat-web**: Interactive web dashboard
 - **Client Libraries**: Python and Go implementations
 
-See the [Architecture Guide](guides/architecture.html) for detailed information.
+See the [Architecture Guide](_guides/architecture.html) for detailed information.
 
 ---
 
 ## Documentation
 
 ### Guides
-- [Quick Start Guide](guides/quickstart.html)
-- [Architecture Overview](guides/architecture.html)
-- [Python Client Guide](guides/python-client.html)
-- [Go Client Guide](guides/go-client.html)
-- [Web Dashboard Guide](guides/web-dashboard.html)
-- [Deployment Guide](guides/deployment.html)
+- [Quick Start Guide](_guides/quickstart.html) - Get up and running in minutes
+- [Architecture Overview](_guides/architecture.html) - Understanding how DataCat works
+- [Hung Session Tracking](_guides/hung-tracking.html) - Detecting and analyzing hung applications
+- [Machine Tracking](_guides/machine-tracking.html) - Cross-machine crash detection
 
 ### API Reference
-- [REST API Reference](api/rest-api.html)
-- [Python Client API](api/python-api.html)
-- [Go Client API](api/go-api.html)
+- [REST API Reference](_api/rest-api.html) - Complete API documentation
+- [Sessions API](_api/sessions.html) - Session management
+- [Events API](_api/events.html) - Event logging
+- [Metrics API](_api/metrics.html) - Metrics logging
+- [State API](_api/state.html) - State management
+- [Errors API](_api/errors.html) - Error handling
 
-### Advanced Topics
-- [Daemon Batching](guides/daemon-batching.html)
-- [Crash Detection](guides/crash-detection.html)
-- [State Management](guides/state-management.html)
-- [Troubleshooting](guides/troubleshooting.html)
+### Examples
+- [Python Examples](_examples/python-examples.html) - Complete Python guide
+- [Demo GUI](_examples/demo-gui.html) - Interactive web demo
+- [Go Examples](_examples/go-examples.html) - Go client usage
+
+### Feature Guides
+- [Game Logging](game-logging.html) - Ultra-fast async logging for real-time apps
+- [Metric Types](metric-types.html) - Gauges, Counters, Histograms, Timers
+- [Histogram Buckets](histogram-buckets.html) - Custom histogram configuration
+- [Incremental Counters](incremental-counters.html) - Counter aggregation
+- [Process Isolation](process-isolation.html) - Daemon process isolation
 
 ---
 
 ## Contributing
 
-We welcome contributions! Please see our [Contributing Guide](guides/contributing.html) for details.
-
-### Requirements
-
-- Python code must pass Black formatting and mypy type checking
-- Go code must build successfully
-- All tests must pass with 85%+ coverage
-- Branch protection enforced on `main`
+We welcome contributions! See [CONTRIBUTING.md](https://github.com/OriginalDaemon/datacat/blob/main/CONTRIBUTING.md) for guidelines.
 
 ---
 

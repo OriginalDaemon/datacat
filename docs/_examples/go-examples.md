@@ -564,7 +564,7 @@ func (h *DatacatHandler) Handle(r slog.Record) error {
 
 ## Next Steps
 
-- **[Go Client Library](../../client/)** - Complete client documentation
+- **[Go Client Library](https://github.com/OriginalDaemon/datacat/tree/main/client)** - Complete client documentation
 - **[API Reference](../_api/rest-api.md)** - REST API documentation
 - **[Python Examples](python-examples.md)** - Python examples
 - **[Architecture](../_guides/architecture.md)** - System architecture

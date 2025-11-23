@@ -1,8 +1,26 @@
-# Histogram Buckets - Daemon-Side Aggregation
+---
+layout: default
+title: Histogram Buckets
+nav_order: 10
+---
+
+# Histogram Buckets
+{: .no_toc }
+
+Daemon-side histogram aggregation with custom bucket boundaries.
+{: .fs-6 .fw-300 }
+
+## Table of Contents
+{: .no_toc .text-delta }
+
+1. TOC
+{:toc}
+
+---
 
 ## Overview
 
-Datacat implements **daemon-side histogram aggregation** with support for custom bucket boundaries. This allows you to efficiently track distributions of values without sending every individual sample to the server.
+DataCat implements **daemon-side histogram aggregation** with support for custom bucket boundaries. This allows you to efficiently track distributions of values without sending every individual sample to the server.
 
 ## How It Works
 

@@ -365,11 +365,10 @@ Open http://127.0.0.1:7860 in your browser for an interactive interface.
 Now that you have DataCat running, explore these topics:
 
 - [Architecture Overview](architecture.html) - Understand how DataCat works
-- [Python Client Guide](python-client.html) - Advanced Python usage
-- [Go Client Guide](go-client.html) - Advanced Go usage
-- [Daemon Batching](daemon-batching.html) - How the daemon optimizes traffic
-- [REST API Reference](../api/rest-api.html) - Complete API documentation
-- [Deployment Guide](deployment.html) - Production deployment
+- [REST API Reference](../_api/rest-api.html) - Complete API documentation
+- [Python Examples](../_examples/python-examples.html) - More Python usage examples
+- [Game Logging](../game-logging.html) - Ultra-fast async logging
+- [Metric Types](../metric-types.html) - Understanding all metric types
 
 ---
 
@@ -380,19 +379,27 @@ Now that you have DataCat running, explore these topics:
 **Error: Port already in use**
 
 ```bash
-# Find process using port 9090
+# Find process using port 9090 (Linux/Mac)
 lsof -i :9090
 
-# Kill the process
-kill -9 <PID>
+# Windows PowerShell
+Get-NetTCPConnection -LocalPort 9090
+
+# Kill the process (replace <PID> with actual process ID)
+kill -9 <PID>  # Linux/Mac
+Stop-Process -Id <PID>  # Windows
 ```
 
 **Error: Database corruption**
 
 ```bash
-# Remove database and restart
+# Remove database and restart (Linux/Mac)
 rm -rf ./datacat_data
 ./datacat-server
+
+# Windows PowerShell
+Remove-Item -Recurse -Force .\datacat_data
+.\datacat-server.exe
 ```
 
 ### Client Connection Issues
@@ -418,6 +425,6 @@ go build -o ../../datacat-daemon
 
 ### Getting Help
 
-- Check the [Troubleshooting Guide](troubleshooting.html)
 - Review [GitHub Issues](https://github.com/OriginalDaemon/datacat/issues)
-- Read the [Contributing Guide](contributing.html)
+- Check the [Architecture Guide](architecture.html) for system design
+- Read the [API documentation](../_api/rest-api.html)

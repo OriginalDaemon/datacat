@@ -1,15 +1,37 @@
+---
+layout: default
+title: Metric Types
+nav_order: 9
+---
+
 # Metric Types
 
-Datacat supports four different types of metrics, each designed for specific use cases.
+{: .no_toc }
+
+Understanding gauges, counters, histograms, and timers.
+{: .fs-6 .fw-300 }
+
+## Table of Contents
+
+{: .no_toc .text-delta }
+
+1. TOC
+   {:toc}
+
+---
+
+## Overview
+
+DataCat supports four different types of metrics, each designed for specific use cases.
 
 ## Quick Reference
 
-| Type | Use Case | Example | Characteristics |
-|------|----------|---------|-----------------|
-| **Gauge** | Current values | CPU%, memory, temperature | Can go up or down |
-| **Counter** | Cumulative totals | Total requests, bytes sent | Only increases |
-| **Histogram** | Value distributions | Request latencies, file sizes | Many samples for percentiles |
-| **Timer** | Duration measurement | Function execution time | Auto-measured, optional count |
+| Type          | Use Case             | Example                       | Characteristics               |
+| ------------- | -------------------- | ----------------------------- | ----------------------------- |
+| **Gauge**     | Current values       | CPU%, memory, temperature     | Can go up or down             |
+| **Counter**   | Cumulative totals    | Total requests, bytes sent    | Only increases                |
+| **Histogram** | Value distributions  | Request latencies, file sizes | Many samples for percentiles  |
+| **Timer**     | Duration measurement | Function execution time       | Auto-measured, optional count |
 
 ---
 
@@ -18,6 +40,7 @@ Datacat supports four different types of metrics, each designed for specific use
 **Current point-in-time values that can increase or decrease.**
 
 ### When to Use
+
 - System metrics (CPU%, memory usage, disk space)
 - Application state (active connections, queue depth)
 - Environmental data (temperature, humidity)
@@ -32,6 +55,7 @@ session.log_gauge("active_connections", 42, tags=["network"])
 ```
 
 ### Characteristics
+
 - Value can go up or down
 - Latest value is what matters
 - Each log represents current state at that moment
@@ -43,12 +67,14 @@ session.log_gauge("active_connections", 42, tags=["network"])
 **Cumulative values that only increase. The daemon automatically tracks totals for you!**
 
 ### How It Works
+
 - Call `log_counter()` with a delta (default: 1)
 - **Daemon accumulates the total** automatically
 - Server receives cumulative totals
 - You don't need to track totals in your code!
 
 ### When to Use
+
 - Total requests served
 - Total errors encountered
 - Bytes transmitted
@@ -89,6 +115,7 @@ def handle_request():
 ```
 
 ### Characteristics
+
 - Value only increases (monotonic)
 - Daemon-side aggregation (thread-safe automatically)
 - Useful for calculating rates (requests/second)
@@ -96,6 +123,7 @@ def handle_request():
 - No need to maintain counter variables
 
 ### Analysis
+
 - Server can calculate rate of change (derivative)
 - Example: 100 requests at t=0s, 150 requests at t=5s → 10 requests/second
 
@@ -106,6 +134,7 @@ def handle_request():
 **Distribution of values across many samples.**
 
 ### When to Use
+
 - Request/response latencies
 - File sizes
 - Query execution times
@@ -126,6 +155,7 @@ session.log_histogram("frame_time", frame_duration,
 ```
 
 ### Characteristics
+
 - Daemon aggregates samples into buckets automatically
 - Storage efficient: only bucket counts sent to server
 - Custom buckets for domain-specific thresholds
@@ -133,6 +163,7 @@ session.log_histogram("frame_time", frame_duration,
 - Calculate approximate percentiles from bucket counts
 
 ### Example Output (Server)
+
 ```json
 {
   "name": "frame_time",
@@ -140,20 +171,21 @@ session.log_histogram("frame_time", frame_duration,
   "value": 0.025,
   "metadata": {
     "buckets": [
-      {"le": 0.0167, "count": 650},
-      {"le": 0.0333, "count": 920},
-      {"le": 0.05, "count": 990},
-      {"le": 0.1, "count": 998},
-      {"le": 10.0, "count": 1000}
+      { "le": 0.0167, "count": 650 },
+      { "le": 0.0333, "count": 920 },
+      { "le": 0.05, "count": 990 },
+      { "le": 0.1, "count": 998 },
+      { "le": 10.0, "count": 1000 }
     ],
     "sum": 25.5,
     "count": 1000
   }
 }
 ```
+
 Analysis: 65% of frames at 60+ FPS, 92% at 30+ FPS
 
-**Implementation:** Datacat uses daemon-side histogram aggregation with configurable buckets. Samples are accumulated into buckets, and only bucket counts are sent to the server. This provides ~100-1000x storage and network efficiency compared to storing individual samples. See [Histogram Buckets Documentation](histogram-buckets.md) for details.
+**Implementation:** DataCat uses daemon-side histogram aggregation with configurable buckets. Samples are accumulated into buckets, and only bucket counts are sent to the server. This provides ~100-1000x storage and network efficiency compared to storing individual samples. See [Histogram Buckets Documentation](histogram-buckets.md) for details.
 
 ---
 
@@ -162,6 +194,7 @@ Analysis: 65% of frames at 60+ FPS, 92% at 30+ FPS
 **Measure duration of operations with automatic timing.**
 
 ### When to Use
+
 - Function/method execution time
 - Operation duration
 - Performance profiling
@@ -170,6 +203,7 @@ Analysis: 65% of frames at 60+ FPS, 92% at 30+ FPS
 ### Python API
 
 #### Basic Timer
+
 ```python
 with session.timer("load_config"):
     config = load_config_file()
@@ -177,6 +211,7 @@ with session.timer("load_config"):
 ```
 
 #### Timer with Count (Known Iterations)
+
 ```python
 items = get_items()
 with session.timer("process_items", count=len(items)):
@@ -186,6 +221,7 @@ with session.timer("process_items", count=len(items)):
 ```
 
 #### Timer with Incremental Count
+
 ```python
 with session.timer("process_queue") as timer:
     while queue.has_items():
@@ -195,6 +231,7 @@ with session.timer("process_queue") as timer:
 ```
 
 #### Specify Time Unit
+
 ```python
 # Log in milliseconds instead of seconds
 with session.timer("render_frame", unit="milliseconds"):
@@ -202,12 +239,14 @@ with session.timer("render_frame", unit="milliseconds"):
 ```
 
 ### Characteristics
+
 - Automatically measures duration (start to end of context)
 - Optional count field for iterations
 - Can calculate average time per iteration
 - Default unit: seconds (can use "milliseconds")
 
 ### Analysis
+
 ```
 Timer: "process_items", duration: 5.2s, count: 100
 → Average time per item: 52ms
@@ -257,6 +296,7 @@ client.log_metric(
 ### Naming Conventions
 
 **Be descriptive and consistent:**
+
 ```python
 # Good
 session.log_gauge("memory_used_mb", 1024.5)
@@ -319,11 +359,13 @@ if random.random() < 0.1:
 If you're upgrading from the old API without metric types:
 
 ### Old Code (Implicit Gauge)
+
 ```python
 session.log_metric("cpu_percent", 45.2)
 ```
 
 ### New Code (Explicit Type)
+
 ```python
 # Backward compatible (defaults to gauge)
 session.log_metric("cpu_percent", 45.2)
@@ -360,27 +402,31 @@ Potential future additions:
 ## FAQ
 
 **Q: What's the difference between a timer and a histogram of durations?**
+
 - **Timer**: Convenience feature that automatically measures duration. Still stores as individual samples.
 - **Histogram**: Manual logging of many values. Useful for any distribution, not just durations.
 - In practice: Timers are histograms with automatic time measurement.
 
 **Q: Should I use a counter or a gauge for "number of items processed"?**
+
 - **Counter**: If it's a cumulative total (keeps increasing)
 - **Gauge**: If it's a current count that can decrease (like queue size)
 
 **Q: How many histogram samples should I log?**
+
 - Generally: 100-10,000 samples per time window
 - For percentiles: More samples = more accuracy
 - For high volume: Consider sampling (log 1-10% of events)
 
 **Q: Can I use timers in high-frequency loops?**
+
 - Yes, but consider the overhead
 - For 60 FPS game loops: Timer per frame might be okay
 - For 1000s of operations/sec: Consider sampling or batch timing
 
 **Q: What happens if I use the wrong metric type?**
+
 - Server stores it as specified type
 - You can still query the data
 - But analysis/visualization will be suboptimal
 - Example: Using gauge for cumulative total means you can't calculate rates easily
-

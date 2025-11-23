@@ -1,4 +1,22 @@
-# Process Isolation - One Daemon Per Application
+---
+layout: default
+title: Process Isolation
+nav_order: 7
+---
+
+# Process Isolation
+{: .no_toc }
+
+One daemon per application - ensuring process isolation and preventing conflicts.
+{: .fs-6 .fw-300 }
+
+## Table of Contents
+{: .no_toc .text-delta }
+
+1. TOC
+{:toc}
+
+---
 
 ## Overview
 

@@ -173,4 +173,5 @@ Delete temporary state when no longer needed:
 ## See Also
 
 - [Sessions](sessions.html) - Session management
-- [State Management Guide](../guides/state-management.html) - Advanced state patterns
+- [REST API Reference](rest-api.html) - Complete API documentation
+- [Architecture Guide](../_guides/architecture.html) - System architecture

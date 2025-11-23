@@ -188,7 +188,7 @@ log_event("error", data={"msg": "failed"})
 ### Add Context with Data
 Include relevant context that helps debugging:
 ```python
-log_event("database_query_slow", 
+log_event("database_query_slow",
     level="warning",
     data={
         "query": "SELECT * FROM users WHERE...",
@@ -225,4 +225,5 @@ log_event("order_placed", category="business", ...)
 
 - [Sessions](sessions.html) - Session management
 - [Metrics](metrics.html) - Recording numeric measurements
-- [Hung Tracking](../guides/hung-tracking.html) - Automatic hang detection
+- [Hung Tracking](../_guides/hung-tracking.html) - Automatic hang detection
+- [REST API Reference](rest-api.html) - Complete API documentation

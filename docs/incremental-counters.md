@@ -1,8 +1,26 @@
-# Incremental Counters - Implementation Guide
+---
+layout: default
+title: Incremental Counters
+nav_order: 11
+---
+
+# Incremental Counters
+{: .no_toc }
+
+Daemon-side counter aggregation for effortless counting.
+{: .fs-6 .fw-300 }
+
+## Table of Contents
+{: .no_toc .text-delta }
+
+1. TOC
+{:toc}
+
+---
 
 ## Overview
 
-Datacat implements **daemon-side counter aggregation**, which means you don't need to track cumulative totals in your application code. Just call `log_counter()` whenever an event happens, and the daemon handles the rest!
+DataCat implements **daemon-side counter aggregation**, which means you don't need to track cumulative totals in your application code. Just call `log_counter()` whenever an event happens, and the daemon handles the rest!
 
 ## Architecture
 
