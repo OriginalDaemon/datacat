@@ -405,7 +405,7 @@ class DatacatClient(object):
         return self._make_request(url, method="POST", data=request_data)
 
     def log_metric(self, session_id, name, value, tags=None, metric_type="gauge",
-                   count=None, unit=None, metadata=None):
+                   count=None, unit=None, metadata=None, delta=None):
         """
         Log a metric to a session
 
@@ -418,6 +418,7 @@ class DatacatClient(object):
             count (int): Optional count (for timers - number of iterations)
             unit (str): Optional unit (e.g., "seconds", "milliseconds", "bytes")
             metadata (dict): Optional additional metadata
+            delta (float): Optional delta (for incremental counters)
 
         Returns:
             dict: Response from the server
@@ -439,6 +440,8 @@ class DatacatClient(object):
             metric_data["unit"] = unit
         if metadata:
             metric_data["metadata"] = metadata
+        if delta is not None:
+            metric_data["delta"] = float(delta)
         return self._make_request(url, method="POST", data=metric_data)
 
     def end_session(self, session_id):
@@ -1071,9 +1074,36 @@ class Session(object):
         """Log a gauge metric (current value)"""
         return self.log_metric(name, value, tags=tags, metric_type="gauge", unit=unit)
 
-    def log_counter(self, name, value, tags=None):
-        """Log a counter metric (monotonically increasing)"""
-        return self.log_metric(name, value, tags=tags, metric_type="counter")
+    def log_counter(self, name, delta=1, tags=None):
+        """
+        Increment a counter metric by delta
+
+        The daemon tracks the cumulative total and sends it to the server.
+        You don't need to track the total yourself!
+
+        Args:
+            name (str): Counter name
+            delta (float): Amount to increment (default: 1)
+            tags (list): Optional tags
+
+        Examples:
+            # Increment by 1 (most common)
+            session.log_counter("requests")
+
+            # Increment by specific amount
+            session.log_counter("bytes_sent", delta=1024)
+
+            # With tags
+            session.log_counter("errors", tags=["type:validation"])
+        """
+        return self.client.log_metric(
+            self.session_id,
+            name,
+            value=0,  # Value is ignored for delta counters
+            tags=tags,
+            metric_type="counter",
+            delta=delta
+        )
 
     def log_histogram(self, name, value, tags=None, metadata=None):
         """Log a histogram metric (value distribution)"""

@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -35,12 +36,19 @@ type StateUpdate struct {
 	State     map[string]interface{} `json:"state"`
 }
 
+// CounterKey uniquely identifies a counter by name and tags
+type CounterKey struct {
+	Name string
+	Tags string // JSON-encoded sorted tags for consistent key
+}
+
 // SessionBuffer holds pending updates for a session
 type SessionBuffer struct {
 	SessionID              string
 	StateUpdates           []StateUpdate
 	Events                 []EventData
 	Metrics                []MetricData
+	Counters               map[string]float64 // Counter name+tags -> cumulative value
 	LastHeartbeat          time.Time
 	LastState              map[string]interface{}
 	HangLogged             bool
@@ -264,6 +272,7 @@ func (d *Daemon) initSessionBuffer(sessionID, product, version string, parentPID
 		StateUpdates:     []StateUpdate{},
 		Events:           []EventData{},
 		Metrics:          []MetricData{},
+		Counters:         make(map[string]float64),
 		LastHeartbeat:    now,
 		LastState:        initialState,
 		ParentPID:        parentPID,
@@ -433,6 +442,19 @@ func (d *Daemon) handleEvent(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
 
+// makeCounterKey creates a unique key for a counter based on name and tags
+func makeCounterKey(name string, tags []string) string {
+	if len(tags) == 0 {
+		return name
+	}
+	// Sort tags for consistent key
+	sortedTags := make([]string, len(tags))
+	copy(sortedTags, tags)
+	sort.Strings(sortedTags)
+	tagsJSON, _ := json.Marshal(sortedTags)
+	return name + ":" + string(tagsJSON)
+}
+
 // handleMetric handles metric logging requests
 func (d *Daemon) handleMetric(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -445,6 +467,7 @@ func (d *Daemon) handleMetric(w http.ResponseWriter, r *http.Request) {
 		Name      string                 `json:"name"`
 		Type      string                 `json:"type"`
 		Value     float64                `json:"value"`
+		Delta     *float64               `json:"delta,omitempty"` // For counter increments
 		Count     *int                   `json:"count,omitempty"`
 		Unit      string                 `json:"unit,omitempty"`
 		Tags      []string               `json:"tags"`
@@ -475,17 +498,29 @@ func (d *Daemon) handleMetric(w http.ResponseWriter, r *http.Request) {
 	}
 
 	buffer.mu.Lock()
-	buffer.Metrics = append(buffer.Metrics, MetricData{
-		Timestamp: now,
-		Name:      req.Name,
-		Type:      metricType,
-		Value:     req.Value,
-		Count:     req.Count,
-		Unit:      req.Unit,
-		Tags:      req.Tags,
-		Metadata:  req.Metadata,
-	})
-	buffer.mu.Unlock()
+	defer buffer.mu.Unlock()
+
+	// Handle counters specially - accumulate deltas instead of storing each value
+	if metricType == "counter" && req.Delta != nil {
+		// Incremental counter - accumulate in daemon
+		key := makeCounterKey(req.Name, req.Tags)
+		if buffer.Counters == nil {
+			buffer.Counters = make(map[string]float64)
+		}
+		buffer.Counters[key] += *req.Delta
+	} else {
+		// All other metrics (gauge, histogram, timer) or absolute counter values
+		buffer.Metrics = append(buffer.Metrics, MetricData{
+			Timestamp: now,
+			Name:      req.Name,
+			Type:      metricType,
+			Value:     req.Value,
+			Count:     req.Count,
+			Unit:      req.Unit,
+			Tags:      req.Tags,
+			Metadata:  req.Metadata,
+		})
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
@@ -716,6 +751,17 @@ func (d *Daemon) batchSender() {
 	}
 }
 
+// parseCounterKey extracts name and tags from a counter key
+func parseCounterKey(key string) (string, []string) {
+	parts := strings.SplitN(key, ":", 2)
+	name := parts[0]
+	var tags []string
+	if len(parts) > 1 {
+		json.Unmarshal([]byte(parts[1]), &tags)
+	}
+	return name, tags
+}
+
 // flushSession sends all pending data for a session to the server
 func (d *Daemon) flushSession(sessionID string) {
 	d.mu.RLock()
@@ -730,6 +776,22 @@ func (d *Daemon) flushSession(sessionID string) {
 	stateUpdates := buffer.StateUpdates
 	events := buffer.Events
 	metrics := buffer.Metrics
+
+	// Convert accumulated counters to metrics (but keep counter state)
+	now := time.Now()
+	counterMetrics := make([]MetricData, 0, len(buffer.Counters))
+	for key, value := range buffer.Counters {
+		name, tags := parseCounterKey(key)
+		counterMetrics = append(counterMetrics, MetricData{
+			Timestamp: now,
+			Name:      name,
+			Type:      "counter",
+			Value:     value,
+			Tags:      tags,
+		})
+	}
+	// Don't reset counters - they keep accumulating!
+
 	buffer.StateUpdates = make([]StateUpdate, 0)
 	buffer.Events = make([]EventData, 0)
 	buffer.Metrics = make([]MetricData, 0)
@@ -745,8 +807,13 @@ func (d *Daemon) flushSession(sessionID string) {
 		d.sendEvent(sessionID, event)
 	}
 
-	// Send metrics
+	// Send regular metrics
 	for _, metric := range metrics {
+		d.sendMetric(sessionID, metric)
+	}
+
+	// Send accumulated counter totals
+	for _, metric := range counterMetrics {
 		d.sendMetric(sessionID, metric)
 	}
 }
