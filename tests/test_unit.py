@@ -1220,7 +1220,9 @@ class TestProductVersionValidation(unittest.TestCase):
         sent_data = json.loads(request.data.decode("utf-8"))
         self.assertEqual(sent_data["session_id"], "session-123")
         self.assertEqual(sent_data["name"], "exception")
-        self.assertEqual(sent_data["category"], "error")  # Changed from level to category
+        self.assertEqual(
+            sent_data["category"], "error"
+        )  # Changed from level to category
         self.assertIn("exception", sent_data["labels"])
         self.assertIn("ValueError", sent_data["labels"])
         self.assertEqual(sent_data["exception_type"], "ValueError")
@@ -1261,7 +1263,9 @@ class TestProductVersionValidation(unittest.TestCase):
 
         self.assertEqual(sent_data["name"], "custom_event")
         self.assertEqual(sent_data["category"], "warning")  # Changed from level
-        self.assertEqual(sent_data["group"], "my.component")  # Now group instead of category
+        self.assertEqual(
+            sent_data["group"], "my.component"
+        )  # Now group instead of category
         self.assertEqual(sent_data["labels"], ["tag1", "tag2"])
         self.assertEqual(sent_data["message"], "This is a warning")
         self.assertEqual(sent_data["data"], {"key": "value"})

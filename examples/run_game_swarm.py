@@ -67,66 +67,66 @@ def launch_game(player_name, mode, duration, no_async=False):
         subprocess.Popen: The spawned process
     """
     python_exe = sys.executable
-    script_path = os.path.join(os.path.dirname(__file__), 'example_game.py')
+    script_path = os.path.join(os.path.dirname(__file__), "example_game.py")
 
     cmd = [
         python_exe,
         script_path,
-        '--player', player_name,
-        '--mode', mode,
-        '--duration', str(duration)
+        "--player",
+        player_name,
+        "--mode",
+        mode,
+        "--duration",
+        str(duration),
     ]
 
     if no_async:
-        cmd.append('--no-async')
+        cmd.append("--no-async")
 
     # Launch process
     proc = subprocess.Popen(
-        cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        universal_newlines=True
+        cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True
     )
 
     return proc
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Launch multiple game instances')
+    parser = argparse.ArgumentParser(description="Launch multiple game instances")
     parser.add_argument(
-        '--count',
+        "--count",
         type=int,
         default=10,
-        help='Number of game instances to launch (default: 10)'
+        help="Number of game instances to launch (default: 10)",
     )
     parser.add_argument(
-        '--duration',
+        "--duration",
         type=int,
         default=60,
-        help='How long each game runs in seconds (default: 60)'
+        help="How long each game runs in seconds (default: 60)",
     )
     parser.add_argument(
-        '--hang-rate',
+        "--hang-rate",
         type=float,
         default=0.15,
-        help='Fraction of games that will hang (default: 0.15)'
+        help="Fraction of games that will hang (default: 0.15)",
     )
     parser.add_argument(
-        '--crash-rate',
+        "--crash-rate",
         type=float,
         default=0.15,
-        help='Fraction of games that will crash (default: 0.15)'
+        help="Fraction of games that will crash (default: 0.15)",
     )
     parser.add_argument(
-        '--stagger',
+        "--stagger",
         type=float,
         default=1.0,
-        help='Seconds to wait between launching instances (default: 1.0)'
+        help="Seconds to wait between launching instances (default: 1.0)",
     )
     parser.add_argument(
-        '--no-async',
-        action='store_true',
-        help='Disable async logging for all instances'
+        "--no-async",
+        action="store_true",
+        help="Disable async logging for all instances",
     )
 
     args = parser.parse_args()
@@ -168,11 +168,7 @@ def main():
     print()
 
     # Create list of modes
-    modes = (
-        ['normal'] * num_normal +
-        ['hang'] * num_hang +
-        ['crash'] * num_crash
-    )
+    modes = ["normal"] * num_normal + ["hang"] * num_hang + ["crash"] * num_crash
     random.shuffle(modes)
 
     # Launch instances
@@ -181,10 +177,14 @@ def main():
         mode = modes[i]
 
         # Add some randomness to duration (±10%)
-        duration = args.duration + random.randint(-args.duration // 10, args.duration // 10)
+        duration = args.duration + random.randint(
+            -args.duration // 10, args.duration // 10
+        )
 
-        print("[%02d/%02d] Launching %s (mode=%s, duration=%ds)..." %
-              (i + 1, args.count, player_name, mode, duration))
+        print(
+            "[%02d/%02d] Launching %s (mode=%s, duration=%ds)..."
+            % (i + 1, args.count, player_name, mode, duration)
+        )
 
         proc = launch_game(player_name, mode, duration, args.no_async)
         processes.append(proc)
@@ -215,14 +215,18 @@ def main():
         # Check if we've exceeded timeout
         if elapsed > timeout:
             print()
-            print("Timeout reached (%.1fs). Terminating remaining processes..." % elapsed)
+            print(
+                "Timeout reached (%.1fs). Terminating remaining processes..." % elapsed
+            )
             for proc in processes:
                 if proc.poll() is None:  # Still running
-                    if not hasattr(proc, '_reported'):
+                    if not hasattr(proc, "_reported"):
                         hung += 1
                         proc._reported = True
-                        print("[%.1fs] Instance timed out (%d/%d) - Status: HUNG (forced)" %
-                              (elapsed, completed + hung, args.count))
+                        print(
+                            "[%.1fs] Instance timed out (%d/%d) - Status: HUNG (forced)"
+                            % (elapsed, completed + hung, args.count)
+                        )
                     try:
                         proc.terminate()
                     except Exception:
@@ -244,24 +248,26 @@ def main():
 
         # Check for completed processes
         for proc in processes:
-            if proc.poll() is not None and not hasattr(proc, '_reported'):
+            if proc.poll() is not None and not hasattr(proc, "_reported"):
                 completed += 1
                 proc._reported = True
 
                 # Read output
                 try:
                     output = proc.stdout.read()
-                    if 'crash' in output.lower():
+                    if "crash" in output.lower():
                         status = "CRASHED"
-                    elif 'hang' in output.lower():
+                    elif "hang" in output.lower():
                         status = "HUNG"
                     else:
                         status = "COMPLETED"
                 except Exception:
                     status = "UNKNOWN"
 
-                print("[%.1fs] Instance completed (%d/%d) - Status: %s" %
-                      (elapsed, completed, args.count, status))
+                print(
+                    "[%.1fs] Instance completed (%d/%d) - Status: %s"
+                    % (elapsed, completed, args.count, status)
+                )
 
     print()
     print("=" * 70)
@@ -278,6 +284,7 @@ def main():
     print()
     print("Cleaning up daemon configs...")
     import shutil
+
     config_dir = os.path.join("tmp", "daemon_configs")
     if os.path.exists(config_dir):
         try:
@@ -300,6 +307,5 @@ def main():
     print()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
-

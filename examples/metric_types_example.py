@@ -68,7 +68,7 @@ def main():
     # Increment by specific amounts
     print("  Transferring files...")
     session.log_counter("bytes_sent", delta=1024 * 1024, tags=["network"])  # 1 MB
-    session.log_counter("bytes_sent", delta=1024 * 512, tags=["network"])   # 512 KB
+    session.log_counter("bytes_sent", delta=1024 * 512, tags=["network"])  # 512 KB
 
     print("  * Logged counter increments (daemon accumulates totals automatically)")
     print("  * No need to track totals in your code!")
@@ -180,4 +180,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
