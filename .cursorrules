@@ -1,0 +1,112 @@
+# Cursor AI Rules for datacat
+
+This file provides AI assistants with project-specific guidelines and conventions. For comprehensive instructions, see `.github/copilot-instructions.md`.
+
+## Core Principles
+
+**Make the smallest possible changes to achieve your goals.**
+- Only modify files directly related to your task
+- Preserve existing functionality unless explicitly changing it
+- Don't refactor unrelated code
+- Don't fix unrelated bugs unless they block your work
+
+## Change Summaries and Documentation
+
+### Change Summary Files
+- **Location**: All change summaries go in `docs/changes/`
+- **Naming**: Use lowercase filenames with hyphens (kebab-case)
+  - ✅ `fixes-applied.md`
+  - ✅ `session-timeline-updates.md`
+  - ✅ `2024-01-15-exception-stack-trace-fix.md`
+  - ❌ `FIXES_APPLIED.md` (uppercase)
+  - ❌ `fixes_applied.md` (underscores)
+- **When to create**: After completing a set of related changes, create a summary file documenting what was changed and why
+
+### Documentation Updates
+- Update relevant docs in `docs/` when adding features or changing behavior
+- Keep documentation in sync with code changes
+- Use Jekyll/just-the-docs format for docs site
+
+## Code Standards
+
+### Python Code
+- **Compatibility**: Must work with Python 2.7+ and 3.x
+- **Formatting**: Use Black formatter (run `black python/ examples/ tests/`)
+- **Type Checking**: Pass mypy (`mypy python/ --ignore-missing-imports`)
+- **Style**: Use `.format()` not f-strings (for 2.7 compatibility)
+- **Testing**: Maintain 80%+ code coverage
+
+### Go Code
+- **Formatting**: Use `go fmt` (automatically applied)
+- **Testing**: Maintain 80%+ code coverage
+- **Conventions**:
+  - Add comments for exported functions
+  - Use table-driven tests
+  - Handle errors explicitly (never ignore)
+  - Use mutex for thread-safe operations
+
+## File Organization
+
+### What to Commit
+- Source code in `cmd/`, `client/`, `python/`, `examples/`
+- Tests in `tests/`, `*_test.go` files
+- Documentation in `docs/`, `*.md` files
+- Change summaries in `docs/changes/*.md` (lowercase names)
+
+### What NOT to Commit
+- Compiled binaries (`datacat`, `datacat-server`, `datacat-web`, `datacat-daemon`)
+- Test artifacts (`*.out`, `coverage*`, `*.test`)
+- Database files (`badger_data/`, `datacat_db/`, `*.db`)
+- Python artifacts (`__pycache__/`, `*.pyc`, `.venv/`, `dist/`, `build/`)
+
+## Testing Before Committing
+
+Always run these before committing:
+```bash
+# Format Python code
+black python/ examples/ tests/
+
+# Type check Python code
+mypy python/ --ignore-missing-imports
+
+# Run tests
+go test -v ./...
+pytest tests/ -v
+```
+
+## Common Patterns
+
+### Exception Handling
+- Exceptions must always include stack traces
+- Stack traces should be rendered with clickable file paths for IDE integration
+- Use `traceback.format_exception()` in Python to capture full stack traces
+
+### Web UI (datacat-web)
+- Uses HTMX for dynamic updates
+- Chart.js for metric visualizations
+- JSONViewer for displaying structured data
+- Timeline supports drag-to-zoom (not click-to-select)
+
+### State Management
+- State updates use deep merge to preserve nested data
+- State history is tracked for timeline visualization
+
+## Architecture Notes
+
+- **Daemon-based**: Applications use daemon subprocess for batching and crash detection
+- **Session-based**: Every run creates a unique session with complete history
+- **Offline support**: Works even when server is down (daemon buffers)
+
+## Important Reminders
+
+- ✅ Preserve Python 2.7 compatibility in client library
+- ✅ Always handle errors explicitly in Go code
+- ✅ Add tests for new functionality
+- ✅ Update documentation when changing behavior
+- ✅ Create change summaries in `docs/changes/` with lowercase names
+- ❌ Don't break existing functionality
+- ❌ Don't add unnecessary dependencies
+- ❌ Don't commit build artifacts or temporary files
+
+For more detailed instructions, see `.github/copilot-instructions.md`.
+
