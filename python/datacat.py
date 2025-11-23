@@ -111,9 +111,10 @@ class DaemonManager(object):
     def _find_available_port(self):
         """Find an available port for the daemon"""
         import socket
+
         # Create a socket to find an available port
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.bind(('', 0))  # Bind to port 0 to get an available port
+            s.bind(("", 0))  # Bind to port 0 to get an available port
             s.listen(1)
             port = s.getsockname()[1]
         return str(port)
@@ -132,7 +133,9 @@ class DaemonManager(object):
         config_dir = os.path.join("tmp", "daemon_configs")
         if not os.path.exists(config_dir):
             os.makedirs(config_dir)
-        self.config_path = os.path.join(config_dir, "daemon_config_{}.json".format(self.daemon_port))
+        self.config_path = os.path.join(
+            config_dir, "daemon_config_{}.json".format(self.daemon_port)
+        )
 
         # Create config for daemon with this instance's unique port
         config = {
@@ -155,7 +158,7 @@ class DaemonManager(object):
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 stdin=subprocess.PIPE,
-                env=dict(os.environ, DATACAT_CONFIG=self.config_path)
+                env=dict(os.environ, DATACAT_CONFIG=self.config_path),
             )
             self._started = True
 
@@ -412,8 +415,18 @@ class DatacatClient(object):
 
         return self._make_request(url, method="POST", data=request_data)
 
-    def log_metric(self, session_id, name, value, tags=None, metric_type="gauge",
-                   count=None, unit=None, metadata=None, delta=None):
+    def log_metric(
+        self,
+        session_id,
+        name,
+        value,
+        tags=None,
+        metric_type="gauge",
+        count=None,
+        unit=None,
+        metadata=None,
+        delta=None,
+    ):
         """
         Log a metric to a session
 
@@ -877,7 +890,17 @@ class AsyncSession(object):
         self.thread.daemon = True
         self.thread.start()
 
-    def log_event(self, name, category=None, group=None, labels=None, message=None, data=None, stacktrace=None, level=None):
+    def log_event(
+        self,
+        name,
+        category=None,
+        group=None,
+        labels=None,
+        message=None,
+        data=None,
+        stacktrace=None,
+        level=None,
+    ):
         """
         Log an event (non-blocking, returns immediately)
 
@@ -903,17 +926,30 @@ class AsyncSession(object):
         if data is None:
             data = {}
 
-        self._queue_item('event', {
-            'name': name,
-            'category': category,
-            'group': group,
-            'labels': labels,
-            'message': message,
-            'data': data,
-            'stacktrace': stacktrace
-        })
+        self._queue_item(
+            "event",
+            {
+                "name": name,
+                "category": category,
+                "group": group,
+                "labels": labels,
+                "message": message,
+                "data": data,
+                "stacktrace": stacktrace,
+            },
+        )
 
-    def log_metric(self, name, value, tags=None, metric_type="gauge", count=None, unit=None, metadata=None, delta=None):
+    def log_metric(
+        self,
+        name,
+        value,
+        tags=None,
+        metric_type="gauge",
+        count=None,
+        unit=None,
+        metadata=None,
+        delta=None,
+    ):
         """
         Log a metric (non-blocking, returns immediately)
 
@@ -927,38 +963,44 @@ class AsyncSession(object):
             metadata (dict): Optional metadata
             delta (float): Optional delta for counters
         """
-        metric_data = {
-            'name': name,
-            'type': metric_type,
-            'value': value,
-            'tags': tags
-        }
+        metric_data = {"name": name, "type": metric_type, "value": value, "tags": tags}
         if count is not None:
-            metric_data['count'] = count
+            metric_data["count"] = count
         if unit:
-            metric_data['unit'] = unit
+            metric_data["unit"] = unit
         if metadata:
-            metric_data['metadata'] = metadata
+            metric_data["metadata"] = metadata
         if delta is not None:
-            metric_data['delta'] = delta
+            metric_data["delta"] = delta
 
-        self._queue_item('metric', metric_data)
+        self._queue_item("metric", metric_data)
 
     def log_gauge(self, name, value, unit=None, tags=None, metadata=None):
         """Log a gauge metric (non-blocking)"""
-        return self.log_metric(name, value, tags=tags, metric_type="gauge", unit=unit, metadata=metadata)
+        return self.log_metric(
+            name, value, tags=tags, metric_type="gauge", unit=unit, metadata=metadata
+        )
 
     def log_counter(self, name, delta=1, tags=None):
         """Log a counter increment (non-blocking)"""
         return self.log_metric(name, 0, tags=tags, metric_type="counter", delta=delta)
 
-    def log_histogram(self, name, value, unit=None, tags=None, buckets=None, metadata=None):
+    def log_histogram(
+        self, name, value, unit=None, tags=None, buckets=None, metadata=None
+    ):
         """Log a histogram sample (non-blocking)"""
         if buckets is not None:
             if metadata is None:
                 metadata = {}
             metadata["buckets"] = buckets
-        return self.log_metric(name, value, tags=tags, metric_type="histogram", unit=unit, metadata=metadata)
+        return self.log_metric(
+            name,
+            value,
+            tags=tags,
+            metric_type="histogram",
+            unit=unit,
+            metadata=metadata,
+        )
 
     def timer(self, name, count=None, unit="seconds", tags=None):
         """Create a timer context manager (non-blocking)"""
@@ -971,7 +1013,7 @@ class AsyncSession(object):
         Args:
             state (dict): State data to update
         """
-        self._queue_item('state', {'state': state})
+        self._queue_item("state", {"state": state})
 
     def log_exception(self, exc_info=None, extra_data=None):
         """
@@ -981,10 +1023,7 @@ class AsyncSession(object):
             exc_info (tuple): Exception info from sys.exc_info()
             extra_data (dict): Optional additional data
         """
-        self._queue_item('exception', {
-            'exc_info': exc_info,
-            'extra_data': extra_data
-        })
+        self._queue_item("exception", {"exc_info": exc_info, "extra_data": extra_data})
 
     def heartbeat(self):
         """Send heartbeat (non-blocking, returns immediately)"""
@@ -995,9 +1034,9 @@ class AsyncSession(object):
         """Internal method to queue an item for async processing"""
         try:
             if self.drop_on_full:
-                self.queue.put_nowait({'type': item_type, 'data': data})
+                self.queue.put_nowait({"type": item_type, "data": data})
             else:
-                self.queue.put({'type': item_type, 'data': data})
+                self.queue.put({"type": item_type, "data": data})
         except queue.Full:
             self.dropped_count += 1
 
@@ -1009,42 +1048,42 @@ class AsyncSession(object):
                 item = self.queue.get(timeout=0.01)
 
                 # Process based on type
-                item_type = item['type']
-                data = item['data']
+                item_type = item["type"]
+                data = item["data"]
 
                 try:
-                    if item_type == 'event':
+                    if item_type == "event":
                         # Support backward compatibility: map 'level' to 'category'
-                        category = data.get('category')
-                        if category is None and 'level' in data:
-                            category = data.get('level')
+                        category = data.get("category")
+                        if category is None and "level" in data:
+                            category = data.get("level")
 
                         self.session.log_event(
-                            data['name'],
+                            data["name"],
                             category=category,
-                            group=data.get('group'),
-                            labels=data.get('labels'),
-                            message=data.get('message'),
-                            data=data.get('data'),
-                            stacktrace=data.get('stacktrace')
+                            group=data.get("group"),
+                            labels=data.get("labels"),
+                            message=data.get("message"),
+                            data=data.get("data"),
+                            stacktrace=data.get("stacktrace"),
                         )
-                    elif item_type == 'metric':
+                    elif item_type == "metric":
                         self.session.log_metric(
-                            data['name'],
-                            data['value'],
-                            tags=data.get('tags'),
-                            metric_type=data.get('type', 'gauge'),
-                            count=data.get('count'),
-                            unit=data.get('unit'),
-                            metadata=data.get('metadata'),
-                            delta=data.get('delta')
+                            data["name"],
+                            data["value"],
+                            tags=data.get("tags"),
+                            metric_type=data.get("type", "gauge"),
+                            count=data.get("count"),
+                            unit=data.get("unit"),
+                            metadata=data.get("metadata"),
+                            delta=data.get("delta"),
                         )
-                    elif item_type == 'state':
-                        self.session.update_state(data['state'])
-                    elif item_type == 'exception':
+                    elif item_type == "state":
+                        self.session.update_state(data["state"])
+                    elif item_type == "exception":
                         self.session.log_exception(
-                            exc_info=data.get('exc_info'),
-                            extra_data=data.get('extra_data')
+                            exc_info=data.get("exc_info"),
+                            extra_data=data.get("extra_data"),
                         )
 
                     self.sent_count += 1
@@ -1052,6 +1091,7 @@ class AsyncSession(object):
                 except Exception as e:
                     # Don't crash background thread on logging errors
                     import traceback
+
                     print("AsyncSession error: {0}".format(str(e)))
                     print("Traceback:")
                     traceback.print_exc()
@@ -1067,9 +1107,9 @@ class AsyncSession(object):
             dict: Statistics including sent, dropped, and queued counts
         """
         return {
-            'sent': self.sent_count,
-            'dropped': self.dropped_count,
-            'queued': self.queue.qsize()
+            "sent": self.sent_count,
+            "dropped": self.dropped_count,
+            "queued": self.queue.qsize(),
         }
 
     def flush(self, timeout=2.0):
@@ -1148,7 +1188,15 @@ class Session(object):
         return self.client.update_state(self.session_id, state)
 
     def log_event(
-        self, name, category=None, group=None, labels=None, message=None, data=None, stacktrace=None, level=None
+        self,
+        name,
+        category=None,
+        group=None,
+        labels=None,
+        message=None,
+        data=None,
+        stacktrace=None,
+        level=None,
     ):
         """
         Log an event
@@ -1186,11 +1234,29 @@ class Session(object):
             stacktrace=stacktrace,
         )
 
-    def log_metric(self, name, value, tags=None, metric_type="gauge",
-                   count=None, unit=None, metadata=None, delta=None):
+    def log_metric(
+        self,
+        name,
+        value,
+        tags=None,
+        metric_type="gauge",
+        count=None,
+        unit=None,
+        metadata=None,
+        delta=None,
+    ):
         """Log a metric"""
-        return self.client.log_metric(self.session_id, name, value, tags,
-                                      metric_type, count, unit, metadata, delta)
+        return self.client.log_metric(
+            self.session_id,
+            name,
+            value,
+            tags,
+            metric_type,
+            count,
+            unit,
+            metadata,
+            delta,
+        )
 
     def log_gauge(self, name, value, tags=None, unit=None):
         """Log a gauge metric (current value)"""
@@ -1224,10 +1290,12 @@ class Session(object):
             value=0,  # Value is ignored for delta counters
             tags=tags,
             metric_type="counter",
-            delta=delta
+            delta=delta,
         )
 
-    def log_histogram(self, name, value, unit=None, tags=None, buckets=None, metadata=None):
+    def log_histogram(
+        self, name, value, unit=None, tags=None, buckets=None, metadata=None
+    ):
         """
         Log a histogram metric (value distribution)
 
@@ -1256,12 +1324,20 @@ class Session(object):
                 metadata = {}
             metadata["buckets"] = buckets
 
-        return self.log_metric(name, value, unit=unit, tags=tags, metric_type="histogram", metadata=metadata)
+        return self.log_metric(
+            name,
+            value,
+            unit=unit,
+            tags=tags,
+            metric_type="histogram",
+            metadata=metadata,
+        )
 
     def log_timer(self, name, duration, count=None, tags=None, unit="seconds"):
         """Log a timer metric (duration measurement)"""
-        return self.log_metric(name, duration, tags=tags, metric_type="timer",
-                              count=count, unit=unit)
+        return self.log_metric(
+            name, duration, tags=tags, metric_type="timer", count=count, unit=unit
+        )
 
     def timer(self, name, count=None, tags=None, unit="seconds"):
         """
@@ -1431,7 +1507,7 @@ class Timer(object):
             metric_type="timer",
             count=self.count if self.count > 0 else None,
             tags=self.tags,
-            unit=self.unit
+            unit=self.unit,
         )
 
         # Don't suppress exceptions
@@ -1444,7 +1520,7 @@ def create_session(
     product=None,
     version=None,
     async_mode=False,
-    queue_size=10000
+    queue_size=10000,
 ):
     """
     Create a new session and return a Session object
