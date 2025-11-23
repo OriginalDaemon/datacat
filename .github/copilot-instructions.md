@@ -215,22 +215,24 @@ cd cmd/datacat-web && go run main.go
 ```python
 from datacat import create_session
 
-session = create_session("http://localhost:8080", use_daemon=True)
+# daemon_port="auto" is the default - finds an available port automatically
+session = create_session("http://localhost:9090", product="MyApp", version="1.0", daemon_port="auto")
 session.update_state({"status": "running"})
-session.log_event("startup", {"version": "1.0"})
+session.log_event("startup", data={"version": "1.0"})
 session.heartbeat()
 session.end()
 ```
 
 ### Creating a Session (Go with Daemon)
 ```go
-c, err := client.NewClientWithDaemon("http://localhost:8080", "8079")
+// Using "auto" finds an available port automatically
+c, err := client.NewClientWithDaemon("http://localhost:9090", "auto")
 if err != nil {
     log.Fatal(err)
 }
 defer c.Close()
 
-sessionID, _ := c.CreateSession()
+sessionID, _ := c.CreateSession("MyProduct", "1.0.0")
 c.UpdateState(sessionID, map[string]interface{}{"status": "running"})
 c.Heartbeat(sessionID)
 c.EndSession(sessionID)
@@ -370,8 +372,8 @@ pytest tests/ --cov=python --cov-report=html
 
 **Runtime Issues**
 - Check server is running: `curl http://localhost:9090/api/sessions`
-- Check daemon is running: `curl http://localhost:8079/health` (if using daemon mode)
-- Look for database locks: Remove `badger_data/` directory and restart if corrupted
+- Check daemon is running: The daemon auto-selects a port, check daemon manager logs for the actual port
+- Look for database locks: Remove `badger_data/` or `datacat_data/` directory and restart if corrupted
 - Check logs: Server and daemon print detailed error messages to stdout
 
 **Type Checking Issues (Python)**
