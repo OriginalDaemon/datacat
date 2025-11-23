@@ -153,7 +153,7 @@ session.log_histogram("frame_time", frame_duration,
 ```
 Analysis: 65% of frames at 60+ FPS, 92% at 30+ FPS
 
-**Implementation:** Datacat uses daemon-side histogram aggregation with configurable buckets. Samples are accumulated into buckets, and only bucket counts are sent to the server. This provides ~100-1000x storage and network efficiency compared to storing individual samples. See [Histogram Buckets Documentation](HISTOGRAM_BUCKETS.md) for details.
+**Implementation:** Datacat uses daemon-side histogram aggregation with configurable buckets. Samples are accumulated into buckets, and only bucket counts are sent to the server. This provides ~100-1000x storage and network efficiency compared to storing individual samples. See [Histogram Buckets Documentation](histogram-buckets.md) for details.
 
 ---
 

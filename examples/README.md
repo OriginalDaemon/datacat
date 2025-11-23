@@ -71,6 +71,6 @@ python examples/fps_histogram_example.py
 ## Need Help?
 
 - 📖 **[Full Documentation](../docs/_examples/)** - Complete examples guide
-- 🎮 **[Game Logging](../docs/GAME_LOGGING.md)** - Async logging for real-time apps
-- 📊 **[Metric Types](../docs/METRIC_TYPES.md)** - Understanding metrics
+- 🎮 **[Game Logging](../docs/game-logging.md)** - Async logging for real-time apps
+- 📊 **[Metric Types](../docs/metric-types.md)** - Understanding metrics
 - 🏗️ **[Architecture](../docs/_guides/architecture.md)** - System design

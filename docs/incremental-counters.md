@@ -349,7 +349,7 @@ Server sees: [50, 80, 155] - Can calculate rates and totals!
 
 ## See Also
 
-- [Metric Types Overview](METRIC_TYPES.md)
+- [Metric Types Overview](metric-types.md)
 - [Python Client API](../python/README.md)
 - [Daemon Configuration](../cmd/datacat-daemon/README.md)
 

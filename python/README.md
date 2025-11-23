@@ -88,7 +88,7 @@ for frame in range(1000):
 session.shutdown()
 ```
 
-**🎮 Game Developers**: See [docs/GAME_LOGGING.md](../docs/GAME_LOGGING.md) for complete guide.
+**🎮 Game Developers**: See [docs/game-logging.md](../docs/game-logging.md) for complete guide.
 
 **📊 Performance**: Async logging adds < 0.1ms overhead per frame at 60 FPS.
 

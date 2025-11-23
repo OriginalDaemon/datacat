@@ -303,7 +303,7 @@ session.log_histogram("file_size", 1024000,
 ## See Also
 
 - [FPS Histogram Example](../examples/fps_histogram_example.py) - Complete working example
-- [Metric Types Overview](METRIC_TYPES.md) - All metric types explained
-- [Incremental Counters](INCREMENTAL_COUNTERS.md) - Counter aggregation
+- [Metric Types Overview](metric-types.md) - All metric types explained
+- [Incremental Counters](incremental-counters.md) - Counter aggregation
 - [Python Client API](../python/README.md) - Full API documentation
 

@@ -108,5 +108,5 @@ python examples/metric_types_example.py
 - **[Python Examples](python-examples.md)** - Complete Python examples guide
 - **[Demo GUI](demo-gui.md)** - Interactive web UI demo
 - **[Go Examples](go-examples.md)** - Go client library examples
-- **[Game Logging](../GAME_LOGGING.md)** - Async logging for real-time apps
-- **[Metric Types](../METRIC_TYPES.md)** - Understanding all metric types
+- **[Game Logging](../game-logging.md)** - Async logging for real-time apps
+- **[Metric Types](../metric-types.md)** - Understanding all metric types

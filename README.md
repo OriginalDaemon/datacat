@@ -90,11 +90,11 @@ Open http://localhost:8080 to see:
 
 ### Features
 
-- **[Game Logging](docs/GAME_LOGGING.md)** - Ultra-fast async logging for 60+ FPS
-- **[Metric Types](docs/METRIC_TYPES.md)** - Gauges, Counters, Histograms, Timers
+- **[Game Logging](docs/game-logging.md)** - Ultra-fast async logging for 60+ FPS
+- **[Metric Types](docs/metric-types.md)** - Gauges, Counters, Histograms, Timers
 - **[Hung Session Tracking](docs/_guides/hung-tracking.md)** - Detect when apps freeze
 - **[Machine Tracking](docs/_guides/machine-tracking.md)** - Track which machine ran what
-- **[Process Isolation](docs/PROCESS_ISOLATION.md)** - One daemon per app
+- **[Process Isolation](docs/process-isolation.md)** - One daemon per app
 
 ### API Reference
 
@@ -117,7 +117,7 @@ Open http://localhost:8080 to see:
 - Track FPS, frame times, and player actions
 - Async logging with <0.01ms overhead
 - Perfect for 60+ FPS games
-- See: [Game Logging Guide](docs/GAME_LOGGING.md)
+- See: [Game Logging Guide](docs/game-logging.md)
 
 ### Testing & QA
 
@@ -169,7 +169,7 @@ Application → Local Daemon → DataCat Server → BadgerDB
 | `update_state()`   | 0.008ms | 0.05%                 |
 | **100 logs/frame** | 0.8ms   | **5%** ✅             |
 
-**Perfect for real-time applications!** See [Game Logging Guide](docs/GAME_LOGGING.md)
+**Perfect for real-time applications!** See [Game Logging Guide](docs/game-logging.md)
 
 ## Requirements
 

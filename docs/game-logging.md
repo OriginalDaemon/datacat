@@ -395,7 +395,7 @@ logger.shutdown()
 
 - [examples/game_logging_example.py](../examples/game_logging_example.py) - Complete working example
 - [examples/test_async_py27.py](../examples/test_async_py27.py) - Python 2.7.4 compatibility tests
-- [docs/PROCESS_ISOLATION.md](PROCESS_ISOLATION.md) - How daemon process isolation works
+- [docs/process-isolation.md](process-isolation.md) - How daemon process isolation works
 
 ## FAQ
 

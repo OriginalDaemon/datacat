@@ -175,7 +175,7 @@ Events sent: 1585
 Events dropped: 0
 ```
 
-**See Also**: [Game Logging Guide](../GAME_LOGGING.md)
+**See Also**: [Game Logging Guide](../game-logging.md)
 
 ---
 
@@ -215,7 +215,7 @@ with session.timer("database_query", unit="seconds"):
     result = db.execute(query)
 ```
 
-**See Also**: [Metric Types Guide](../METRIC_TYPES.md)
+**See Also**: [Metric Types Guide](../metric-types.md)
 
 ---
 
@@ -237,7 +237,7 @@ Deep-dive into counter usage with daemon-side aggregation.
 python examples/incremental_counters_example.py
 ```
 
-**See Also**: [Incremental Counters Guide](../INCREMENTAL_COUNTERS.md)
+**See Also**: [Incremental Counters Guide](../incremental-counters.md)
 
 ---
 
@@ -274,7 +274,7 @@ session.log_histogram("frame_time", frame_time,
                      buckets=fps_buckets)
 ```
 
-**See Also**: [Histogram Buckets Guide](../HISTOGRAM_BUCKETS.md)
+**See Also**: [Histogram Buckets Guide](../histogram-buckets.md)
 
 ---
 
@@ -496,6 +496,6 @@ From `game_logging_example.py`:
 
 - **[Demo GUI](demo-gui.md)** - Interactive web UI demonstration
 - **[Go Examples](go-examples.md)** - Go client library examples
-- **[Game Logging Guide](../GAME_LOGGING.md)** - Complete async logging guide
-- **[Metric Types Guide](../METRIC_TYPES.md)** - Understanding all metric types
+- **[Game Logging Guide](../game-logging.md)** - Complete async logging guide
+- **[Metric Types Guide](../metric-types.md)** - Understanding all metric types
 
