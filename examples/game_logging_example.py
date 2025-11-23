@@ -82,10 +82,20 @@ def simulate_game_loop():
             "enemy_count": enemy_count
         })
 
-        # Log FPS metric
+        # Log FPS as a gauge (point-in-time value)
         if frame > 0:
             fps = 1.0 / (frame_start - prev_frame_start)
-            session.log_metric("fps", fps, tags=["realtime"])
+            session.log_gauge("fps", fps, unit="fps", tags=["realtime"])
+
+            # Log frame time as a histogram (distribution analysis)
+            frame_duration = frame_start - prev_frame_start
+            session.log_histogram("frame_time", frame_duration,
+                                unit="seconds",
+                                buckets=[1.0/120, 1.0/60, 1.0/30, 1.0/15, 1.0],
+                                tags=["performance"])
+
+            # Increment frame counter
+            session.log_counter("frames_rendered", tags=["performance"])
 
         # Log enemy spawn every 30 frames (every 0.5 seconds)
         if frame % 30 == 0 and frame > 0:
@@ -94,6 +104,12 @@ def simulate_game_loop():
                 level="info",
                 data={"enemy_type": "goblin", "total_enemies": enemy_count}
             )
+            # Increment enemy spawn counter
+            session.log_counter("enemies_spawned", tags=["gameplay"])
+
+        # Track gameplay events with counter
+        if frame % 10 == 0:
+            session.log_counter("player_moves", tags=["gameplay"])
 
         # Log player action every 10 frames
         if frame % 10 == 0:
@@ -101,6 +117,16 @@ def simulate_game_loop():
                 "player_moved",
                 data={"position": player_pos, "distance": frame * 0.1}
             )
+
+        # Use timer context manager for expensive operations
+        if frame % 60 == 0:  # Every second
+            with session.timer("ai_update", unit="seconds", tags=["ai"]):
+                # Simulate AI processing time
+                time.sleep(0.001)  # 1ms AI update
+
+            with session.timer("physics_update", unit="seconds", tags=["physics"]):
+                # Simulate physics processing time
+                time.sleep(0.0005)  # 0.5ms physics update
 
         log_end = time.time()
         log_time = (log_end - log_start) * 1000  # Convert to ms

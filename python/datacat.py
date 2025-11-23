@@ -866,7 +866,7 @@ class AsyncSession(object):
             'data': data
         })
 
-    def log_metric(self, name, value, tags=None):
+    def log_metric(self, name, value, tags=None, metric_type="gauge", count=None, unit=None, metadata=None, delta=None):
         """
         Log a metric (non-blocking, returns immediately)
 
@@ -874,12 +874,48 @@ class AsyncSession(object):
             name (str): Metric name
             value (float): Metric value
             tags (list): Optional tags
+            metric_type (str): Metric type
+            count (int): Optional count for timers
+            unit (str): Optional unit
+            metadata (dict): Optional metadata
+            delta (float): Optional delta for counters
         """
-        self._queue_item('metric', {
+        metric_data = {
             'name': name,
+            'type': metric_type,
             'value': value,
             'tags': tags
-        })
+        }
+        if count is not None:
+            metric_data['count'] = count
+        if unit:
+            metric_data['unit'] = unit
+        if metadata:
+            metric_data['metadata'] = metadata
+        if delta is not None:
+            metric_data['delta'] = delta
+
+        self._queue_item('metric', metric_data)
+
+    def log_gauge(self, name, value, unit=None, tags=None, metadata=None):
+        """Log a gauge metric (non-blocking)"""
+        return self.log_metric(name, value, tags=tags, metric_type="gauge", unit=unit, metadata=metadata)
+
+    def log_counter(self, name, delta=1, tags=None):
+        """Log a counter increment (non-blocking)"""
+        return self.log_metric(name, 0, tags=tags, metric_type="counter", delta=delta)
+
+    def log_histogram(self, name, value, unit=None, tags=None, buckets=None, metadata=None):
+        """Log a histogram sample (non-blocking)"""
+        if buckets is not None:
+            if metadata is None:
+                metadata = {}
+            metadata["buckets"] = buckets
+        return self.log_metric(name, value, tags=tags, metric_type="histogram", unit=unit, metadata=metadata)
+
+    def timer(self, name, count=None, unit="seconds", tags=None):
+        """Create a timer context manager (non-blocking)"""
+        return Timer(self, name, count=count, unit=unit, tags=tags)
 
     def update_state(self, state):
         """
@@ -1303,9 +1339,10 @@ class Timer(object):
             duration = duration * 1000
 
         # Log the timer metric
-        self.session.log_timer(
+        self.session.log_metric(
             self.name,
             duration,
+            metric_type="timer",
             count=self.count if self.count > 0 else None,
             tags=self.tags,
             unit=self.unit
