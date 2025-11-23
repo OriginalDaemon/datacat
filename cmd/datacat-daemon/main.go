@@ -73,10 +73,14 @@ type EventData struct {
 
 // MetricData represents a metric to be logged
 type MetricData struct {
-	Timestamp time.Time `json:"timestamp"` // Daemon timestamp when metric was received from client
-	Name      string    `json:"name"`
-	Value     float64   `json:"value"`
-	Tags      []string  `json:"tags,omitempty"`
+	Timestamp time.Time              `json:"timestamp"`           // Daemon timestamp when metric was received from client
+	Name      string                 `json:"name"`
+	Type      string                 `json:"type"`                // "gauge", "counter", "histogram", "timer"
+	Value     float64                `json:"value"`
+	Count     *int                   `json:"count,omitempty"`     // For timers
+	Unit      string                 `json:"unit,omitempty"`      // e.g., "seconds", "milliseconds"
+	Tags      []string               `json:"tags,omitempty"`
+	Metadata  map[string]interface{} `json:"metadata,omitempty"`
 }
 
 // QueuedOperation represents an operation that failed and needs retry
@@ -437,10 +441,14 @@ func (d *Daemon) handleMetric(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		SessionID string   `json:"session_id"`
-		Name      string   `json:"name"`
-		Value     float64  `json:"value"`
-		Tags      []string `json:"tags"`
+		SessionID string                 `json:"session_id"`
+		Name      string                 `json:"name"`
+		Type      string                 `json:"type"`
+		Value     float64                `json:"value"`
+		Count     *int                   `json:"count,omitempty"`
+		Unit      string                 `json:"unit,omitempty"`
+		Tags      []string               `json:"tags"`
+		Metadata  map[string]interface{} `json:"metadata,omitempty"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -460,12 +468,22 @@ func (d *Daemon) handleMetric(w http.ResponseWriter, r *http.Request) {
 	// Timestamp when daemon receives the metric from client (this is effectively the client log time)
 	now := time.Now()
 
+	// Default to gauge if not specified (backward compatibility)
+	metricType := req.Type
+	if metricType == "" {
+		metricType = "gauge"
+	}
+
 	buffer.mu.Lock()
 	buffer.Metrics = append(buffer.Metrics, MetricData{
 		Timestamp: now,
 		Name:      req.Name,
+		Type:      metricType,
 		Value:     req.Value,
+		Count:     req.Count,
+		Unit:      req.Unit,
 		Tags:      req.Tags,
+		Metadata:  req.Metadata,
 	})
 	buffer.mu.Unlock()
 

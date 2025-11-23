@@ -404,7 +404,8 @@ class DatacatClient(object):
 
         return self._make_request(url, method="POST", data=request_data)
 
-    def log_metric(self, session_id, name, value, tags=None):
+    def log_metric(self, session_id, name, value, tags=None, metric_type="gauge",
+                   count=None, unit=None, metadata=None):
         """
         Log a metric to a session
 
@@ -413,6 +414,10 @@ class DatacatClient(object):
             name (str): Metric name
             value (float): Metric value
             tags (list): Optional list of tags
+            metric_type (str): Metric type - "gauge", "counter", "histogram", or "timer"
+            count (int): Optional count (for timers - number of iterations)
+            unit (str): Optional unit (e.g., "seconds", "milliseconds", "bytes")
+            metadata (dict): Optional additional metadata
 
         Returns:
             dict: Response from the server
@@ -424,9 +429,16 @@ class DatacatClient(object):
         metric_data = {
             "session_id": session_id,
             "name": name,
+            "type": metric_type,
             "value": float(value),
             "tags": tags or [],
         }
+        if count is not None:
+            metric_data["count"] = int(count)
+        if unit:
+            metric_data["unit"] = unit
+        if metadata:
+            metric_data["metadata"] = metadata
         return self._make_request(url, method="POST", data=metric_data)
 
     def end_session(self, session_id):
@@ -1049,9 +1061,60 @@ class Session(object):
             data=data,
         )
 
-    def log_metric(self, name, value, tags=None):
+    def log_metric(self, name, value, tags=None, metric_type="gauge",
+                   count=None, unit=None, metadata=None):
         """Log a metric"""
-        return self.client.log_metric(self.session_id, name, value, tags)
+        return self.client.log_metric(self.session_id, name, value, tags,
+                                      metric_type, count, unit, metadata)
+
+    def log_gauge(self, name, value, tags=None, unit=None):
+        """Log a gauge metric (current value)"""
+        return self.log_metric(name, value, tags=tags, metric_type="gauge", unit=unit)
+
+    def log_counter(self, name, value, tags=None):
+        """Log a counter metric (monotonically increasing)"""
+        return self.log_metric(name, value, tags=tags, metric_type="counter")
+
+    def log_histogram(self, name, value, tags=None, metadata=None):
+        """Log a histogram metric (value distribution)"""
+        return self.log_metric(name, value, tags=tags, metric_type="histogram", metadata=metadata)
+
+    def log_timer(self, name, duration, count=None, tags=None, unit="seconds"):
+        """Log a timer metric (duration measurement)"""
+        return self.log_metric(name, duration, tags=tags, metric_type="timer",
+                              count=count, unit=unit)
+
+    def timer(self, name, count=None, tags=None, unit="seconds"):
+        """
+        Context manager for timing code execution
+
+        Args:
+            name (str): Timer name
+            count (int): Optional count (for iterations)
+            tags (list): Optional tags
+            unit (str): Time unit ("seconds" or "milliseconds")
+
+        Returns:
+            Timer: Timer object (can access .count property)
+
+        Examples:
+            # Basic timer
+            with session.timer("load_data"):
+                data = load_data()
+
+            # Timer with known count
+            items = get_items()
+            with session.timer("process_items", count=len(items)):
+                for item in items:
+                    process(item)
+
+            # Timer with incremental count
+            with session.timer("process_queue") as t:
+                while queue.has_items():
+                    t.count += 1
+                    process(queue.pop())
+        """
+        return Timer(self, name, count=count, tags=tags, unit=unit)
 
     def log_exception(self, exc_info=None, extra_data=None):
         """
@@ -1142,6 +1205,59 @@ class Session(object):
 
 
 # Factory function for convenience
+class Timer(object):
+    """
+    Context manager for timing code execution
+
+    Automatically measures duration and logs as a timer metric when exiting context.
+    Supports counting iterations for average time calculations.
+    """
+
+    def __init__(self, session, name, count=None, tags=None, unit="seconds"):
+        """
+        Initialize timer
+
+        Args:
+            session: Session object
+            name (str): Timer name
+            count (int): Optional initial count
+            tags (list): Optional tags
+            unit (str): Time unit ("seconds" or "milliseconds")
+        """
+        self.session = session
+        self.name = name
+        self.count = count if count is not None else 0
+        self.tags = tags
+        self.unit = unit
+        self.start_time = None
+
+    def __enter__(self):
+        """Start timing"""
+        self.start_time = time.time()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Stop timing and log metric"""
+        end_time = time.time()
+        duration = end_time - self.start_time
+
+        # Convert to specified unit
+        if self.unit == "milliseconds":
+            duration = duration * 1000
+
+        # Log the timer metric
+        self.session.log_timer(
+            self.name,
+            duration,
+            count=self.count if self.count > 0 else None,
+            tags=self.tags,
+            unit=self.unit
+        )
+
+        # Don't suppress exceptions
+        return False
+
+
 def create_session(
     base_url="http://localhost:9090",
     daemon_port="auto",

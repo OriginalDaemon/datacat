@@ -206,10 +206,14 @@ type Event struct {
 
 // Metric represents a metric in a session
 type Metric struct {
-	Timestamp time.Time `json:"timestamp"`
-	Name      string    `json:"name"`
-	Value     float64   `json:"value"`
-	Tags      []string  `json:"tags,omitempty"`
+	Timestamp time.Time              `json:"timestamp"`
+	Name      string                 `json:"name"`
+	Type      string                 `json:"type"`  // "gauge", "counter", "histogram", "timer"
+	Value     float64                `json:"value"`
+	Count     *int                   `json:"count,omitempty"`     // For timers
+	Unit      string                 `json:"unit,omitempty"`      // e.g., "seconds", "milliseconds"
+	Tags      []string               `json:"tags,omitempty"`
+	Metadata  map[string]interface{} `json:"metadata,omitempty"`
 }
 
 // NewClient creates a new datacat client
@@ -416,16 +420,22 @@ func (c *Client) LogEvent(sessionID, name string, data map[string]interface{}) e
 	return nil
 }
 
-// LogMetric logs a metric
+// LogMetric logs a metric with full options
 func (c *Client) LogMetric(sessionID, name string, value float64, tags []string) error {
+	return c.LogMetricWithType(sessionID, name, "gauge", value, tags, nil, "", nil)
+}
+
+// LogMetricWithType logs a metric with a specific type and additional fields
+func (c *Client) LogMetricWithType(sessionID, name, metricType string, value float64, tags []string, count *int, unit string, metadata map[string]interface{}) error {
 	var url string
-	var metricData interface{}
+	var metricData map[string]interface{}
 
 	if c.UseDaemon {
 		url = c.BaseURL + "/metric"
 		metricData = map[string]interface{}{
 			"session_id": sessionID,
 			"name":       name,
+			"type":       metricType,
 			"value":      value,
 			"tags":       tags,
 		}
@@ -433,9 +443,20 @@ func (c *Client) LogMetric(sessionID, name string, value float64, tags []string)
 		url = c.BaseURL + "/api/sessions/" + sessionID + "/metrics"
 		metricData = map[string]interface{}{
 			"name":  name,
+			"type":  metricType,
 			"value": value,
 			"tags":  tags,
 		}
+	}
+
+	if count != nil {
+		metricData["count"] = *count
+	}
+	if unit != "" {
+		metricData["unit"] = unit
+	}
+	if metadata != nil {
+		metricData["metadata"] = metadata
 	}
 
 	jsonData, err := json.Marshal(metricData)

@@ -68,10 +68,14 @@ type Event struct {
 
 // Metric represents a metric logged in a session
 type Metric struct {
-	Timestamp time.Time `json:"timestamp"`
-	Name      string    `json:"name"`
-	Value     float64   `json:"value"`
-	Tags      []string  `json:"tags,omitempty"`
+	Timestamp time.Time              `json:"timestamp"`
+	Name      string                 `json:"name"`
+	Type      string                 `json:"type"`  // "gauge", "counter", "histogram", "timer"
+	Value     float64                `json:"value"`
+	Count     *int                   `json:"count,omitempty"`     // For timers: number of iterations
+	Unit      string                 `json:"unit,omitempty"`      // e.g., "seconds", "milliseconds", "bytes"
+	Tags      []string               `json:"tags,omitempty"`
+	Metadata  map[string]interface{} `json:"metadata,omitempty"`  // Additional data for histograms, etc.
 }
 
 // Store manages all sessions with BadgerDB for persistence
@@ -652,10 +656,14 @@ func (s *Store) AddEvent(sessionID string, input EventInput) error {
 
 // MetricInput represents the input for adding a metric
 type MetricInput struct {
-	Timestamp *time.Time `json:"timestamp,omitempty"` // Optional timestamp from daemon
-	Name      string     `json:"name"`
-	Value     float64    `json:"value"`
-	Tags      []string   `json:"tags,omitempty"`
+	Timestamp *time.Time             `json:"timestamp,omitempty"` // Optional timestamp from daemon
+	Name      string                 `json:"name"`
+	Type      string                 `json:"type"`                // "gauge", "counter", "histogram", "timer"
+	Value     float64                `json:"value"`
+	Count     *int                   `json:"count,omitempty"`     // For timers
+	Unit      string                 `json:"unit,omitempty"`      // e.g., "seconds", "milliseconds"
+	Tags      []string               `json:"tags,omitempty"`
+	Metadata  map[string]interface{} `json:"metadata,omitempty"`
 }
 
 // AddMetric adds a metric to a session
@@ -674,11 +682,21 @@ func (s *Store) AddMetric(sessionID string, input MetricInput) error {
 		timestamp = *input.Timestamp
 	}
 
+	// Default to gauge if type not specified (backward compatibility)
+	metricType := input.Type
+	if metricType == "" {
+		metricType = "gauge"
+	}
+
 	metric := Metric{
 		Timestamp: timestamp,
 		Name:      input.Name,
+		Type:      metricType,
 		Value:     input.Value,
+		Count:     input.Count,
+		Unit:      input.Unit,
 		Tags:      input.Tags,
+		Metadata:  input.Metadata,
 	}
 	session.Metrics = append(session.Metrics, metric)
 	session.UpdatedAt = time.Now()
