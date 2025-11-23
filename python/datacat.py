@@ -1105,9 +1105,36 @@ class Session(object):
             delta=delta
         )
 
-    def log_histogram(self, name, value, tags=None, metadata=None):
-        """Log a histogram metric (value distribution)"""
-        return self.log_metric(name, value, tags=tags, metric_type="histogram", metadata=metadata)
+    def log_histogram(self, name, value, unit=None, tags=None, buckets=None, metadata=None):
+        """
+        Log a histogram metric (value distribution)
+
+        The daemon accumulates samples into buckets and sends bucket counts to the server.
+
+        Args:
+            name (str): Histogram name
+            value (float): Sample value
+            unit (str): Optional unit (e.g., "seconds", "bytes")
+            tags (list): Optional tags
+            buckets (list): Optional bucket boundaries. If not specified, uses default buckets.
+            metadata (dict): Optional additional metadata
+
+        Examples:
+            # Default buckets (covers microseconds to minutes)
+            session.log_histogram("request_latency", 0.045)
+
+            # Custom buckets for FPS (frame times)
+            # +60fps, 60fps, 30fps, 20fps, 10fps, <10fps
+            fps_buckets = [1/60, 1/30, 1/20, 1/10, float('inf')]
+            session.log_histogram("frame_time", 0.016, buckets=fps_buckets)
+        """
+        # Add buckets to metadata if specified
+        if buckets is not None:
+            if metadata is None:
+                metadata = {}
+            metadata["buckets"] = buckets
+
+        return self.log_metric(name, value, unit=unit, tags=tags, metric_type="histogram", metadata=metadata)
 
     def log_timer(self, name, duration, count=None, tags=None, unit="seconds"):
         """Log a timer metric (duration measurement)"""

@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"net"
 	"net/http"
 	"os"
@@ -42,13 +43,37 @@ type CounterKey struct {
 	Tags string // JSON-encoded sorted tags for consistent key
 }
 
+// HistogramBucket represents a single bucket in a histogram
+type HistogramBucket struct {
+	UpperBound float64 `json:"le"`    // "less than or equal to"
+	Count      int64   `json:"count"` // Number of samples in this bucket
+}
+
+// Histogram tracks a distribution of values using buckets
+type Histogram struct {
+	Buckets []float64          // Bucket upper bounds (sorted)
+	Counts  []int64            // Count per bucket
+	Sum     float64            // Sum of all observed values
+	Count   int64              // Total number of observations
+	Tags    []string           // Tags for this histogram
+	Unit    string             // Unit of measurement
+	Metadata map[string]interface{} // Additional metadata
+}
+
+// Default histogram buckets (similar to Prometheus defaults, covering microseconds to seconds)
+var DefaultHistogramBuckets = []float64{
+	0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0,
+	// +Inf is implicit (all values go into last bucket)
+}
+
 // SessionBuffer holds pending updates for a session
 type SessionBuffer struct {
 	SessionID              string
 	StateUpdates           []StateUpdate
 	Events                 []EventData
 	Metrics                []MetricData
-	Counters               map[string]float64 // Counter name+tags -> cumulative value
+	Counters               map[string]float64       // Counter name+tags -> cumulative value
+	Histograms             map[string]*Histogram    // Histogram name+tags+buckets -> histogram
 	LastHeartbeat          time.Time
 	LastState              map[string]interface{}
 	HangLogged             bool
@@ -273,6 +298,7 @@ func (d *Daemon) initSessionBuffer(sessionID, product, version string, parentPID
 		Events:           []EventData{},
 		Metrics:          []MetricData{},
 		Counters:         make(map[string]float64),
+		Histograms:       make(map[string]*Histogram),
 		LastHeartbeat:    now,
 		LastState:        initialState,
 		ParentPID:        parentPID,
@@ -455,6 +481,62 @@ func makeCounterKey(name string, tags []string) string {
 	return name + ":" + string(tagsJSON)
 }
 
+// makeHistogramKey creates a unique key for a histogram based on name, tags, and buckets
+func makeHistogramKey(name string, tags []string, buckets []float64) string {
+	key := name
+	if len(tags) > 0 {
+		sortedTags := make([]string, len(tags))
+		copy(sortedTags, tags)
+		sort.Strings(sortedTags)
+		tagsJSON, _ := json.Marshal(sortedTags)
+		key += ":" + string(tagsJSON)
+	}
+	if len(buckets) > 0 {
+		bucketsJSON, _ := json.Marshal(buckets)
+		key += ":" + string(bucketsJSON)
+	}
+	return key
+}
+
+// newHistogram creates a new histogram with the given buckets
+func newHistogram(buckets []float64, tags []string, unit string, metadata map[string]interface{}) *Histogram {
+	if len(buckets) == 0 {
+		// Use default buckets
+		buckets = make([]float64, len(DefaultHistogramBuckets))
+		copy(buckets, DefaultHistogramBuckets)
+	} else {
+		// Ensure buckets are sorted
+		buckets = append([]float64(nil), buckets...)
+		sort.Float64s(buckets)
+	}
+
+	return &Histogram{
+		Buckets:  buckets,
+		Counts:   make([]int64, len(buckets)),
+		Sum:      0,
+		Count:    0,
+		Tags:     tags,
+		Unit:     unit,
+		Metadata: metadata,
+	}
+}
+
+// observe records a value in the histogram
+func (h *Histogram) observe(value float64) {
+	h.Count++
+	h.Sum += value
+
+	// Find the appropriate bucket (first bucket where value <= upperBound)
+	for i, upperBound := range h.Buckets {
+		if value <= upperBound {
+			h.Counts[i]++
+			return
+		}
+	}
+	// Value exceeds all buckets, put in last bucket
+	h.Counts[len(h.Counts)-1]++
+}
+
 // handleMetric handles metric logging requests
 func (d *Daemon) handleMetric(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -508,8 +590,48 @@ func (d *Daemon) handleMetric(w http.ResponseWriter, r *http.Request) {
 			buffer.Counters = make(map[string]float64)
 		}
 		buffer.Counters[key] += *req.Delta
+	} else if metricType == "histogram" {
+		// Histogram - accumulate samples into buckets
+		if buffer.Histograms == nil {
+			buffer.Histograms = make(map[string]*Histogram)
+		}
+
+		// Extract buckets from metadata if provided
+		var buckets []float64
+		if req.Metadata != nil {
+			if bucketsInterface, ok := req.Metadata["buckets"]; ok {
+				// Handle both []interface{} and []float64
+				switch v := bucketsInterface.(type) {
+				case []interface{}:
+					buckets = make([]float64, 0, len(v))
+					for _, b := range v {
+						switch num := b.(type) {
+						case float64:
+							buckets = append(buckets, num)
+						case int:
+							buckets = append(buckets, float64(num))
+						case string:
+							// Handle "inf" string
+							if num == "inf" || num == "Infinity" {
+								buckets = append(buckets, math.Inf(1))
+							}
+						}
+					}
+				case []float64:
+					buckets = v
+				}
+			}
+		}
+
+		key := makeHistogramKey(req.Name, req.Tags, buckets)
+		hist, exists := buffer.Histograms[key]
+		if !exists {
+			hist = newHistogram(buckets, req.Tags, req.Unit, req.Metadata)
+			buffer.Histograms[key] = hist
+		}
+		hist.observe(req.Value)
 	} else {
-		// All other metrics (gauge, histogram, timer) or absolute counter values
+		// All other metrics (gauge, timer) or absolute counter values
 		buffer.Metrics = append(buffer.Metrics, MetricData{
 			Timestamp: now,
 			Name:      req.Name,
@@ -762,6 +884,23 @@ func parseCounterKey(key string) (string, []string) {
 	return name, tags
 }
 
+// parseHistogramKey extracts name, tags, and buckets from a histogram key
+func parseHistogramKey(key string) (string, []string, []float64) {
+	parts := strings.Split(key, ":")
+	name := parts[0]
+	var tags []string
+	var buckets []float64
+
+	if len(parts) > 1 {
+		json.Unmarshal([]byte(parts[1]), &tags)
+	}
+	if len(parts) > 2 {
+		json.Unmarshal([]byte(parts[2]), &buckets)
+	}
+
+	return name, tags, buckets
+}
+
 // flushSession sends all pending data for a session to the server
 func (d *Daemon) flushSession(sessionID string) {
 	d.mu.RLock()
@@ -792,6 +931,45 @@ func (d *Daemon) flushSession(sessionID string) {
 	}
 	// Don't reset counters - they keep accumulating!
 
+	// Convert accumulated histograms to metrics (but keep histogram state)
+	histogramMetrics := make([]MetricData, 0, len(buffer.Histograms))
+	for key, hist := range buffer.Histograms {
+		name, _, _ := parseHistogramKey(key)
+
+		// Build buckets array for server
+		buckets := make([]HistogramBucket, len(hist.Buckets))
+		for i, upperBound := range hist.Buckets {
+			buckets[i] = HistogramBucket{
+				UpperBound: upperBound,
+				Count:      hist.Counts[i],
+			}
+		}
+
+		// Store histogram as metric with special metadata
+		metadata := map[string]interface{}{
+			"buckets": buckets,
+			"sum":     hist.Sum,
+			"count":   hist.Count,
+		}
+		// Merge any original metadata
+		for k, v := range hist.Metadata {
+			if k != "buckets" { // Don't override our structured buckets
+				metadata[k] = v
+			}
+		}
+
+		histogramMetrics = append(histogramMetrics, MetricData{
+			Timestamp: now,
+			Name:      name,
+			Type:      "histogram",
+			Value:     hist.Sum / float64(hist.Count), // Average as the value
+			Tags:      hist.Tags,
+			Unit:      hist.Unit,
+			Metadata:  metadata,
+		})
+	}
+	// Don't reset histograms - they keep accumulating!
+
 	buffer.StateUpdates = make([]StateUpdate, 0)
 	buffer.Events = make([]EventData, 0)
 	buffer.Metrics = make([]MetricData, 0)
@@ -814,6 +992,11 @@ func (d *Daemon) flushSession(sessionID string) {
 
 	// Send accumulated counter totals
 	for _, metric := range counterMetrics {
+		d.sendMetric(sessionID, metric)
+	}
+
+	// Send accumulated histogram buckets
+	for _, metric := range histogramMetrics {
 		d.sendMetric(sessionID, metric)
 	}
 }

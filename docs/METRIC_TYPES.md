@@ -114,32 +114,46 @@ def handle_request():
 ### Python API
 
 ```python
-# Log many samples
+# Default buckets (good for general use)
 for request in requests:
-    session.log_histogram(
-        "request_latency",
-        request.duration,
-        tags=["endpoint:/api/users"],
-        metadata={"request_id": request.id}
-    )
+    session.log_histogram("request_latency", request.duration)
+
+# Custom buckets for specific thresholds
+fps_buckets = [1.0/60, 1.0/30, 1.0/20, 1.0/10, 10.0]
+session.log_histogram("frame_time", frame_duration,
+                     unit="seconds",
+                     buckets=fps_buckets)
 ```
 
 ### Characteristics
-- Log many samples (hundreds or thousands)
-- Analyze distribution later
-- Calculate percentiles: p50 (median), p95, p99
-- Identify outliers and patterns
+- Daemon aggregates samples into buckets automatically
+- Storage efficient: only bucket counts sent to server
+- Custom buckets for domain-specific thresholds
+- Default buckets cover microseconds to minutes
+- Calculate approximate percentiles from bucket counts
 
-### Analysis Example
+### Example Output (Server)
+```json
+{
+  "name": "frame_time",
+  "type": "histogram",
+  "value": 0.025,
+  "metadata": {
+    "buckets": [
+      {"le": 0.0167, "count": 650},
+      {"le": 0.0333, "count": 920},
+      {"le": 0.05, "count": 990},
+      {"le": 0.1, "count": 998},
+      {"le": 10.0, "count": 1000}
+    ],
+    "sum": 25.5,
+    "count": 1000
+  }
+}
 ```
-100 latency samples:
-- p50 (median): 45ms  (half of requests faster than this)
-- p95: 250ms          (95% of requests faster than this)
-- p99: 1200ms         (99% of requests faster than this)
-- Max: 2500ms         (slowest request)
-```
+Analysis: 65% of frames at 60+ FPS, 92% at 30+ FPS
 
-**Current Implementation Note:** Datacat currently stores all individual histogram values (raw samples). In the future, we may add client-side bucketing for more efficient storage at high volume.
+**Implementation:** Datacat uses daemon-side histogram aggregation with configurable buckets. Samples are accumulated into buckets, and only bucket counts are sent to the server. This provides ~100-1000x storage and network efficiency compared to storing individual samples. See [Histogram Buckets Documentation](HISTOGRAM_BUCKETS.md) for details.
 
 ---
 
