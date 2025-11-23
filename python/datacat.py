@@ -338,14 +338,14 @@ class DatacatClient(object):
         self,
         session_id,
         name,
-        level=None,
         category=None,
+        group=None,
         labels=None,
         message=None,
         data=None,
+        stacktrace=None,
         exception_type=None,
         exception_msg=None,
-        stacktrace=None,
         source_file=None,
         source_line=None,
         source_function=None,
@@ -355,18 +355,18 @@ class DatacatClient(object):
 
         Args:
             session_id (str): Session ID
-            name (str): Event name
-            level (str): Optional event level (debug, info, warning, error, critical)
-            category (str): Optional category (e.g., logger name, component name)
-            labels (list): Optional list of labels/tags
-            message (str): Optional human-readable message
-            data (dict): Optional event data
-            exception_type (str): Optional exception type (for exception events)
-            exception_msg (str): Optional exception message (for exception events)
-            stacktrace (list): Optional stack trace lines (for exception events)
-            source_file (str): Optional source file (for exception events)
-            source_line (int): Optional source line (for exception events)
-            source_function (str): Optional source function (for exception events)
+            name (str): Event name (required)
+            category (str): User-defined category (e.g., debug, info, warning, error, critical, or custom). Defaults to "info"
+            group (str): Group/logger name (e.g., logger name, component name). Optional
+            labels (list): Array of label strings. Defaults to empty array
+            message (str): Human-readable message. Optional (no default)
+            data (dict): Event data. Defaults to empty dict
+            stacktrace (list): Stack trace lines (for any event, not just exceptions). Optional
+            exception_type (str): Exception type (for exception events). Optional
+            exception_msg (str): Exception message (for exception events). Optional
+            source_file (str): Source file (for exception events). Optional
+            source_line (int): Source line (for exception events). Optional
+            source_function (str): Source function (for exception events). Optional
 
         Returns:
             dict: Response from the server
@@ -380,21 +380,29 @@ class DatacatClient(object):
         url = "{0}/event".format(self.base_url)
         request_data = {"session_id": session_id, "name": name, "data": data}
 
-        # Add optional fields if provided
-        if level:
-            request_data["level"] = level
-        if category:
-            request_data["category"] = category
-        if labels:
-            request_data["labels"] = labels
+        # Always include required fields with defaults if not provided
+        # Category (user-defined: debug, info, warning, error, critical, or custom)
+        request_data["category"] = category if category else "info"
+
+        # Group (logger name or component name) - optional
+        if group:
+            request_data["group"] = group
+
+        # Labels (array of strings) - always include as array, even if empty
+        request_data["labels"] = labels if labels else []
+
+        # Message - only include if provided (no default)
         if message:
             request_data["message"] = message
+
+        # Stacktrace - available for any event, not just exceptions
+        if stacktrace:
+            request_data["stacktrace"] = stacktrace
+        # Exception-specific fields
         if exception_type:
             request_data["exception_type"] = exception_type
         if exception_msg:
             request_data["exception_msg"] = exception_msg
-        if stacktrace:
-            request_data["stacktrace"] = stacktrace
         if source_file:
             request_data["source_file"] = source_file
         if source_line is not None:
@@ -530,14 +538,14 @@ class DatacatClient(object):
         return self.log_event(
             session_id=session_id,
             name="exception",
-            level="error",
-            category="exception",
+            category="error",
+            group="exception",
             labels=["exception", exception_type],
             message=exception_msg,
             data=extra_data if extra_data else {},
+            stacktrace=stacktrace_lines,
             exception_type=exception_type,
             exception_msg=exception_msg,
-            stacktrace=stacktrace_lines,
             source_file=source_file,
             source_line=source_line,
             source_function=source_function,
@@ -797,8 +805,8 @@ try:
                     # Regular event log
                     self.session.log_event(
                         name=event_name,
-                        level=level,
-                        category=record.name,
+                        category=level,
+                        group=record.name,
                         labels=labels,
                         message=message,
                         data=data,
@@ -869,25 +877,40 @@ class AsyncSession(object):
         self.thread.daemon = True
         self.thread.start()
 
-    def log_event(self, name, level=None, category=None, labels=None, message=None, data=None):
+    def log_event(self, name, category=None, group=None, labels=None, message=None, data=None, stacktrace=None, level=None):
         """
         Log an event (non-blocking, returns immediately)
 
         Args:
-            name (str): Event name
-            level (str): Optional event level
-            category (str): Optional category
-            labels (list): Optional labels
-            message (str): Optional message
-            data (dict): Optional event data
+            name (str): Event name (required)
+            category (str): User-defined category (e.g., debug, info, warning, error, critical, or custom). Defaults to "info"
+            group (str): Group/logger name (e.g., logger name, component name). Optional
+            labels (list): Array of label strings. Defaults to empty array
+            message (str): Human-readable message. Optional (no default)
+            data (dict): Event data. Defaults to empty dict
+            stacktrace (list): Stack trace lines (for any event). Optional
+            level (str): DEPRECATED - use 'category' instead. Maps to category for backward compatibility.
         """
+        # Backward compatibility: map 'level' to 'category' if category not provided
+        if level is not None and category is None:
+            category = level
+
+        # Ensure labels is always a list
+        if labels is None:
+            labels = []
+
+        # Ensure data is always a dict
+        if data is None:
+            data = {}
+
         self._queue_item('event', {
             'name': name,
-            'level': level,
             'category': category,
+            'group': group,
             'labels': labels,
             'message': message,
-            'data': data
+            'data': data,
+            'stacktrace': stacktrace
         })
 
     def log_metric(self, name, value, tags=None, metric_type="gauge", count=None, unit=None, metadata=None, delta=None):
@@ -991,13 +1014,19 @@ class AsyncSession(object):
 
                 try:
                     if item_type == 'event':
+                        # Support backward compatibility: map 'level' to 'category'
+                        category = data.get('category')
+                        if category is None and 'level' in data:
+                            category = data.get('level')
+
                         self.session.log_event(
                             data['name'],
-                            level=data.get('level'),
-                            category=data.get('category'),
+                            category=category,
+                            group=data.get('group'),
                             labels=data.get('labels'),
                             message=data.get('message'),
-                            data=data.get('data')
+                            data=data.get('data'),
+                            stacktrace=data.get('stacktrace')
                         )
                     elif item_type == 'metric':
                         self.session.log_metric(
@@ -1119,17 +1148,42 @@ class Session(object):
         return self.client.update_state(self.session_id, state)
 
     def log_event(
-        self, name, level=None, category=None, labels=None, message=None, data=None
+        self, name, category=None, group=None, labels=None, message=None, data=None, stacktrace=None, level=None
     ):
-        """Log an event"""
+        """
+        Log an event
+
+        Args:
+            name (str): Event name (required)
+            category (str): User-defined category (e.g., debug, info, warning, error, critical, or custom). Defaults to "info"
+            group (str): Group/logger name (e.g., logger name, component name). Optional
+            labels (list): Array of label strings. Defaults to empty array
+            message (str): Human-readable message. Optional (no default)
+            data (dict): Event data. Defaults to empty dict
+            stacktrace (list): Stack trace lines (for any event). Optional
+            level (str): DEPRECATED - use 'category' instead. Maps to category for backward compatibility.
+        """
+        # Backward compatibility: map 'level' to 'category' if category not provided
+        if level is not None and category is None:
+            category = level
+
+        # Ensure labels is always a list
+        if labels is None:
+            labels = []
+
+        # Ensure data is always a dict
+        if data is None:
+            data = {}
+
         return self.client.log_event(
             self.session_id,
             name,
-            level=level,
             category=category,
+            group=group,
             labels=labels,
             message=message,
             data=data,
+            stacktrace=stacktrace,
         )
 
     def log_metric(self, name, value, tags=None, metric_type="gauge",

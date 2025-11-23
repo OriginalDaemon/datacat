@@ -48,11 +48,21 @@ if (-not (Test-Path $webBin)) {
 }
 
 # Start the web UI in a background job
+# Capture both stdout and stderr
 $webJob = Start-Job -ScriptBlock {
     param($binPath, $workDir)
     Set-Location $workDir
-    & $binPath
+    & $binPath 2>&1
 } -ArgumentList $webBin, $repoRoot
+
+# Show initial output from the job
+Write-Host "Job started, checking initial output..." -ForegroundColor Yellow
+Start-Sleep -Milliseconds 500
+$initialOutput = Receive-Job -Job $webJob -ErrorAction SilentlyContinue
+if ($initialOutput) {
+    Write-Host "Initial output from web UI:" -ForegroundColor Cyan
+    $initialOutput | ForEach-Object { Write-Host $_ }
+}
 
 # Wait for web UI to be healthy
 Write-Host "Waiting for web UI to be ready..." -ForegroundColor Yellow
@@ -78,6 +88,17 @@ while ($attempt -lt $maxAttempts -and -not $webReady) {
 
 if (-not $webReady) {
     Write-Host "[ERROR] Web UI failed to start within 15 seconds" -ForegroundColor Red
+    Write-Host "Checking job output for errors..." -ForegroundColor Yellow
+    $jobOutput = Receive-Job -Job $webJob -ErrorAction SilentlyContinue
+    if ($jobOutput) {
+        Write-Host "Job output:" -ForegroundColor Yellow
+        $jobOutput | ForEach-Object { Write-Host $_ }
+    }
+    $jobError = Receive-Job -Job $webJob -ErrorAction SilentlyContinue -ErrorVariable jobErr
+    if ($jobErr) {
+        Write-Host "Job errors:" -ForegroundColor Red
+        $jobErr | ForEach-Object { Write-Host $_ }
+    }
     Stop-Job -Job $webJob -ErrorAction SilentlyContinue
     Remove-Job -Job $webJob -Force -ErrorAction SilentlyContinue
     exit 1
@@ -97,9 +118,31 @@ try {
 Write-Host ""
 
 try {
-    # Wait for the job to finish (or Ctrl+C)
-    Wait-Job -Job $webJob | Out-Null
-    Receive-Job -Job $webJob
+    # Continuously show job output while waiting
+    Write-Host "Web UI is running. Logs will appear below:" -ForegroundColor Green
+    Write-Host "Press Ctrl+C to stop the web UI" -ForegroundColor Yellow
+    Write-Host ""
+
+    # Show output continuously
+    while ($true) {
+        $output = Receive-Job -Job $webJob -ErrorAction SilentlyContinue
+        if ($output) {
+            $output | ForEach-Object { Write-Host $_ }
+        }
+
+        # Check if job is still running
+        if ($webJob.State -ne "Running") {
+            break
+        }
+
+        Start-Sleep -Milliseconds 200
+    }
+
+    # Get any remaining output
+    $finalOutput = Receive-Job -Job $webJob -ErrorAction SilentlyContinue
+    if ($finalOutput) {
+        $finalOutput | ForEach-Object { Write-Host $_ }
+    }
 } finally {
     Write-Host "Stopping web UI..." -ForegroundColor Yellow
     Stop-Job -Job $webJob -ErrorAction SilentlyContinue

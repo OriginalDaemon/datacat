@@ -603,8 +603,8 @@
       style="flex: 1; min-width: 200px"
       oninput="filterEvents()"
     />
-    <select id="event-level-filter" onchange="filterEvents()">
-      <option value="">All Levels</option>
+    <select id="event-category-filter" onchange="filterEvents()">
+      <option value="">All Categories</option>
       <!-- Options populated by JS -->
     </select>
     <select id="event-name-filter" onchange="filterEvents()">
@@ -661,25 +661,25 @@
 
   // Track loaded events for filtering
   window.loadedEvents = window.loadedEvents || [];
-  window.uniqueLevels = window.uniqueLevels || new Set();
+  window.uniqueCategories = window.uniqueCategories || new Set();
   window.uniqueNames = window.uniqueNames || new Set();
 
   // Update filter dropdowns
   function updateFilterOptions() {
-    const levelFilter = document.getElementById("event-level-filter");
+    const categoryFilter = document.getElementById("event-category-filter");
     const nameFilter = document.getElementById("event-name-filter");
 
-    // Update level options
-    const currentLevelValue = levelFilter.value;
-    levelFilter.innerHTML = '<option value="">All Levels</option>';
-    Array.from(window.uniqueLevels)
+    // Update category options
+    const currentCategoryValue = categoryFilter.value;
+    categoryFilter.innerHTML = '<option value="">All Categories</option>';
+    Array.from(window.uniqueCategories)
       .sort()
-      .forEach((level) => {
+      .forEach((category) => {
         const option = document.createElement("option");
-        option.value = level;
-        option.textContent = level;
-        if (level === currentLevelValue) option.selected = true;
-        levelFilter.appendChild(option);
+        option.value = category;
+        option.textContent = category;
+        if (category === currentCategoryValue) option.selected = true;
+        categoryFilter.appendChild(option);
       });
 
     // Update name options
@@ -702,15 +702,21 @@
     const arrow = document.getElementById(`event-arrow-${index}`);
     const row = document.querySelector(`[data-index="${index}"]`);
 
-    if (!detailsDiv || !arrow || !row) {
-      console.error(`Could not find elements for event ${index}`);
+    if (!detailsDiv || !arrow) {
+      console.error(`Could not find elements for event ${index}`, {
+        detailsDiv,
+        arrow,
+      });
       return;
     }
 
-    // Check if currently visible by checking computed style
+    // Check if currently visible - check both inline style and computed style
+    const inlineDisplay = detailsDiv.style.display;
     const computedStyle = window.getComputedStyle(detailsDiv);
     const isCurrentlyVisible =
-      computedStyle.display !== "none" && detailsDiv.style.display !== "none";
+      inlineDisplay !== "none" &&
+      computedStyle.display !== "none" &&
+      detailsDiv.offsetHeight > 0;
 
     if (!isCurrentlyVisible) {
       // Show details
@@ -722,12 +728,44 @@
       const hasContent =
         detailsDiv.innerHTML &&
         detailsDiv.innerHTML.trim() !== "" &&
+        !detailsDiv.innerHTML.includes("htmx-indicator") &&
         !detailsDiv.innerHTML.includes("Loading") &&
-        !detailsDiv.querySelector(".htmx-indicator");
+        !detailsDiv.innerHTML.includes("Error loading");
 
       if (!hasContent) {
-        // Trigger htmx load
-        htmx.trigger(detailsDiv, "loadDetails");
+        // Get URL from hx-get attribute
+        const url = detailsDiv.getAttribute("hx-get");
+        if (!url) {
+          console.error(`No hx-get attribute found for event ${index}`);
+          detailsDiv.innerHTML = `<div style="color: var(--error-color);">Error: No URL found for event details</div>`;
+          return;
+        }
+
+        // Show loading indicator
+        detailsDiv.innerHTML =
+          '<div style="color: var(--text-secondary); padding: 10px;">Loading...</div>';
+
+        // Use fetch directly for more reliable behavior
+        fetch(url)
+          .then((response) => {
+            if (!response.ok) {
+              throw new Error(
+                `HTTP ${response.status}: ${response.statusText}`
+              );
+            }
+            return response.text();
+          })
+          .then((html) => {
+            if (html && html.trim()) {
+              detailsDiv.innerHTML = html;
+            } else {
+              detailsDiv.innerHTML = `<div style="color: var(--error-color);">Empty response from server</div>`;
+            }
+          })
+          .catch((err) => {
+            console.error(`Error loading event details for ${index}:`, err);
+            detailsDiv.innerHTML = `<div style="color: var(--error-color);">Error loading event details: ${err.message}</div>`;
+          });
       }
     } else {
       // Hide details
@@ -742,20 +780,22 @@
     const searchTerm = document
       .getElementById("event-search")
       .value.toLowerCase();
-    const levelFilter = document.getElementById("event-level-filter").value;
+    const categoryFilter = document.getElementById(
+      "event-category-filter"
+    ).value;
     const nameFilter = document.getElementById("event-name-filter").value;
 
     let visibleCount = 0;
     document.querySelectorAll(".event-row").forEach((row) => {
-      const level = row.getAttribute("data-level");
+      const category = row.getAttribute("data-category");
       const name = row.getAttribute("data-name");
       const text = row.textContent.toLowerCase();
 
       const matchesSearch = text.includes(searchTerm);
-      const matchesLevel = !levelFilter || level === levelFilter;
+      const matchesCategory = !categoryFilter || category === categoryFilter;
       const matchesName = !nameFilter || name === nameFilter;
 
-      if (matchesSearch && matchesLevel && matchesName) {
+      if (matchesSearch && matchesCategory && matchesName) {
         row.style.display = "block";
         visibleCount++;
       } else {
@@ -927,7 +967,8 @@
     sourceLine: {{if $event.SourceLine}}{{$event.SourceLine}}{{else}}null{{end}},
     sourceFunction: "{{$event.SourceFunction}}",
     {{end}}
-    level: "{{$event.Level}}",
+    category: "{{$event.Category}}",
+    group: "{{$event.Group}}",
     message: "{{$event.Message}}"
   });
   {{end}}

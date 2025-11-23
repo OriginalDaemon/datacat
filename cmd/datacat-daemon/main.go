@@ -51,12 +51,12 @@ type HistogramBucket struct {
 
 // Histogram tracks a distribution of values using buckets
 type Histogram struct {
-	Buckets []float64          // Bucket upper bounds (sorted)
-	Counts  []int64            // Count per bucket
-	Sum     float64            // Sum of all observed values
-	Count   int64              // Total number of observations
-	Tags    []string           // Tags for this histogram
-	Unit    string             // Unit of measurement
+	Buckets  []float64              // Bucket upper bounds (sorted)
+	Counts   []int64                // Count per bucket
+	Sum      float64                // Sum of all observed values
+	Count    int64                  // Total number of observations
+	Tags     []string               // Tags for this histogram
+	Unit     string                 // Unit of measurement
 	Metadata map[string]interface{} // Additional metadata
 }
 
@@ -72,8 +72,8 @@ type SessionBuffer struct {
 	StateUpdates           []StateUpdate
 	Events                 []EventData
 	Metrics                []MetricData
-	Counters               map[string]float64       // Counter name+tags -> cumulative value
-	Histograms             map[string]*Histogram    // Histogram name+tags+buckets -> histogram
+	Counters               map[string]float64    // Counter name+tags -> cumulative value
+	Histograms             map[string]*Histogram // Histogram name+tags+buckets -> histogram
 	LastHeartbeat          time.Time
 	LastState              map[string]interface{}
 	HangLogged             bool
@@ -89,16 +89,16 @@ type SessionBuffer struct {
 
 // EventData represents an event to be logged
 type EventData struct {
-	Timestamp      time.Time              `json:"timestamp"`       // Daemon timestamp when event was received from client
+	Timestamp      time.Time              `json:"timestamp"` // Daemon timestamp when event was received from client
 	Name           string                 `json:"name"`
-	Level          string                 `json:"level"`
-	Category       string                 `json:"category"`
+	Category       string                 `json:"category"` // User-defined category (e.g., debug, info, warning, error, critical, or custom)
+	Group          string                 `json:"group"`    // Group/logger name (e.g., logger name, component name)
 	Labels         []string               `json:"labels"`
 	Message        string                 `json:"message"`
 	Data           map[string]interface{} `json:"data"`
+	Stacktrace     []string               `json:"stacktrace,omitempty"` // Stack trace for any event
 	ExceptionType  string                 `json:"exception_type,omitempty"`
 	ExceptionMsg   string                 `json:"exception_msg,omitempty"`
-	Stacktrace     []string               `json:"stacktrace,omitempty"`
 	SourceFile     string                 `json:"source_file,omitempty"`
 	SourceLine     int                    `json:"source_line,omitempty"`
 	SourceFunction string                 `json:"source_function,omitempty"`
@@ -106,12 +106,12 @@ type EventData struct {
 
 // MetricData represents a metric to be logged
 type MetricData struct {
-	Timestamp time.Time              `json:"timestamp"`           // Daemon timestamp when metric was received from client
+	Timestamp time.Time              `json:"timestamp"` // Daemon timestamp when metric was received from client
 	Name      string                 `json:"name"`
-	Type      string                 `json:"type"`                // "gauge", "counter", "histogram", "timer"
+	Type      string                 `json:"type"` // "gauge", "counter", "histogram", "timer"
 	Value     float64                `json:"value"`
-	Count     *int                   `json:"count,omitempty"`     // For timers
-	Unit      string                 `json:"unit,omitempty"`      // e.g., "seconds", "milliseconds"
+	Count     *int                   `json:"count,omitempty"` // For timers
+	Unit      string                 `json:"unit,omitempty"`  // e.g., "seconds", "milliseconds"
 	Tags      []string               `json:"tags,omitempty"`
 	Metadata  map[string]interface{} `json:"metadata,omitempty"`
 }
@@ -126,15 +126,16 @@ type QueuedOperation struct {
 
 // Daemon manages batching and forwarding to the server
 type Daemon struct {
-	config         *Config
-	sessions       map[string]*SessionBuffer
-	mu             sync.RWMutex
-	failedQueue    []QueuedOperation
-	queueMu        sync.Mutex
-	sessionCounter int           // Counter for generating local session IDs
-	shutdownChan   chan struct{} // Channel to signal shutdown
-	httpServer     *http.Server  // HTTP server instance for graceful shutdown
-	httpClient     *http.Client  // HTTP client for server requests with TLS config
+	config          *Config
+	sessions        map[string]*SessionBuffer
+	mu              sync.RWMutex
+	failedQueue     []QueuedOperation
+	queueMu         sync.Mutex
+	sessionCounter  int           // Counter for generating local session IDs
+	shutdownChan    chan struct{} // Channel to signal shutdown
+	httpServer      *http.Server  // HTTP server instance for graceful shutdown
+	httpClient      *http.Client  // HTTP client for server requests with TLS config
+	daemonParentPID int           // PID of the process that started this daemon
 }
 
 // NewDaemon creates a new daemon instance
@@ -152,12 +153,13 @@ func NewDaemon(config *Config) *Daemon {
 	}
 
 	return &Daemon{
-		config:         config,
-		sessions:       make(map[string]*SessionBuffer),
-		failedQueue:    make([]QueuedOperation, 0),
-		sessionCounter: 0,
-		shutdownChan:   make(chan struct{}),
-		httpClient:     httpClient,
+		config:          config,
+		sessions:        make(map[string]*SessionBuffer),
+		failedQueue:     make([]QueuedOperation, 0),
+		sessionCounter:  0,
+		shutdownChan:    make(chan struct{}),
+		httpClient:      httpClient,
+		daemonParentPID: os.Getppid(), // Track the process that started this daemon
 	}
 }
 
@@ -169,8 +171,11 @@ func (d *Daemon) Start() error {
 	// Start heartbeat monitor goroutine
 	go d.heartbeatMonitor()
 
-	// Start parent process monitor goroutine
+	// Start parent process monitor goroutine (for session parent processes)
 	go d.parentProcessMonitor()
+
+	// Start daemon's own parent process monitor (checks if daemon's parent is still running)
+	go d.daemonParentProcessMonitor()
 
 	// Start retry queue processor goroutine
 	go d.retryQueueProcessor()
@@ -416,20 +421,21 @@ func (d *Daemon) handleEvent(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		SessionID      string                 `json:"session_id"`
 		Name           string                 `json:"name"`
-		Level          string                 `json:"level"`
-		Category       string                 `json:"category"`
+		Category       string                 `json:"category"` // User-defined category (e.g., debug, info, warning, error, critical, or custom)
+		Group          string                 `json:"group"`    // Group/logger name (e.g., logger name, component name)
 		Labels         []string               `json:"labels"`
 		Message        string                 `json:"message"`
 		Data           map[string]interface{} `json:"data"`
+		Stacktrace     []string               `json:"stacktrace"` // Stack trace for any event
 		ExceptionType  string                 `json:"exception_type"`
 		ExceptionMsg   string                 `json:"exception_msg"`
-		Stacktrace     []string               `json:"stacktrace"`
 		SourceFile     string                 `json:"source_file"`
 		SourceLine     int                    `json:"source_line"`
 		SourceFunction string                 `json:"source_function"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		log.Printf("ERROR: Failed to decode event request: %v", err)
 		http.Error(w, "Invalid request", http.StatusBadRequest)
 		return
 	}
@@ -439,6 +445,7 @@ func (d *Daemon) handleEvent(w http.ResponseWriter, r *http.Request) {
 	d.mu.RUnlock()
 
 	if !exists {
+		log.Printf("ERROR: Session %s not found for event", req.SessionID)
 		http.Error(w, "Session not found", http.StatusNotFound)
 		return
 	}
@@ -446,18 +453,30 @@ func (d *Daemon) handleEvent(w http.ResponseWriter, r *http.Request) {
 	// Timestamp when daemon receives the event from client (this is effectively the client log time)
 	now := time.Now()
 
+	// Ensure Labels is never nil
+	labels := req.Labels
+	if labels == nil {
+		labels = []string{}
+	}
+
+	// Ensure Data is never nil
+	data := req.Data
+	if data == nil {
+		data = map[string]interface{}{}
+	}
+
 	buffer.mu.Lock()
 	buffer.Events = append(buffer.Events, EventData{
 		Timestamp:      now,
 		Name:           req.Name,
-		Level:          req.Level,
 		Category:       req.Category,
-		Labels:         req.Labels,
+		Group:          req.Group,
+		Labels:         labels,
 		Message:        req.Message,
-		Data:           req.Data,
+		Data:           data,
+		Stacktrace:     req.Stacktrace,
 		ExceptionType:  req.ExceptionType,
 		ExceptionMsg:   req.ExceptionMsg,
-		Stacktrace:     req.Stacktrace,
 		SourceFile:     req.SourceFile,
 		SourceLine:     req.SourceLine,
 		SourceFunction: req.SourceFunction,
@@ -684,8 +703,8 @@ func (d *Daemon) handleHeartbeat(w http.ResponseWriter, r *http.Request) {
 		// Application recovered
 		buffer.Events = append(buffer.Events, EventData{
 			Name:     "application_recovered",
-			Level:    "info",
-			Category: "datacat.daemon",
+			Category: "info",
+			Group:    "datacat.daemon",
 			Labels:   []string{"heartbeat", "recovery"},
 			Message:  "Application heartbeat resumed after hang",
 			Data:     map[string]interface{}{},
@@ -788,17 +807,24 @@ func (d *Daemon) handleEnd(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Flush any pending data for this session
-	d.flushSession(req.SessionID)
-
-	// Mark session as ended locally
+	// Mark session as ended locally FIRST (before flushing) to prevent crash detection
 	d.mu.Lock()
-	if buffer, exists := d.sessions[req.SessionID]; exists {
+	buffer, exists := d.sessions[req.SessionID]
+	if exists {
 		now := time.Now()
 		buffer.EndedAt = &now
 		buffer.Active = false
+		buffer.CrashLogged = false // Clear any crash flag if session is ending properly
 	}
 	d.mu.Unlock()
+
+	if !exists {
+		http.Error(w, "Session not found", http.StatusNotFound)
+		return
+	}
+
+	// Flush any pending data for this session (after marking as ended)
+	d.flushSession(req.SessionID)
 
 	// Forward end request to server
 	endData, _ := json.Marshal(map[string]interface{}{})
@@ -1015,7 +1041,11 @@ func (d *Daemon) queueOperation(sessionID, opType string, data interface{}) {
 
 // sendToServer sends data to the server with automatic retry queueing on failure
 func (d *Daemon) sendToServer(sessionID, endpoint, opType string, data interface{}) {
-	jsonData, _ := json.Marshal(data)
+	jsonData, err := json.Marshal(data)
+	if err != nil {
+		log.Printf("ERROR: Failed to marshal %s data for session %s: %v", opType, sessionID, err)
+		return
+	}
 	resp, err := d.postToServer(endpoint, jsonData)
 	if err != nil {
 		log.Printf("Failed to send %s, queueing for retry: %v", opType, err)
@@ -1027,6 +1057,7 @@ func (d *Daemon) sendToServer(sessionID, endpoint, opType string, data interface
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		log.Printf("Server returned error for %s (status %d), queueing for retry: %s", opType, resp.StatusCode, string(body))
+		log.Printf("DEBUG: Failed request data was: %s", string(jsonData))
 		d.queueOperation(sessionID, opType, data)
 		return
 	}
@@ -1101,8 +1132,8 @@ func (d *Daemon) checkHeartbeat(sessionID string) {
 		// Application appears hung
 		buffer.Events = append(buffer.Events, EventData{
 			Name:     "application_appears_hung",
-			Level:    "error",
-			Category: "datacat.daemon",
+			Category: "error",
+			Group:    "datacat.daemon",
 			Labels:   []string{"heartbeat", "hung"},
 			Message:  fmt.Sprintf("Application has not sent heartbeat for %.0f seconds", time.Since(buffer.LastHeartbeat).Seconds()),
 			Data: map[string]interface{}{
@@ -1216,6 +1247,76 @@ func (d *Daemon) parentProcessMonitor() {
 	}
 }
 
+// daemonParentProcessMonitor checks if the daemon's own parent process is still running
+// If the parent process (the Python process that started the daemon) exits,
+// mark all active sessions as crashed and exit the daemon
+func (d *Daemon) daemonParentProcessMonitor() {
+	ticker := time.NewTicker(parentProcessCheckInterval)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		// Check if daemon's parent process is still running
+		if !isProcessRunning(d.daemonParentPID) {
+			log.Printf("Daemon's parent process (PID %d) is no longer running, marking all sessions as crashed and exiting", d.daemonParentPID)
+
+			// Mark all active sessions as crashed
+			d.mu.Lock()
+			sessionIDs := make([]string, 0, len(d.sessions))
+			for id, buffer := range d.sessions {
+				buffer.mu.Lock()
+				if buffer.Active && buffer.EndedAt == nil {
+					sessionIDs = append(sessionIDs, id)
+					// Mark session as crashed locally
+					now := time.Now()
+					buffer.EndedAt = &now
+					buffer.Active = false
+					buffer.CrashLogged = true
+
+					// Add crash event
+					buffer.Events = append(buffer.Events, EventData{
+						Name:     "daemon_parent_exited",
+						Category: "critical",
+						Group:    "datacat.daemon",
+						Labels:   []string{"crash", "daemon"},
+						Message:  fmt.Sprintf("Daemon's parent process (PID %d) exited, marking session as crashed", d.daemonParentPID),
+						Data: map[string]interface{}{
+							"daemon_parent_pid": d.daemonParentPID,
+						},
+					})
+				}
+				buffer.mu.Unlock()
+			}
+			d.mu.Unlock()
+
+			// Flush all sessions and mark them as crashed on server
+			for _, sessionID := range sessionIDs {
+				// Flush pending data
+				d.flushSession(sessionID)
+
+				// Mark as crashed on server
+				go func(sid string) {
+					crashData, _ := json.Marshal(map[string]interface{}{
+						"reason": "daemon_parent_process_exited",
+					})
+					resp, err := d.postToServer("/api/sessions/"+sid+"/crash", crashData)
+					if err != nil {
+						log.Printf("Failed to mark session %s as crashed on server: %v", sid, err)
+					} else if resp != nil {
+						resp.Body.Close()
+					}
+				}(sessionID)
+			}
+
+			// Give a moment for crash events to be sent
+			time.Sleep(2 * time.Second)
+
+			// Exit the daemon
+			log.Printf("Daemon exiting due to parent process termination")
+			os.Exit(0)
+		}
+	}
+}
+
 // checkParentProcess checks if parent process is still alive
 func (d *Daemon) checkParentProcess(sessionID string) {
 	d.mu.RLock()
@@ -1230,21 +1331,24 @@ func (d *Daemon) checkParentProcess(sessionID string) {
 	parentPID := buffer.ParentPID
 	crashLogged := buffer.CrashLogged
 	endedAt := buffer.EndedAt
+	active := buffer.Active
 	buffer.mu.Unlock()
 
 	// Skip if no parent PID set, already logged, or session already ended
-	if parentPID == 0 || crashLogged || endedAt != nil {
+	// Also skip if session is not active (was properly ended)
+	if parentPID == 0 || crashLogged || endedAt != nil || !active {
 		return
 	}
 
 	// Check if process is still running
 	if !isProcessRunning(parentPID) {
 		// Parent process has crashed or exited abnormally
+		// Only mark as crashed if session is still active (wasn't properly ended)
 		buffer.mu.Lock()
 		buffer.Events = append(buffer.Events, EventData{
 			Name:     "parent_process_crashed",
-			Level:    "critical",
-			Category: "datacat.daemon",
+			Category: "critical",
+			Group:    "datacat.daemon",
 			Labels:   []string{"crash", "process"},
 			Message:  fmt.Sprintf("Parent process (PID %d) is no longer running", parentPID),
 			Data: map[string]interface{}{
@@ -1264,23 +1368,23 @@ func (d *Daemon) checkParentProcess(sessionID string) {
 
 		// Mark session as crashed on server
 		go func() {
-		crashData, _ := json.Marshal(map[string]interface{}{
-			"reason": "parent_process_terminated",
-		})
-		resp, err := d.postToServer("/api/sessions/"+sessionID+"/crash", crashData)
-		if err != nil {
-			log.Printf("Failed to mark session as crashed on server: %v", err)
-			// Queue for retry
-			d.queueMu.Lock()
-			d.failedQueue = append(d.failedQueue, QueuedOperation{
-				SessionID: sessionID,
-				OpType:    "crash",
-				Data:      map[string]interface{}{"reason": "parent_process_terminated"},
-				Timestamp: time.Now(),
+			crashData, _ := json.Marshal(map[string]interface{}{
+				"reason": "parent_process_terminated",
 			})
-			d.queueMu.Unlock()
-		} else {
-			resp.Body.Close()
+			resp, err := d.postToServer("/api/sessions/"+sessionID+"/crash", crashData)
+			if err != nil {
+				log.Printf("Failed to mark session as crashed on server: %v", err)
+				// Queue for retry
+				d.queueMu.Lock()
+				d.failedQueue = append(d.failedQueue, QueuedOperation{
+					SessionID: sessionID,
+					OpType:    "crash",
+					Data:      map[string]interface{}{"reason": "parent_process_terminated"},
+					Timestamp: time.Now(),
+				})
+				d.queueMu.Unlock()
+			} else {
+				resp.Body.Close()
 				// Remove session from daemon after successfully marking as crashed
 				d.mu.Lock()
 				delete(d.sessions, sessionID)

@@ -49,21 +49,21 @@ type StateSnapshot struct {
 
 // Event represents an event logged in a session
 type Event struct {
-	Timestamp time.Time              `json:"timestamp"`
-	Name      string                 `json:"name"`
-	Level     string                 `json:"level"`    // debug, info, warning, error, critical
-	Category  string                 `json:"category"` // e.g., logger name, component name
-	Labels    []string               `json:"labels"`   // arbitrary tags for filtering
-	Message   string                 `json:"message"`  // human-readable message
-	Data      map[string]interface{} `json:"data"`     // additional structured data
+	Timestamp  time.Time              `json:"timestamp"`
+	Name       string                 `json:"name"`
+	Category   string                 `json:"category"`             // User-defined category (e.g., debug, info, warning, error, critical, or custom)
+	Group      string                 `json:"group"`                // Group/logger name (e.g., logger name, component name)
+	Labels     []string               `json:"labels"`               // arbitrary tags for filtering
+	Message    string                 `json:"message"`              // human-readable message
+	Data       map[string]interface{} `json:"data"`                 // additional structured data
+	Stacktrace []string               `json:"stacktrace,omitempty"` // Stack trace for any event (not just exceptions)
 
 	// Exception-specific fields (when this is an exception event)
-	ExceptionType  string   `json:"exception_type,omitempty"`  // e.g., "ValueError", "NullPointerException"
-	ExceptionMsg   string   `json:"exception_msg,omitempty"`   // exception message
-	Stacktrace     []string `json:"stacktrace,omitempty"`      // array of stack trace lines
-	SourceFile     string   `json:"source_file,omitempty"`     // file where exception occurred
-	SourceLine     int      `json:"source_line,omitempty"`     // line number where exception occurred
-	SourceFunction string   `json:"source_function,omitempty"` // function where exception occurred
+	ExceptionType  string `json:"exception_type,omitempty"`  // e.g., "ValueError", "NullPointerException"
+	ExceptionMsg   string `json:"exception_msg,omitempty"`   // exception message
+	SourceFile     string `json:"source_file,omitempty"`     // file where exception occurred
+	SourceLine     int    `json:"source_line,omitempty"`     // line number where exception occurred
+	SourceFunction string `json:"source_function,omitempty"` // function where exception occurred
 }
 
 // Metric represents a metric logged in a session
@@ -541,7 +541,7 @@ func (s *Store) CrashSession(id, reason string) error {
 	session.Events = append(session.Events, Event{
 		Timestamp: now,
 		Name:      "session_crashed_detected",
-		Level:     "critical",
+		Category:  "critical",
 		Data: map[string]interface{}{
 			"reason": reason,
 		},
@@ -611,14 +611,14 @@ func (s *Store) StartCleanupRoutine() {
 type EventInput struct {
 	Timestamp      *time.Time             `json:"timestamp,omitempty"` // Optional timestamp from daemon
 	Name           string                 `json:"name"`
-	Level          string                 `json:"level"`
-	Category       string                 `json:"category"`
+	Category       string                 `json:"category"` // User-defined category (e.g., debug, info, warning, error, critical, or custom)
+	Group          string                 `json:"group"`    // Group/logger name (e.g., logger name, component name)
 	Labels         []string               `json:"labels"`
 	Message        string                 `json:"message"`
 	Data           map[string]interface{} `json:"data"`
+	Stacktrace     []string               `json:"stacktrace,omitempty"` // Stack trace for any event
 	ExceptionType  string                 `json:"exception_type,omitempty"`
 	ExceptionMsg   string                 `json:"exception_msg,omitempty"`
-	Stacktrace     []string               `json:"stacktrace,omitempty"`
 	SourceFile     string                 `json:"source_file,omitempty"`
 	SourceLine     int                    `json:"source_line,omitempty"`
 	SourceFunction string                 `json:"source_function,omitempty"`
@@ -634,15 +634,15 @@ func (s *Store) AddEvent(sessionID string, input EventInput) error {
 		return fmt.Errorf("session not found")
 	}
 
-	// Default level to "info" if not specified
-	level := input.Level
-	if level == "" {
-		level = defaultEventLevel
+	// Default category to "info" if not specified
+	category := input.Category
+	if category == "" {
+		category = defaultEventLevel
 	}
 
-	// For exceptions, default level to "error" if not specified
-	if input.ExceptionType != "" && level == defaultEventLevel {
-		level = exceptionEventLevel
+	// For exceptions, default category to "error" if not specified
+	if input.ExceptionType != "" && category == defaultEventLevel {
+		category = exceptionEventLevel
 	}
 
 	// Use timestamp from daemon if provided, otherwise use server time
@@ -654,14 +654,14 @@ func (s *Store) AddEvent(sessionID string, input EventInput) error {
 	event := Event{
 		Timestamp:      timestamp,
 		Name:           input.Name,
-		Level:          level,
-		Category:       input.Category,
+		Category:       category,
+		Group:          input.Group,
 		Labels:         input.Labels,
 		Message:        input.Message,
 		Data:           input.Data,
+		Stacktrace:     input.Stacktrace,
 		ExceptionType:  input.ExceptionType,
 		ExceptionMsg:   input.ExceptionMsg,
-		Stacktrace:     input.Stacktrace,
 		SourceFile:     input.SourceFile,
 		SourceLine:     input.SourceLine,
 		SourceFunction: input.SourceFunction,
@@ -813,11 +813,21 @@ func main() {
 	// Load configuration
 	config := LoadConfig("./config.json")
 	serverConfig = config // Store for middleware
+
+	// Initialize file logging
+	logPath, logCleanup, err := initLogging(config)
+	if err != nil {
+		// If logging init fails, continue with stdout only
+		log.Printf("WARNING: Failed to initialize file logging: %v", err)
+	} else {
+		defer logCleanup()
+		log.Printf("Logging to file: %s", logPath)
+	}
+
 	log.Printf("Configuration loaded: Data path=%s, Retention=%d days, Port=%s",
 		config.DataPath, config.RetentionDays, config.ServerPort)
 
 	// Initialize store with BadgerDB
-	var err error
 	store, err = NewStore(config.DataPath, config)
 	if err != nil {
 		log.Fatalf("Failed to initialize store: %v", err)
@@ -965,13 +975,38 @@ func handleSessionOperations(w http.ResponseWriter, r *http.Request) {
 
 	// POST /api/sessions/{id}/events - Add event
 	if r.Method == "POST" && operation == "events" {
-		var eventData EventInput
-		if err := json.NewDecoder(r.Body).Decode(&eventData); err != nil {
+		// Read body to handle both EventData (from daemon) and EventInput formats
+		bodyBytes, err := io.ReadAll(r.Body)
+		if err != nil {
+			log.Printf("ERROR: Failed to read event data for session %s: %v", sessionID, err)
 			http.Error(w, "Invalid request body", http.StatusBadRequest)
 			return
 		}
 
+		var eventData EventInput
+		// Try to unmarshal as EventInput (with optional timestamp pointer)
+		if err := json.Unmarshal(bodyBytes, &eventData); err != nil {
+			log.Printf("ERROR: Failed to decode event data for session %s: %v", sessionID, err)
+			http.Error(w, "Invalid request body", http.StatusBadRequest)
+			return
+		}
+
+		// If timestamp is nil but JSON has a timestamp field, try to parse it
+		if eventData.Timestamp == nil {
+			var temp struct {
+				Timestamp string `json:"timestamp"`
+			}
+			if err := json.Unmarshal(bodyBytes, &temp); err == nil && temp.Timestamp != "" {
+				if t, err := time.Parse(time.RFC3339Nano, temp.Timestamp); err == nil {
+					eventData.Timestamp = &t
+				} else if t, err := time.Parse(time.RFC3339, temp.Timestamp); err == nil {
+					eventData.Timestamp = &t
+				}
+			}
+		}
+
 		if err := store.AddEvent(sessionID, eventData); err != nil {
+			log.Printf("ERROR: Failed to add event for session %s: %v", sessionID, err)
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}

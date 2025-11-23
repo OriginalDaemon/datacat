@@ -180,8 +180,8 @@ func TestAddEvent(t *testing.T) {
 
 	err = store.AddEvent(session.ID, EventInput{
 		Name:     "test_event",
-		Level:    "info",
-		Category: "test",
+		Category: "info",
+		Group:    "test",
 		Labels:   []string{"tag1"},
 		Message:  "test message",
 		Data:     eventData,
@@ -481,8 +481,8 @@ func TestComprehensivePersistence(t *testing.T) {
 	// Add event
 	store1.AddEvent(sessionID, EventInput{
 		Name:     "test_event",
-		Level:    "info",
-		Category: "test",
+		Category: "info",
+		Group:    "test",
 		Labels:   []string{"tag1"},
 		Message:  "test message",
 		Data:     map[string]interface{}{"extra": "data"},
@@ -557,8 +557,8 @@ func TestComprehensivePersistence(t *testing.T) {
 	})
 	store2.AddEvent(sessionID, EventInput{
 		Name:     "after_reload",
-		Level:    "info",
-		Category: "test",
+		Category: "info",
+		Group:    "test",
 		Message:  "after reload",
 		Data:     map[string]interface{}{},
 	})
@@ -1398,8 +1398,8 @@ func TestHungTracking(t *testing.T) {
 	// Log hung event
 	err = store.AddEvent(session.ID, EventInput{
 		Name:     "application_appears_hung",
-		Level:    "error",
-		Category: "datacat.daemon",
+		Category: "error",
+		Group:    "datacat.daemon",
 		Labels:   []string{"heartbeat", "hung"},
 		Message:  "Application appears hung",
 		Data: map[string]interface{}{
@@ -1419,8 +1419,8 @@ func TestHungTracking(t *testing.T) {
 	// Log recovery event
 	err = store.AddEvent(session.ID, EventInput{
 		Name:     "application_recovered",
-		Level:    "info",
-		Category: "datacat.daemon",
+		Category: "info",
+		Group:    "datacat.daemon",
 		Labels:   []string{"heartbeat", "recovery"},
 		Message:  "Application recovered",
 		Data:     map[string]interface{}{},
@@ -1462,8 +1462,8 @@ func TestHungWhileCrashed(t *testing.T) {
 	// Log hung event
 	store.AddEvent(session1.ID, EventInput{
 		Name:     "application_appears_hung",
-		Level:    "error",
-		Category: "datacat.daemon",
+		Category: "error",
+		Group:    "datacat.daemon",
 		Labels:   []string{"heartbeat", "hung"},
 		Message:  "Application appears hung",
 		Data:     map[string]interface{}{},
@@ -1629,8 +1629,8 @@ func TestExceptionEvent(t *testing.T) {
 
 	err = store.AddEvent(session.ID, EventInput{
 		Name:           "exception",
-		Level:          "error",
-		Category:       "exception",
+		Category:       "error",
+		Group:          "exception",
 		Labels:         []string{"exception", "ValueError"},
 		Message:        "test error",
 		Data:           map[string]interface{}{"extra": "data"},
@@ -1800,8 +1800,8 @@ func TestEventWithLevelCategoryLabels(t *testing.T) {
 	// Add event with level, category, labels, and message
 	err = store.AddEvent(session.ID, EventInput{
 		Name:     "custom_event",
-		Level:    "warning",
-		Category: "my.component",
+		Category: "warning",
+		Group:    "my.component",
 		Labels:   []string{"tag1", "tag2", "important"},
 		Message:  "This is a warning message",
 		Data:     map[string]interface{}{"detail": "some detail"},
@@ -1820,11 +1820,11 @@ func TestEventWithLevelCategoryLabels(t *testing.T) {
 	if event.Name != "custom_event" {
 		t.Errorf("Expected event name custom_event, got %s", event.Name)
 	}
-	if event.Level != "warning" {
-		t.Errorf("Expected level warning, got %s", event.Level)
+	if event.Category != "warning" {
+		t.Errorf("Expected category warning, got %s", event.Category)
 	}
-	if event.Category != "my.component" {
-		t.Errorf("Expected category my.component, got %s", event.Category)
+	if event.Group != "my.component" {
+		t.Errorf("Expected group my.component, got %s", event.Group)
 	}
 	if len(event.Labels) != 3 {
 		t.Errorf("Expected 3 labels, got %d", len(event.Labels))

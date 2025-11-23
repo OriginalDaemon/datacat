@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"log"
 	"os"
 	"time"
 )
@@ -18,6 +17,7 @@ type Config struct {
 	RequireAPIKey           bool          `json:"require_api_key"`         // Require API key for all requests
 	TLSCertFile             string        `json:"tls_cert_file,omitempty"` // Path to TLS certificate
 	TLSKeyFile              string        `json:"tls_key_file,omitempty"`  // Path to TLS private key
+	LogFile                 string        `json:"log_file,omitempty"`      // Path to log file (empty = use default tmp file)
 	CleanupInterval         time.Duration `json:"-"`                       // Derived field, not serialized
 }
 
@@ -38,10 +38,11 @@ func DefaultConfig() *Config {
 }
 
 // LoadConfig loads configuration from file or creates default
+// Note: This function does not log anything to avoid issues if called before logging is initialized
 func LoadConfig(path string) *Config {
 	file, err := os.Open(path)
 	if err != nil {
-		log.Printf("Config file not found, using defaults")
+		// Config file not found, use defaults and try to save (ignore errors)
 		config := DefaultConfig()
 		_ = SaveConfig(path, config) // Ignore error, will use defaults if save fails
 		return config
@@ -50,7 +51,7 @@ func LoadConfig(path string) *Config {
 
 	var config Config
 	if err := json.NewDecoder(file).Decode(&config); err != nil {
-		log.Printf("Failed to decode config, using defaults: %v", err)
+		// Failed to decode, use defaults
 		return DefaultConfig()
 	}
 

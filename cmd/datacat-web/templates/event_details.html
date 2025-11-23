@@ -1,29 +1,57 @@
 {{define "event_details"}}
-<div style="font-size: 12px;">
-  <div style="margin-bottom: 6px;"><strong>Timestamp:</strong> {{.Event.Timestamp.Format "2006-01-02 15:04:05.000"}}</div>
+<div style="font-size: 12px">
+  <div style="margin-bottom: 6px">
+    <strong>Timestamp:</strong> {{.Event.Timestamp.Format "2006-01-02
+    15:04:05.000"}}
+  </div>
   {{if .Event.Category}}
-  <div style="margin-bottom: 6px;"><strong>Category:</strong> {{.Event.Category}}</div>
-  {{end}}
-  {{if .Event.Labels}}
-  <div style="margin-bottom: 6px;"><strong>Labels:</strong> {{range $i, $label := .Event.Labels}}{{if $i}}, {{end}}{{$label}}{{end}}</div>
-  {{end}}
-  {{if .Event.ExceptionType}}
-  <div style="margin-bottom: 6px; color: var(--error-color);"><strong>Exception:</strong> {{.Event.ExceptionType}}</div>
+  <div style="margin-bottom: 6px">
+    <strong>Category:</strong> {{.Event.Category}}
+  </div>
+  {{end}} {{if .Event.Group}}
+  <div style="margin-bottom: 6px"><strong>Group:</strong> {{.Event.Group}}</div>
+  {{end}} {{if .Event.Labels}}
+  <div style="margin-bottom: 6px">
+    <strong>Labels:</strong> {{range $i, $label := .Event.Labels}}{{if $i}},
+    {{end}}{{$label}}{{end}}
+  </div>
+  {{end}} {{if .Event.ExceptionType}}
+  <div style="margin-bottom: 6px; color: var(--error-color)">
+    <strong>Exception:</strong> {{.Event.ExceptionType}}
+  </div>
   {{if .Event.ExceptionMsg}}
-  <div style="margin-bottom: 6px; color: var(--error-color);">{{.Event.ExceptionMsg}}</div>
-  {{end}}
-  {{end}}
-  {{if .Event.SourceFile}}
-  <div style="margin-bottom: 6px; font-family: monospace; font-size: 11px;"><strong>Source:</strong> {{.Event.SourceFile}}:{{.Event.SourceLine}}</div>
-  {{end}}
-  {{if .Event.Stacktrace}}
-  <details style="margin-bottom: 6px;" open>
-    <summary style="cursor: pointer; color: var(--text-secondary); font-weight: bold;">Stack Trace</summary>
-    <div id="stacktrace-{{.Index}}" style="margin-top: 6px; padding: 8px; background: var(--bg-secondary); border-radius: 4px; font-size: 11px; overflow-x: auto; font-family: monospace; white-space: pre-wrap; word-wrap: break-word;"></div>
+  <div style="margin-bottom: 6px; color: var(--error-color)">
+    {{.Event.ExceptionMsg}}
+  </div>
+  {{end}} {{end}} {{if .Event.SourceFile}}
+  <div style="margin-bottom: 6px; font-family: monospace; font-size: 11px">
+    <strong>Source:</strong> {{.Event.SourceFile}}:{{.Event.SourceLine}}
+  </div>
+  {{end}} {{if .Event.Stacktrace}}
+  <details style="margin-bottom: 6px" open>
+    <summary
+      style="cursor: pointer; color: var(--text-secondary); font-weight: bold"
+    >
+      Stack Trace
+    </summary>
+    <div
+      id="stacktrace-{{.Index}}"
+      style="
+        margin-top: 6px;
+        padding: 8px;
+        background: var(--bg-secondary);
+        border-radius: 4px;
+        font-size: 11px;
+        overflow-x: auto;
+        font-family: monospace;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+      "
+    ></div>
   </details>
   <script>
     (function() {
-      const stacktrace = {{.Event.Stacktrace | toJSONSafe}};
+      const stacktrace = {{if .Event.Stacktrace}}{{.Event.Stacktrace | toJSONSafe}}{{else}}[]{{end}};
       const container = document.getElementById('stacktrace-{{.Index}}');
       if (!container || !stacktrace || stacktrace.length === 0) return;
 
@@ -80,14 +108,18 @@
     })();
   </script>
   {{end}}
-  <div style="margin-bottom: 6px;"><strong>Data:</strong></div>
+  <div style="margin-bottom: 6px"><strong>Data:</strong></div>
   <div id="event-json-{{.Index}}" class="json-viewer-container"></div>
 </div>
 <script>
   (function() {
-    const data = {{.Event.Data | toJSONSafe}};
-    new JSONViewer('event-json-{{.Index}}', data, { collapsed: false, maxHeight: '300px' });
+    const data = {{if .Event.Data}}{{.Event.Data | toJSONSafe}}{{else}}{}{{end}};
+    const container = document.getElementById('event-json-{{.Index}}');
+    if (container && typeof JSONViewer !== 'undefined') {
+      new JSONViewer('event-json-{{.Index}}', data, { collapsed: false, maxHeight: '300px' });
+    } else if (container) {
+      container.innerHTML = '<div style="color: var(--text-secondary);">JSONViewer not available</div>';
+    }
   })();
 </script>
 {{end}}
-

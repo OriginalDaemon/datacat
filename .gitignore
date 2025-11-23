@@ -75,6 +75,11 @@ screenshots/
 # Temporary files
 tmp/
 
+# Log files
+*.log
+datacat-server-*.log
+datacat-web-*.log
+
 # Jekyll and documentation
 docs/_site/
 docs/.jekyll-cache/

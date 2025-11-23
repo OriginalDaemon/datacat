@@ -191,14 +191,14 @@ type StateSnapshot struct {
 type Event struct {
 	Timestamp      time.Time              `json:"timestamp"`
 	Name           string                 `json:"name"`
-	Level          string                 `json:"level"`
-	Category       string                 `json:"category"`
+	Category       string                 `json:"category"` // User-defined category (e.g., debug, info, warning, error, critical, or custom)
+	Group          string                 `json:"group"`    // Group/logger name (e.g., logger name, component name)
 	Labels         []string               `json:"labels"`
 	Message        string                 `json:"message"`
 	Data           map[string]interface{} `json:"data"`
+	Stacktrace     []string               `json:"stacktrace,omitempty"` // Stack trace for any event (not just exceptions)
 	ExceptionType  string                 `json:"exception_type,omitempty"`
 	ExceptionMsg   string                 `json:"exception_msg,omitempty"`
-	Stacktrace     []string               `json:"stacktrace,omitempty"`
 	SourceFile     string                 `json:"source_file,omitempty"`
 	SourceLine     int                    `json:"source_line,omitempty"`
 	SourceFunction string                 `json:"source_function,omitempty"`
@@ -208,10 +208,10 @@ type Event struct {
 type Metric struct {
 	Timestamp time.Time              `json:"timestamp"`
 	Name      string                 `json:"name"`
-	Type      string                 `json:"type"`  // "gauge", "counter", "histogram", "timer"
+	Type      string                 `json:"type"` // "gauge", "counter", "histogram", "timer"
 	Value     float64                `json:"value"`
-	Count     *int                   `json:"count,omitempty"`     // For timers
-	Unit      string                 `json:"unit,omitempty"`      // e.g., "seconds", "milliseconds"
+	Count     *int                   `json:"count,omitempty"` // For timers
+	Unit      string                 `json:"unit,omitempty"`  // e.g., "seconds", "milliseconds"
 	Tags      []string               `json:"tags,omitempty"`
 	Metadata  map[string]interface{} `json:"metadata,omitempty"`
 }
