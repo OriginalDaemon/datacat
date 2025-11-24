@@ -16,9 +16,10 @@ import os
 import time
 
 # Add parent directory to path for datacat import
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'python'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "python"))
 
 from datacat import create_session
+
 
 def main():
     print("=" * 70)
@@ -29,25 +30,16 @@ def main():
     # Create a session
     print("Creating session...")
     session = create_session(
-        "http://localhost:9090",
-        product="CrashTest",
-        version="1.0.0"
+        "http://localhost:9090", product="CrashTest", version="1.0.0"
     )
 
     print("Session created: %s" % session.session_id)
     print()
 
     # Log some activity
-    session.update_state({
-        'test': 'crash_detection',
-        'status': 'running'
-    })
+    session.update_state({"test": "crash_detection", "status": "running"})
 
-    session.log_event(
-        'test_started',
-        level='info',
-        message='Testing crash detection'
-    )
+    session.log_event("test_started", level="info", message="Testing crash detection")
 
     print("Logged some activity...")
     print()
@@ -69,6 +61,6 @@ def main():
     # Exit without calling session.end() - this simulates a crash
     os._exit(1)  # Use os._exit to avoid cleanup
 
-if __name__ == '__main__':
-    main()
 
+if __name__ == "__main__":
+    main()

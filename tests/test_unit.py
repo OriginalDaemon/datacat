@@ -113,6 +113,7 @@ class TestDatacatClientErrorHandling(unittest.TestCase):
         """Test that trailing slash is removed from base URL"""
         # Set up daemon mock
         mock_daemon = Mock()
+        mock_daemon.daemon_port = "8079"  # Set the daemon port on the mock
         mock_daemon_class.return_value = mock_daemon
 
         client = DatacatClient("http://localhost:9090/")
@@ -132,6 +133,7 @@ class TestDatacatClientGetAllSessions(unittest.TestCase):
         """Test get_all_sessions calls the correct endpoint"""
         # Set up daemon mock
         mock_daemon = Mock()
+        mock_daemon.daemon_port = "8079"  # Set the daemon port on the mock
         mock_daemon_class.return_value = mock_daemon
 
         # Mock response
@@ -481,7 +483,7 @@ class TestCreateSessionFactory(unittest.TestCase):
 
         # Verify client was created with correct URL and default parameters
         mock_client_class.assert_called_once_with(
-            "http://test.example.com:8080", daemon_port="8079"
+            "http://test.example.com:8080", daemon_port="auto"
         )
 
         # Verify session was registered with product and version
@@ -592,7 +594,7 @@ class TestDaemonManager(unittest.TestCase):
     def test_daemon_manager_initialization(self):
         """Test DaemonManager initialization with defaults"""
         manager = DaemonManager()
-        self.assertEqual(manager.daemon_port, "8079")
+        self.assertEqual(manager.daemon_port, "auto")  # Default changed to "auto"
         self.assertEqual(manager.server_url, "http://localhost:9090")
         self.assertIsNotNone(manager.daemon_binary)
         self.assertIsNone(manager.process)
@@ -864,6 +866,7 @@ class TestDatacatClientWithDaemon(unittest.TestCase):
     def test_client_with_daemon_initialization(self, mock_daemon_class):
         """Test client initialization with daemon enabled"""
         mock_daemon = Mock()
+        mock_daemon.daemon_port = "9999"  # Set the daemon port on the mock
         mock_daemon_class.return_value = mock_daemon
 
         client = DatacatClient(base_url="http://example.com:8080", daemon_port="9999")
@@ -1035,6 +1038,7 @@ class TestHeartbeatMonitorWithDaemon(unittest.TestCase):
     def test_heartbeat_with_daemon(self, mock_daemon_class, mock_urlopen):
         """Test that heartbeat sends to daemon when using daemon"""
         mock_daemon = Mock()
+        mock_daemon.daemon_port = "9999"  # Set the daemon port on the mock
         mock_daemon_class.return_value = mock_daemon
 
         mock_response = Mock()
@@ -1098,14 +1102,16 @@ class TestSessionConvenienceMethods(unittest.TestCase):
         session = Session(mock_client, "session-123")
         result = session.log_event("test_event", data={"data": "value"})
 
+        # Session.log_event now passes category, group, labels, stacktrace
         mock_client.log_event.assert_called_once_with(
             "session-123",
             "test_event",
-            level=None,
             category=None,
-            labels=None,
+            group=None,
+            labels=[],  # Session normalizes None to []
             message=None,
             data={"data": "value"},
+            stacktrace=None,
         )
         self.assertEqual(result, {"status": "ok"})
 
@@ -1117,8 +1123,9 @@ class TestSessionConvenienceMethods(unittest.TestCase):
         session = Session(mock_client, "session-123")
         result = session.log_metric("cpu_usage", 45.5, ["tag1"])
 
+        # Session.log_metric now passes additional parameters with defaults
         mock_client.log_metric.assert_called_once_with(
-            "session-123", "cpu_usage", 45.5, ["tag1"]
+            "session-123", "cpu_usage", 45.5, ["tag1"], "gauge", None, None, None, None
         )
         self.assertEqual(result, {"status": "ok"})
 
@@ -1213,8 +1220,9 @@ class TestProductVersionValidation(unittest.TestCase):
         sent_data = json.loads(request.data.decode("utf-8"))
         self.assertEqual(sent_data["session_id"], "session-123")
         self.assertEqual(sent_data["name"], "exception")
-        self.assertEqual(sent_data["level"], "error")
-        self.assertEqual(sent_data["category"], "exception")
+        self.assertEqual(
+            sent_data["category"], "error"
+        )  # Changed from level to category
         self.assertIn("exception", sent_data["labels"])
         self.assertIn("ValueError", sent_data["labels"])
         self.assertEqual(sent_data["exception_type"], "ValueError")
@@ -1228,8 +1236,9 @@ class TestProductVersionValidation(unittest.TestCase):
     @patch("datacat.urlopen")
     @patch("datacat.DaemonManager")
     def test_log_event_with_all_optional_fields(self, mock_daemon_class, mock_urlopen):
-        """Test log_event with level, category, labels, and message"""
+        """Test log_event with category, group, labels, and message"""
         mock_daemon = Mock()
+        mock_daemon.daemon_port = "8079"  # Set daemon port for mock
         mock_daemon_class.return_value = mock_daemon
 
         mock_response = Mock()
@@ -1240,8 +1249,8 @@ class TestProductVersionValidation(unittest.TestCase):
         client.log_event(
             "session-123",
             "custom_event",
-            level="warning",
-            category="my.component",
+            category="warning",  # Changed from level to category
+            group="my.component",  # Changed from category to group
             labels=["tag1", "tag2"],
             message="This is a warning",
             data={"key": "value"},
@@ -1253,8 +1262,10 @@ class TestProductVersionValidation(unittest.TestCase):
         sent_data = json.loads(request.data.decode("utf-8"))
 
         self.assertEqual(sent_data["name"], "custom_event")
-        self.assertEqual(sent_data["level"], "warning")
-        self.assertEqual(sent_data["category"], "my.component")
+        self.assertEqual(sent_data["category"], "warning")  # Changed from level
+        self.assertEqual(
+            sent_data["group"], "my.component"
+        )  # Now group instead of category
         self.assertEqual(sent_data["labels"], ["tag1", "tag2"])
         self.assertEqual(sent_data["message"], "This is a warning")
         self.assertEqual(sent_data["data"], {"key": "value"})

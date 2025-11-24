@@ -58,7 +58,11 @@ def main():
         session.log_gauge("requests_per_sec", requests_this_second, tags=["instant"])
 
         if i % 5 == 0:
-            print("  Second {}: {} requests, {} errors".format(i, requests_this_second, errors_this_second))
+            print(
+                "  Second {}: {} requests, {} errors".format(
+                    i, requests_this_second, errors_this_second
+                )
+            )
 
         time.sleep(0.1)  # Simulate time passing
 
@@ -76,16 +80,20 @@ def main():
     print()
 
     files = [
-        ("document.pdf", 1024 * 512),    # 512 KB
-        ("image.jpg", 1024 * 256),       # 256 KB
+        ("document.pdf", 1024 * 512),  # 512 KB
+        ("image.jpg", 1024 * 256),  # 256 KB
         ("video.mp4", 1024 * 1024 * 5),  # 5 MB
-        ("archive.zip", 1024 * 1024 * 2) # 2 MB
+        ("archive.zip", 1024 * 1024 * 2),  # 2 MB
     ]
 
     for filename, size_bytes in files:
         # Increment counter by the number of bytes
-        session.log_counter("bytes_transferred", delta=size_bytes, tags=["protocol:https"])
-        print("  Transferred: {} ({:.2f} MB)".format(filename, size_bytes / 1024 / 1024))
+        session.log_counter(
+            "bytes_transferred", delta=size_bytes, tags=["protocol:https"]
+        )
+        print(
+            "  Transferred: {} ({:.2f} MB)".format(filename, size_bytes / 1024 / 1024)
+        )
         time.sleep(0.05)
 
     print()
@@ -111,7 +119,9 @@ def main():
 
     for thread_name, item_count in operations:
         for _ in range(item_count):
-            session.log_counter("items_processed", tags=["worker:{}".format(thread_name)])
+            session.log_counter(
+                "items_processed", tags=["worker:{}".format(thread_name)]
+            )
         print("  {}: processed {} items".format(thread_name, item_count))
 
     print()
@@ -156,7 +166,11 @@ def main():
         # Gauge: Just the current value (resets each time conceptually)
         session.log_gauge("events_this_period", count_this_period)
 
-        print("  Period {}: {} events (cumulative total: {})".format(i + 1, count_this_period, total))
+        print(
+            "  Period {}: {} events (cumulative total: {})".format(
+                i + 1, count_this_period, total
+            )
+        )
         time.sleep(0.2)
 
     print()
@@ -196,4 +210,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

@@ -71,11 +71,11 @@ def main():
     # - <10fps: > 0.1000s (covered by 10.0 - way beyond any reasonable frame time)
 
     fps_buckets = [
-        1.0/60.0,   # 0.0167s - anything less is +60 FPS
-        1.0/30.0,   # 0.0333s - 30-60 FPS range
-        1.0/20.0,   # 0.0500s - 20-30 FPS range
-        1.0/10.0,   # 0.1000s - 10-20 FPS range
-        10.0        # 10 seconds - anything higher is <10 FPS (values beyond last bucket are included)
+        1.0 / 60.0,  # 0.0167s - anything less is +60 FPS
+        1.0 / 30.0,  # 0.0333s - 30-60 FPS range
+        1.0 / 20.0,  # 0.0500s - 20-30 FPS range
+        1.0 / 10.0,  # 0.1000s - 10-20 FPS range
+        10.0,  # 10 seconds - anything higher is <10 FPS (values beyond last bucket are included)
     ]
 
     print("FPS Bucket Configuration:")
@@ -101,7 +101,7 @@ def main():
             frame_time,
             unit="seconds",
             tags=["scenario:normal"],
-            buckets=fps_buckets
+            buckets=fps_buckets,
         )
 
         if i % 200 == 0:
@@ -127,7 +127,7 @@ def main():
             frame_time,
             unit="seconds",
             tags=["scenario:high_performance"],
-            buckets=fps_buckets
+            buckets=fps_buckets,
         )
 
     print("  * All frames should be in the +60 FPS bucket")
@@ -157,7 +157,7 @@ def main():
                 frame_time,
                 unit="seconds",
                 tags=["scenario:degradation"],
-                buckets=fps_buckets
+                buckets=fps_buckets,
             )
         print("  * {} frames at '{}' quality".format(count, quality))
 
@@ -186,7 +186,7 @@ def main():
                 frame_time,
                 unit="seconds",
                 tags=["graphics:{}".format(setting_name)],
-                buckets=fps_buckets
+                buckets=fps_buckets,
             )
         print("  * Logged 300 frames for '{}' settings".format(setting_name))
 
@@ -221,7 +221,7 @@ def main():
                 time_spent,
                 unit="seconds",
                 tags=["phase:{}".format(phase)],
-                buckets=fps_buckets
+                buckets=fps_buckets,
             )
 
     print("  * Logged timings for each render phase")
@@ -243,7 +243,7 @@ def main():
             "api_latency",
             latency,
             unit="seconds",
-            tags=["bucket_type:default"]
+            tags=["bucket_type:default"],
             # No buckets parameter - uses default
         )
 
@@ -253,7 +253,7 @@ def main():
             latency,
             unit="seconds",
             tags=["bucket_type:fps_custom"],
-            buckets=fps_buckets
+            buckets=fps_buckets,
         )
 
     print("  * Logged same data with default AND custom buckets")
@@ -293,4 +293,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

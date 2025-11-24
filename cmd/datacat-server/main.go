@@ -84,6 +84,7 @@ type Store struct {
 	sessions map[string]*Session
 	db       *badger.DB
 	config   *Config
+	saveMu   sync.Mutex // Serialize DB save operations
 }
 
 // NewStore creates a new Store with BadgerDB
@@ -129,6 +130,10 @@ func (s *Store) saveSessionToDB(session *Session) error {
 // saveSessionDataToDB saves pre-marshaled session data to the database
 // This is used when marshaling is done while holding a lock to avoid race conditions
 func (s *Store) saveSessionDataToDB(sessionID string, data []byte) error {
+	// Serialize DB writes to prevent concurrent saves from interfering
+	s.saveMu.Lock()
+	defer s.saveMu.Unlock()
+	
 	err := s.db.Update(func(txn *badger.Txn) error {
 		return txn.Set([]byte("session:"+sessionID), data)
 	})
@@ -231,19 +236,10 @@ func (s *Store) CreateSession(product, version, machineID, hostname string) *Ses
 
 	s.sessions[session.ID] = session
 
-	// Marshal session while holding lock to avoid race conditions
-	sessionData, err := json.Marshal(session)
-	if err != nil {
-		log.Printf("ERROR: Failed to marshal session %s: %v", session.ID, err)
+	// Save initial session to database synchronously to ensure it's persisted before any updates
+	if err := s.saveSessionToDB(session); err != nil {
+		log.Printf("ERROR: Failed to save new session %s: %v", session.ID, err)
 		// Session is still in memory, continue anyway
-	} else {
-		// Save to database asynchronously
-		sessionID := session.ID
-		go func() {
-			if err := s.saveSessionDataToDB(sessionID, sessionData); err != nil {
-				// Error is already logged in saveSessionDataToDB
-			}
-		}()
 	}
 
 	return session
@@ -403,13 +399,10 @@ func (s *Store) UpdateState(id string, input StateUpdateInput) error {
 		return fmt.Errorf("failed to marshal session: %v", err)
 	}
 
-	// Save to database asynchronously
-	sessionID := session.ID
-	go func() {
-		if err := s.saveSessionDataToDB(sessionID, sessionData); err != nil {
-			// Error is already logged in saveSessionDataToDB
-		}
-	}()
+	// Save to database synchronously to ensure consistency
+	if err := s.saveSessionDataToDB(id, sessionData); err != nil {
+		// Error is already logged in saveSessionDataToDB
+	}
 
 	return nil
 }
@@ -438,13 +431,11 @@ func (s *Store) UpdateHeartbeat(id string) error {
 		return fmt.Errorf("failed to marshal session: %v", err)
 	}
 
-	// Save to database asynchronously
+	// Save to database synchronously to ensure consistency
 	sessionID := session.ID
-	go func() {
-		if err := s.saveSessionDataToDB(sessionID, sessionData); err != nil {
-			// Error is already logged in saveSessionDataToDB
-		}
-	}()
+	if err := s.saveSessionDataToDB(sessionID, sessionData); err != nil {
+		// Error is already logged in saveSessionDataToDB
+	}
 
 	return nil
 }
@@ -508,13 +499,11 @@ func (s *Store) EndSession(id string) error {
 		return fmt.Errorf("failed to marshal session: %v", err)
 	}
 
-	// Save to database asynchronously
+	// Save to database synchronously to ensure consistency
 	sessionID := session.ID
-	go func() {
-		if err := s.saveSessionDataToDB(sessionID, sessionData); err != nil {
-			// Error is already logged in saveSessionDataToDB
-		}
-	}()
+	if err := s.saveSessionDataToDB(sessionID, sessionData); err != nil {
+		// Error is already logged in saveSessionDataToDB
+	}
 
 	return nil
 }
@@ -688,13 +677,11 @@ func (s *Store) AddEvent(sessionID string, input EventInput) error {
 		return fmt.Errorf("failed to marshal session: %v", err)
 	}
 
-	// Save to database asynchronously
-	sid := sessionID // Capture for goroutine
-	go func() {
-		if err := s.saveSessionDataToDB(sid, sessionData); err != nil {
-			// Error is already logged in saveSessionDataToDB
-		}
-	}()
+	// Save to database synchronously to ensure consistency
+	sid := sessionID // Capture for clarity
+	if err := s.saveSessionDataToDB(sid, sessionData); err != nil {
+		// Error is already logged in saveSessionDataToDB
+	}
 
 	return nil
 }
@@ -753,13 +740,11 @@ func (s *Store) AddMetric(sessionID string, input MetricInput) error {
 		return fmt.Errorf("failed to marshal session: %v", err)
 	}
 
-	// Save to database asynchronously
-	sid := sessionID // Capture for goroutine
-	go func() {
-		if err := s.saveSessionDataToDB(sid, sessionData); err != nil {
-			// Error is already logged in saveSessionDataToDB
-		}
-	}()
+	// Save to database synchronously to ensure consistency
+	sid := sessionID // Capture for clarity
+	if err := s.saveSessionDataToDB(sid, sessionData); err != nil {
+		// Error is already logged in saveSessionDataToDB
+	}
 
 	return nil
 }

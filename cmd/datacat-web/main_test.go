@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -2250,5 +2251,50 @@ func TestHandleMetricDataNoData(t *testing.T) {
 	body := w.Body.String()
 	if !strings.Contains(body, "No data found") {
 		t.Error("Expected 'No data found' message")
+	}
+}
+
+func TestLoadConfig(t *testing.T) {
+	// Test default config when no file exists
+	config := LoadConfig("/nonexistent/config.json")
+	
+	if config.ServerURL != "http://localhost:9090" {
+		t.Errorf("Expected default ServerURL 'http://localhost:9090', got %s", config.ServerURL)
+	}
+	
+	if config.Port != "8080" {
+		t.Errorf("Expected default Port '8080', got %s", config.Port)
+	}
+	
+	if config.LogFile != "" {
+		t.Errorf("Expected default LogFile to be empty, got %s", config.LogFile)
+	}
+}
+
+func TestInitLogging(t *testing.T) {
+	// Test with empty log file (should create default log file)
+	config := &Config{
+		ServerURL: "http://localhost:9090",
+		Port:      "8080",
+		LogFile:   "",
+	}
+	
+	logPath, cleanup, err := initLogging(config)
+	
+	if err != nil {
+		t.Errorf("Expected no error with empty log file, got %v", err)
+	}
+	
+	// When LogFile is empty, initLogging creates a default log file with timestamp and PID
+	if logPath == "" {
+		t.Errorf("Expected non-empty log path (default log file), got empty")
+	}
+	
+	// Cleanup should not panic
+	cleanup()
+	
+	// Clean up the created log file
+	if logPath != "" {
+		os.Remove(logPath)
 	}
 }

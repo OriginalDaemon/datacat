@@ -15,9 +15,10 @@ import os
 import time
 
 # Add parent directory to path for datacat import
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'python'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "python"))
 
 from datacat import create_session
+
 
 def simulate_game_loop():
     """
@@ -38,8 +39,8 @@ def simulate_game_loop():
         "http://localhost:9090",
         product="ExampleGame",
         version="1.0.0",
-        async_mode=True,      # Enable non-blocking async mode
-        queue_size=10000      # Buffer up to 10K events
+        async_mode=True,  # Enable non-blocking async mode
+        queue_size=10000,  # Buffer up to 10K events
     )
 
     print("Session started: %s" % session.session_id)
@@ -47,7 +48,7 @@ def simulate_game_loop():
     print()
 
     # Simulate game state
-    player_pos = {'x': 0.0, 'y': 0.0, 'z': 0.0}
+    player_pos = {"x": 0.0, "y": 0.0, "z": 0.0}
     enemy_count = 0
     frame_count = 0
 
@@ -64,8 +65,8 @@ def simulate_game_loop():
         frame_start = time.time()
 
         # Update game state
-        player_pos['x'] += 0.1
-        player_pos['y'] += 0.05
+        player_pos["x"] += 0.1
+        player_pos["y"] += 0.05
         if frame % 30 == 0:
             enemy_count += 1
 
@@ -76,11 +77,9 @@ def simulate_game_loop():
         session.log_event("frame_start", data={"frame": frame})
 
         # Log player position every frame
-        session.update_state({
-            "frame": frame,
-            "player_pos": player_pos,
-            "enemy_count": enemy_count
-        })
+        session.update_state(
+            {"frame": frame, "player_pos": player_pos, "enemy_count": enemy_count}
+        )
 
         # Log FPS as a gauge (point-in-time value)
         if frame > 0:
@@ -89,10 +88,13 @@ def simulate_game_loop():
 
             # Log frame time as a histogram (distribution analysis)
             frame_duration = frame_start - prev_frame_start
-            session.log_histogram("frame_time", frame_duration,
-                                unit="seconds",
-                                buckets=[1.0/120, 1.0/60, 1.0/30, 1.0/15, 1.0],
-                                tags=["performance"])
+            session.log_histogram(
+                "frame_time",
+                frame_duration,
+                unit="seconds",
+                buckets=[1.0 / 120, 1.0 / 60, 1.0 / 30, 1.0 / 15, 1.0],
+                tags=["performance"],
+            )
 
             # Increment frame counter
             session.log_counter("frames_rendered", tags=["performance"])
@@ -102,7 +104,7 @@ def simulate_game_loop():
             session.log_event(
                 "enemy_spawned",
                 level="info",
-                data={"enemy_type": "goblin", "total_enemies": enemy_count}
+                data={"enemy_type": "goblin", "total_enemies": enemy_count},
             )
             # Increment enemy spawn counter
             session.log_counter("enemies_spawned", tags=["gameplay"])
@@ -114,8 +116,7 @@ def simulate_game_loop():
         # Log player action every 10 frames
         if frame % 10 == 0:
             session.log_event(
-                "player_moved",
-                data={"position": player_pos, "distance": frame * 0.1}
+                "player_moved", data={"position": player_pos, "distance": frame * 0.1}
             )
 
         # Use timer context manager for expensive operations
@@ -165,9 +166,13 @@ def simulate_game_loop():
     print("  Max: %.3f ms" % max(frame_times))
     print()
     print("Logging overhead per frame:")
-    print("  Average: %.4f ms (%.2f%% of frame budget)" %
-          (sum(log_times) / len(log_times),
-           (sum(log_times) / len(log_times)) / 16.7 * 100))
+    print(
+        "  Average: %.4f ms (%.2f%% of frame budget)"
+        % (
+            sum(log_times) / len(log_times),
+            (sum(log_times) / len(log_times)) / 16.7 * 100,
+        )
+    )
     print("  Min: %.4f ms" % min(log_times))
     print("  Max: %.4f ms" % max(log_times))
     print()
@@ -175,12 +180,12 @@ def simulate_game_loop():
     # Get async logging statistics
     stats = session.get_stats()
     print("Async logging statistics:")
-    print("  Events sent: %d" % stats['sent'])
-    print("  Events dropped: %d" % stats['dropped'])
-    print("  Events queued: %d" % stats['queued'])
+    print("  Events sent: %d" % stats["sent"])
+    print("  Events dropped: %d" % stats["dropped"])
+    print("  Events queued: %d" % stats["queued"])
     print()
 
-    if stats['dropped'] > 0:
+    if stats["dropped"] > 0:
         print("WARNING: Some events were dropped due to full queue")
         print("         Consider increasing queue_size parameter")
 
@@ -214,10 +219,7 @@ def demonstrate_blocking_vs_async():
 
     # Test async mode
     session_async = create_session(
-        "http://localhost:9090",
-        product="LatencyTest",
-        version="1.0.0",
-        async_mode=True
+        "http://localhost:9090", product="LatencyTest", version="1.0.0", async_mode=True
     )
 
     async_times = []
@@ -230,9 +232,13 @@ def demonstrate_blocking_vs_async():
     session_async.shutdown()
 
     print("Async mode (non-blocking):")
-    print("  Average: %.1f microseconds (%.4f ms)" %
-          (sum(async_times) / len(async_times),
-           sum(async_times) / len(async_times) / 1000))
+    print(
+        "  Average: %.1f microseconds (%.4f ms)"
+        % (
+            sum(async_times) / len(async_times),
+            sum(async_times) / len(async_times) / 1000,
+        )
+    )
     print("  Min: %.1f microseconds" % min(async_times))
     print("  Max: %.1f microseconds" % max(async_times))
     print()
@@ -261,5 +267,5 @@ if __name__ == "__main__":
         print("\n\nError: %s" % str(e))
         print("\nMake sure the datacat server is running!")
         import traceback
-        traceback.print_exc()
 
+        traceback.print_exc()

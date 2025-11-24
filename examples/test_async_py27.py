@@ -12,7 +12,8 @@ import os
 import time
 
 # Add parent directory to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'python'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "python"))
+
 
 def test_imports():
     """Test that all required imports work in Python 2.7.4"""
@@ -23,13 +24,16 @@ def test_imports():
     # Test Queue import (Python 2 vs 3 difference)
     try:
         import queue
+
         print("[OK] Using queue module (Python 3+)")
     except ImportError:
         import Queue as queue
+
         print("[OK] Using Queue module (Python 2)")
 
     # Test threading
     import threading
+
     print("[OK] Threading module available")
 
     # Test thread.daemon property
@@ -76,16 +80,16 @@ def test_async_session():
             self.calls = []
 
         def log_event(self, session_id, name, **kwargs):
-            self.calls.append(('event', name, kwargs))
+            self.calls.append(("event", name, kwargs))
 
         def log_metric(self, session_id, name, value, tags=None):
-            self.calls.append(('metric', name, value, tags))
+            self.calls.append(("metric", name, value, tags))
 
         def update_state(self, session_id, state):
-            self.calls.append(('state', state))
+            self.calls.append(("state", state))
 
         def end_session(self, session_id):
-            self.calls.append(('end',))
+            self.calls.append(("end",))
 
     class MockSession:
         def __init__(self):
@@ -104,10 +108,7 @@ def test_async_session():
 
         def log_exception(self, exc_info=None, extra_data=None):
             return self.client.log_event(
-                self.session_id,
-                "exception",
-                exc_info=exc_info,
-                extra_data=extra_data
+                self.session_id, "exception", exc_info=exc_info, extra_data=extra_data
             )
 
         def end(self):
@@ -145,9 +146,9 @@ def test_async_session():
     stats = async_session.get_stats()
     print()
     print("Stats before flush:")
-    print("  Sent: %d" % stats['sent'])
-    print("  Dropped: %d" % stats['dropped'])
-    print("  Queued: %d" % stats['queued'])
+    print("  Sent: %d" % stats["sent"])
+    print("  Dropped: %d" % stats["dropped"])
+    print("  Queued: %d" % stats["queued"])
 
     # Flush and wait
     print()
@@ -157,9 +158,9 @@ def test_async_session():
     stats = async_session.get_stats()
     print()
     print("Stats after flush:")
-    print("  Sent: %d" % stats['sent'])
-    print("  Dropped: %d" % stats['dropped'])
-    print("  Queued: %d" % stats['queued'])
+    print("  Sent: %d" % stats["sent"])
+    print("  Dropped: %d" % stats["dropped"])
+    print("  Queued: %d" % stats["queued"])
 
     # Shutdown
     async_session.shutdown()
@@ -199,19 +200,19 @@ def test_queue_overflow():
 
         def log_event(self, name, **kwargs):
             time.sleep(0.1)  # Slow processing
-            self.calls.append('event')
+            self.calls.append("event")
 
         def log_metric(self, name, value, tags=None):
             time.sleep(0.1)
-            self.calls.append('metric')
+            self.calls.append("metric")
 
         def update_state(self, state):
             time.sleep(0.1)
-            self.calls.append('state')
+            self.calls.append("state")
 
         def log_exception(self, exc_info=None, extra_data=None):
             time.sleep(0.1)
-            self.calls.append('exception')
+            self.calls.append("exception")
 
         def end(self):
             return {}
@@ -234,13 +235,16 @@ def test_queue_overflow():
     stats = async_session.get_stats()
     print()
     print("Stats after flood:")
-    print("  Sent: %d" % stats['sent'])
-    print("  Dropped: %d" % stats['dropped'])
-    print("  Queued: %d" % stats['queued'])
+    print("  Sent: %d" % stats["sent"])
+    print("  Dropped: %d" % stats["dropped"])
+    print("  Queued: %d" % stats["queued"])
 
-    if stats['dropped'] > 0:
+    if stats["dropped"] > 0:
         print()
-        print("[OK] Queue overflow handled gracefully (dropped %d events)" % stats['dropped'])
+        print(
+            "[OK] Queue overflow handled gracefully (dropped %d events)"
+            % stats["dropped"]
+        )
         print("  This is expected behavior when drop_on_full=True")
     else:
         print()
@@ -252,8 +256,8 @@ def test_queue_overflow():
     final_stats = async_session.get_stats()
     print()
     print("Final stats:")
-    print("  Sent: %d" % final_stats['sent'])
-    print("  Dropped: %d" % final_stats['dropped'])
+    print("  Sent: %d" % final_stats["sent"])
+    print("  Dropped: %d" % final_stats["dropped"])
 
     print()
     print("Queue overflow test passed!")
@@ -293,6 +297,6 @@ if __name__ == "__main__":
         print()
         print("Error: %s" % str(e))
         import traceback
+
         traceback.print_exc()
         sys.exit(1)
-
