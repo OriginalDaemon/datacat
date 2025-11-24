@@ -203,7 +203,7 @@ class DaemonManager(object):
 
         # Clean up instance-specific config file
         try:
-            if os.path.exists(self.config_path):
+            if self.config_path and os.path.exists(self.config_path):
                 os.remove(self.config_path)
         except Exception:
             pass  # Best effort cleanup
@@ -838,9 +838,13 @@ except ImportError:
 
 # Async logging support for real-time applications (games, etc.)
 try:
-    import queue  # Python 3
+    from queue import (
+        Queue as QueueClass,
+        Full as QueueFull,
+        Empty as QueueEmpty,
+    )  # Python 3
 except ImportError:
-    import Queue as queue  # Python 2
+    from Queue import Queue as QueueClass, Full as QueueFull, Empty as QueueEmpty  # type: ignore  # Python 2
 
 
 class AsyncSession(object):
@@ -878,7 +882,7 @@ class AsyncSession(object):
         """
         self.session = session
         self.drop_on_full = drop_on_full
-        self.queue = queue.Queue(maxsize=queue_size)
+        self.queue = QueueClass(maxsize=queue_size)  # type: QueueClass
         self.running = True
 
         # Statistics
@@ -1037,7 +1041,7 @@ class AsyncSession(object):
                 self.queue.put_nowait({"type": item_type, "data": data})
             else:
                 self.queue.put({"type": item_type, "data": data})
-        except queue.Full:
+        except QueueFull:
             self.dropped_count += 1
 
     def _background_sender(self):
@@ -1096,7 +1100,7 @@ class AsyncSession(object):
                     print("Traceback:")
                     traceback.print_exc()
 
-            except queue.Empty:
+            except QueueEmpty:
                 continue
 
     def get_stats(self):
@@ -1493,6 +1497,10 @@ class Timer(object):
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         """Stop timing and log metric"""
+        if self.start_time is None:
+            # Timer wasn't started properly, skip logging
+            return
+
         end_time = time.time()
         duration = end_time - self.start_time
 
