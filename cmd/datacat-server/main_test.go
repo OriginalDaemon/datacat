@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 	"time"
 )
@@ -1838,7 +1839,7 @@ func TestEventWithLevelCategoryLabels(t *testing.T) {
 }
 
 func TestInitLogging(t *testing.T) {
-	// Test with empty log file (should not fail)
+	// Test with empty log file (should create default log file)
 	config := &Config{
 		DataPath:                "./test_data",
 		RetentionDays:           7,
@@ -1854,10 +1855,16 @@ func TestInitLogging(t *testing.T) {
 		t.Errorf("Expected no error with empty log file, got %v", err)
 	}
 
-	if logPath != "" {
-		t.Errorf("Expected empty log path, got %s", logPath)
+	// When LogFile is empty, initLogging creates a default log file with timestamp and PID
+	if logPath == "" {
+		t.Errorf("Expected non-empty log path (default log file), got empty")
 	}
 
 	// Cleanup should not panic
 	cleanup()
+	
+	// Clean up the created log file
+	if logPath != "" {
+		os.Remove(logPath)
+	}
 }

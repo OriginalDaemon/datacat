@@ -243,7 +243,7 @@ def main():
             "api_latency",
             latency,
             unit="seconds",
-            tags=["bucket_type:default"]
+            tags=["bucket_type:default"],
             # No buckets parameter - uses default
         )
 
